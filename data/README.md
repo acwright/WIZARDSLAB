@@ -11,9 +11,15 @@ Artwork and lookup tables. One rule keeps the two apart:
 The assembly pulls the binaries in with `.incbin`, so replacing artwork is a
 file copy — there is no label to keep in sync and nothing to paste.
 
-**Everything with `.bin` in the table below is placeholder right now.**
-Regenerate the placeholders with `make data` (which runs
-`tools/make-placeholders.py`); replace them for real by exporting over them.
+**`tileset.bin` and the four AC6502 / VIC-20 screens are real artwork now** —
+they came out of `artwork/`. The C64's four screen images are the same panel
+on a 40 × 25 grid with placeholder margins.
+
+`make data` (which runs `tools/make-placeholders.py`) rebuilds only the C64
+screens, reading the panel straight out of `artwork/WizardsLab.tms9918`. **It
+will not overwrite the real art**; `make-placeholders.py --all` regenerates
+everything from scratch and throws that art away, which is only useful for
+bootstrapping.
 
 ---
 
@@ -28,8 +34,11 @@ verbatim.** Only the way a tile gets its colour differs, and that lives in the
 Which means: draw the tiles once, in **TMS9918-EDITOR**, in **Graphics I**
 mode. That mode is the one that enforces the 8-patterns-per-colour-group rule
 the whole tile map is built around (SPEC.md §4), so if the art works there it
-works everywhere. Use VIC-EDITOR for laying out the VIC-20 screens and
-checking colours — you should not need a C64 editor at all.
+works everywhere. The same goes for the screens: 32 × 24 is the only one of the
+three grids that holds the whole 22 × 24 panel, so the panel is laid out there
+too and the other two are derived from it. Use VIC-EDITOR to check the six
+potion colours against black in the VIC's eight — you should not need a C64
+editor at all.
 
 ---
 
@@ -77,18 +86,19 @@ Export the two segments to **separate files** — the game blits them as two
 images. A `.prg` export packs them behind a load address and is not what this
 build wants.
 
-**Panel offsets.** The 22 × 23 panel is centred on each machine, so when you
-lay a screen out in an editor, place it at:
+**Panel offsets.** The 22 × 24 panel is horizontally centred on each machine
+and **top aligned on all three** (`PANEL_Y = 0`), so when you lay a screen out
+in an editor, place it at:
 
-| Platform | Screen | Panel origin |
-|---|---|---|
-| AC6502 | 32 × 24 | column 5, row 0 |
-| VIC-20 | 22 × 23 | column 0, row 0 — the screen *is* the panel |
-| C64 | 40 × 25 | column 9, row 1 |
+| Platform | Screen | Panel origin | Vertical fit |
+|---|---|---|---|
+| AC6502 | 32 × 24 | column 5, row 0 | exact |
+| VIC-20 | 22 × 23 | column 0, row 0 — the screen *is* the panel | panel row 23 is clipped |
+| C64 | 40 × 25 | column 9, row 0 | screen row 24 is one spare course of margin |
 
-`tools/make-placeholders.py` draws the panel at exactly these offsets, so the
-current placeholder screens are a working alignment reference: open one, or
-just run the build and look.
+The panel is drawn **once**, in TMS9918-EDITOR, because 32 × 24 is the only one
+of the three grids that holds all 24 rows. Everything else is that block moved
+sideways.
 
 ### Size note
 
@@ -102,8 +112,9 @@ images today.
 
 ## What the placeholder looks like
 
-`tools/make-placeholders.py` generates crude but *distinguishable* art so the
-game can be built and played before any real tiles exist:
+This is what `make-placeholders.py --all` puts down, and what the project
+looked like before the artwork landed. A plain run no longer produces any of
+it — the tileset and the AC6502 / VIC-20 screens are real now:
 
 - A 5 × 7 font in tile groups 2–6, so score, level and labels are legible.
 - Frame pieces in group 0.

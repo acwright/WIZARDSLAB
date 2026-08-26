@@ -1,18 +1,21 @@
 ; =============================================================================
 ;   score.asm — Wizards Lab, scoring
 ; =============================================================================
-;   SPEC.md section 9. Six digits of packed BCD in three bytes, low byte
-;   first. Every value in tables.inc is a multiple of ten, so scoring is a
-;   SED / ADC chain and never a multiply — the one place a tile count has to
-;   be multiplied by a table value, it is done as a loop of BCD additions,
-;   and the count is at most 21.
+;   SPEC.md section 9. Seven digits of packed BCD in four bytes, low byte
+;   first; the top nibble of ScoreTop is held at zero. Every value in
+;   tables.inc is a multiple of ten, so scoring is a SED / ADC chain and never
+;   a multiply — the one place a tile count has to be multiplied by a table
+;   value, it is done as a loop of BCD additions, and the count is at most 21.
 ;
-;   The score clamps at 999999. It never wraps.
+;   The score clamps at 9999999. It never wraps.
+;
+;   Display is always all seven digits, zero padded — see TextBcd. Nothing
+;   here strips a leading zero, and nothing downstream may either.
 ; =============================================================================
 
 ; -----------------------------------------------------------------------------
 ;   ScoreReset — zero the score, seed the session high score
-;   SPEC 9.8 — the high score is not persisted; it starts at 010000 on every
+;   SPEC 9.8 — the high score is not persisted; it starts at 0010000 on every
 ;   power-on, which is the target the first game is played against.
 ; -----------------------------------------------------------------------------
 ScoreReset:

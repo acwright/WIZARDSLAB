@@ -29,7 +29,7 @@ TileColorVIC:
   .res 8, $06                      ; tiles  96-103  group 12 POTION 4  BLUE
   .res 8, $04                      ; tiles 104-111  group 13 POTION 5  PURPLE
   .res 8, $01                      ; tiles 112-119  group 14 POTION 6  WILD / prism white
-  .res 8, $01                      ; tiles 120-127  group 15 Stone / rubble         gray
+  .res 8, $02                      ; tiles 120-127  group 15 Wall / stone           red
   .res 8, $01                      ; tiles 128-135  group 16 artwork
   .res 8, $02                      ; tiles 136-143  group 17 artwork
   .res 8, $05                      ; tiles 144-151  group 18 artwork

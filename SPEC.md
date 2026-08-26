@@ -31,6 +31,7 @@
 16. [Audio](#16-audio)
 17. [Memory Budget](#17-memory-budget)
 - [Appendix A — Master Tile Map](#appendix-a--master-tile-map)
+  - [A.3 The unassigned slots below 128](#a3-the-unassigned-slots-below-128)
 - [Appendix B — Constants Summary](#appendix-b--constants-summary)
 - [Appendix C — Platform Build Notes](#appendix-c--platform-build-notes)
 - [Appendix D — Build Order](#appendix-d--build-order) *(moved to PLAN.md)*
@@ -106,7 +107,7 @@ Column 0 = leftmost      Row 0 = top (spawn row)
 
 Six wide is the Columns standard and the widest that leaves room for an info
 panel inside 22 columns. Sixteen rows is one row taller than a stock Columns
-well; it fits the 22 × 23 panel exactly and is a power of two, which matters
+well; it fits the 22 × 24 panel exactly and is a power of two, which matters
 below.
 
 ### 3.2 Memory layout — stride 8, not 6
@@ -553,7 +554,7 @@ STEP:
 
 SETTLE:
   cascade_pts <<= min(star_count, 3)      ; ×2 / ×4 / ×8
-  score += cascade_pts                     ; BCD, clamp at 999999
+  score += cascade_pts                     ; BCD, clamp at 9999999
   if chain-1 >= 2 → show chain banner in the message band
   ARE delay, then spawn.
 ```
@@ -567,9 +568,17 @@ because reagent density is bounded; on overflow, drop the effect and continue.
 
 ## 9. Scoring
 
-Score is **6-digit BCD**, stored in 3 bytes, displayed zero-padded. All values
-are multiples of 10, so every addition is a `SED` / `ADC` chain. Score
-**clamps** at `999999` — it never wraps.
+Score is **7-digit BCD**, stored in 4 bytes with the top nibble held at zero.
+All values are multiples of 10, so every addition is a `SED` / `ADC` chain.
+Score **clamps** at `9999999` — it never wraps.
+
+**The score is always drawn as all seven digits, zero padded.** A score of
+1250 reads `0001250`, not `1250`. Leading zeros are never blank-suppressed and
+the field is never right-aligned into a shorter run of digits, because either
+would let the digits shift column as the score grows — and a number that moves
+under the eye is unreadable at a glance, which is the only way anyone reads it
+during play. The same rule holds for the high score (7 digits) and for the
+level the high score was set on (2 digits). See [§12.2](#122-exact-regions-panel-relative-coordinates).
 
 ### 9.1 Per-tile value by chain depth
 
@@ -651,13 +660,20 @@ one more step for another 400.**
 
 **D. Two bolts and a bomb chained at depth 4.** Roughly 21 + 21 + 9 tiles at
 `EffectValue[4]` = 240 → ~12,240 plus 1100 in trigger bonuses. This is the
-"once a game if you're good" moment and it should be worth ~1.5 % of the
-6-digit ceiling. It is.
+"once a game if you're good" moment and it should be worth ~1.2 % of the
+7-digit ceiling. It is.
 
 ### 9.8 High score
 
 - One entry, no name, **not persisted** — reset on every power-on.
-- Initial value: `010000`.
+- Initial value: `0010000`.
+- Seven digits, like the score. Stored as `SCORE_BYTES = 4` packed BCD with the
+  top nibble held at zero, so both wrap at 10,000,000.
+- **The HIGH box also shows the level the high score was set on**, two digits
+  on the row below the number (SPEC 12.2). Copy `Level` into `HighLevel` at the
+  same moment the score is copied — while a run is *holding* the high score
+  that number tracks the live level, which is the point: it tells you how deep
+  you have to get to beat it.
 - Updated live during play the instant `score` exceeds it, so the player
   watches themselves overtake it.
 - Beating it triggers a one-shot fanfare and a flash of the HIGH field.
@@ -791,75 +807,122 @@ already faster (levels 14+ NTSC).
 
 ### 12.1 The core panel
 
-**One 22 × 23 panel is defined once and rendered identically on all three
-machines.** The VIC-20 is exactly this panel; the other two center it and fill
-the margins with static artwork.
+**One 22 × 24 panel is defined once and rendered identically on all three
+machines.** `PANEL_Y` is **0** everywhere; only `PANEL_X` differs.
+
+Twenty-four rows is not an arbitrary choice. The panel is vertically
+symmetric —
+
+```
+row  0   backdrop
+row  1   banner        ~~~WIZARDS LAB🧪~~~
+row  2   backdrop
+rows 3-20  the frames  (18 rows)
+row 21   backdrop
+row 22   banner        ~~~PAUSED~~~
+row 23   backdrop
+```
+
+— and that only closes at an even height. The three machines give us 23, 24
+and 25 rows, so **the AC6502's 24 is the one that fits exactly**, and it is
+the machine the panel is drawn on. The other two take the rounding:
+
+- **VIC-20 (23 rows)** — panel row 23 falls off the bottom. The message band
+  becomes the last row of the screen.
+- **C64 (25 rows)** — the panel ends at screen row 23 and row 24 is one spare
+  course of margin.
+
+Nothing else moves. Rows 0–22 are identical on all three.
 
 ```
       0         1         2
       0123456789012345678901
-  0  |·······WIZARDS LAB·······|   ornament rule + title
-  1  |                         |   spacer
-  2  |╔══════╗                 |   well top border
-  3  |║······║      SCORE      |
-  4  |║······║      001250     |   ← well interior rows 3-18 = board rows 0-15
-  5  |║······║                 |
-  6  |║······║      HIGH       |
-  7  |║······║      010000     |
-  8  |║······║                 |
-  9  |║······║      LEVEL      |
- 10  |║······║      03         |
- 11  |║······║                 |
- 12  |║······║      NEXT       |
- 13  |║······║       ┌─┐       |
- 14  |║······║       │▓│       |   ← next piece cell A
- 15  |║······║       │▓│       |   ← next piece cell B
- 16  |║······║       │▓│       |   ← next piece cell C
- 17  |║······║       └─┘       |
- 18  |║······║                 |
- 19  |╚══════╝    (vignette)   |   well bottom border
- 20  |                         |   spacer
- 21  |      CHAIN  x4          |   message band, row 1
- 22  |                         |   message band, row 2
+  0  |······················|   backdrop
+  1  |··~~ WIZARDS LAB🧪 ~~··|   title banner
+  2  |······················|   backdrop
+  3  |╔══════╗·╔═══════════╗|   well top · SCORE box top
+  4  |║······║·║···SCORE···║|
+  5  |║······║·║··0123456··║|   ← 7 digits
+  6  |║······║·╚═══════════╝|
+  7  |║······║··············|
+  8  |║······║·╔═══════════╗|
+  9  |║······║·║·HIGHSCORE·║|
+ 10  |║······║·║··3456789··║|   ← 7 digits
+ 11  |║······║·║····L12····║|   ← level it was set on
+ 12  |║······║·╚═══════════╝|
+ 13  |║······║··············|
+ 14  |║······║·╔═══╗·╔═════╗|   NEXT box · LEVEL box
+ 15  |║······║·║···║·║LEVEL║|
+ 16  |║······║·║·▓·║·║·····║|   ← next cell A
+ 17  |║······║·║·▓·║·║··1··║|   ← next cell B · level tens
+ 18  |║······║·║·▓·║·║··0··║|   ← next cell C · level units
+ 19  |║······║·║···║·║·····║|
+ 20  |╚══════╝·╚═══╝·╚═════╝|
+ 21  |······················|   backdrop
+ 22  |·····~~ PAUSED ~~·····|   message band
+ 23  |······················|   backdrop  (VIC-20 clips this row)
 ```
 
 *(The box-drawing above is illustrative — the real frame uses custom tiles from
-[Appendix A](#appendix-a--master-tile-map): stone shelf edges and vial racks,
-not ASCII lines.)*
+[Appendix A](#appendix-a--master-tile-map), a braided rope border. `·` is the
+backdrop, tile 121, not blank.)*
+
+The well interior is **cols 1–6, rows 4–19**, so board (0,0) sits at panel
+(1,4). Everything to the right of the gutter is a box of the same braid: the
+score, the high score, the preview and the level each get their own frame, and
+the four frames line up top and bottom with the well.
 
 ### 12.2 Exact regions (panel-relative coordinates)
 
 | Region | Cols | Rows | Notes |
 |---|---|---|---|
-| Title rule | 0–21 | 0 | "WIZARDS LAB" centered at cols 5–15 |
-| Spacer | 0–21 | 1 | |
-| Well frame — top | 0–7 | 2 | |
-| Well frame — left wall | 0 | 3–18 | |
-| **Well interior** | **1–6** | **3–18** | **board (0,0) is at panel (1,3)** |
-| Well frame — right wall | 7 | 3–18 | |
-| Well frame — bottom | 0–7 | 19 | |
-| Panel gutter | 8 | 2–19 | always blank |
-| SCORE label | 9–13 | 3 | |
-| SCORE digits | 9–14 | 4 | 6 digits |
-| HIGH label | 9–12 | 6 | |
-| HIGH digits | 9–14 | 7 | 6 digits |
-| LEVEL label | 9–13 | 9 | |
-| LEVEL digits | 9–10 | 10 | 2 digits |
-| NEXT label | 9–12 | 12 | |
-| NEXT frame | 10–12 | 13–17 | 3 × 5 box |
-| **NEXT tiles** | **11** | **14, 15, 16** | A, B, C top to bottom |
-| Vignette (optional decor) | 9–21 | 18–19 | cauldron / wizard, 13 × 2 |
-| Spacer | 0–21 | 20 | |
-| Message band | 0–21 | 21–22 | 2 rows, centered text |
+| Backdrop | 0–21 | 0, 2, 21, 23 | tile 121, full width |
+| Title banner | 2–19 | 1 | `~~ WIZARDS LAB` + potion + ` ~~`, 18 cells |
+| Well frame — top | 0–7 | 3 | |
+| Well frame — left wall | 0 | 4–19 | |
+| **Well interior** | **1–6** | **4–19** | **board (0,0) is at panel (1,4)** |
+| Well frame — right wall | 7 | 4–19 | |
+| Well frame — bottom | 0–7 | 20 | |
+| Panel gutter | 8 | 3–20 | always backdrop |
+| SCORE box | 9–21 | 3–6 | frame; interior cols 10–20, rows 4–5 |
+| SCORE label | 13–17 | 4 | |
+| **SCORE digits** | **12–18** | **5** | **7 digits, always zero padded** |
+| HIGH box | 9–21 | 8–12 | frame; interior cols 10–20, rows 9–11 |
+| HIGHSCORE label | 11–19 | 9 | |
+| **HIGH digits** | **12–18** | **10** | **7 digits, always zero padded** |
+| **HIGH level** | **15–16** | **11** | **2 digits, zero padded; the static `L` label sits at col 14** |
+| NEXT box | 9–13 | 14–20 | frame, unlabelled; interior cols 10–12, rows 15–19 |
+| **NEXT tiles** | **11** | **16, 17, 18** | A, B, C top to bottom |
+| LEVEL box | 15–21 | 14–20 | frame; interior cols 16–20, rows 15–19 |
+| LEVEL label | 16–20 | 15 | |
+| **LEVEL digits** | **18** | **17, 18** | **tens above units, always zero padded** |
+| Message band | 0–21 | 22 | **one row**, centred |
+
+Three things are worth calling out because they are not what you would guess:
+
+- **The score is seven digits, not six.** The boxes are eleven cells wide
+  inside, and only an odd-width field centres exactly. Seven digits is what
+  centres, so seven digits is what the score is: `SCORE_BYTES = 4` packed BCD
+  with the top nibble held at zero, clamping at 9,999,999. **All seven are
+  always drawn** — zero padded, never blank-suppressed, so a digit never
+  changes column ([§9](#9-scoring)).
+- **The high score carries its level.** Row 11 of the HIGH box reads `L12` —
+  an `L` in the static image at col 14, then two live digits. It is the only
+  two-line value on the panel, and the three cells centre exactly on the box's
+  middle column.
+- **The level is stacked, not written across.** Tens at row 17, units at row
+  18, both in column 18, always zero padded — level 5 draws `0` over `5`. It
+  reads as a single tall numeral inside a small square box, which is why the
+  LEVEL box can be five cells wide and still balance the NEXT box beside it.
 
 ### 12.3 Board ↔ screen address
 
 ```
 panel_col = board_col + 1
-panel_row = board_row + 3
+panel_row = board_row + 4
 
 screen_col = PANEL_X + panel_col
-screen_row = PANEL_Y + panel_row
+screen_row = PANEL_Y + panel_row      (PANEL_Y is 0 on all three)
 ```
 
 Precompute a **row-start pointer table** per platform (one lo byte + one hi
@@ -868,27 +931,33 @@ column. This is the same code on all three machines; only the table differs.
 
 ### 12.4 Per-platform placement
 
-| Platform | Grid | `PANEL_X` | `PANEL_Y` | Margin to fill |
-|---|---|---|---|---|
-| **VIC-20** | 22 × 23 | 0 | 0 | none — exact fit |
-| **AC6502** | 32 × 24 | 5 | 0 | cols 0–4 and 27–31 (5 × 24 each), row 23 full width |
-| **C64** | 40 × 25 | 9 | 1 | cols 0–8 and 31–39 (9 × 25 each), rows 0 and 24 full width |
+| Platform | Grid | `PANEL_X` | `PANEL_Y` | Panel rows shown | Margin to fill |
+|---|---|---|---|---|---|
+| **VIC-20** | 22 × 23 | 0 | 0 | 0–22 (row 23 clipped) | none — exact fit |
+| **AC6502** | 32 × 24 | 5 | 0 | 0–23 | cols 0–4 and 27–31 (5 × 24 each) |
+| **C64** | 40 × 25 | 9 | 0 | 0–23 | cols 0–8 and 31–39 (9 × 25 each), row 24 full width |
 
-Both offsets are exact centerings: `(32−22)/2 = 5`, `(40−22)/2 = 9`,
-`(25−23)/2 = 1`.
+`PANEL_X` is an exact centring on both wide machines: `(32−22)/2 = 5`,
+`(40−22)/2 = 9`. Vertically there is nothing to centre — the panel is top
+aligned everywhere and the difference in screen height is taken at the bottom,
+one row either way.
 
 ### 12.5 Margin artwork
 
 The margins are **static** — drawn once on entering the PLAY state, never
-touched again. Budget:
+touched again.
 
-- **AC6502:** 2 × 120 = 240 cells + 32 = **272 cells**. A 5-column laboratory
-  shelf on each side: stacked bottles, a rack, a candle. Row 23 is a stone
-  floor strip.
-- **C64:** 2 × 225 = 450 cells + 80 = **530 cells**. Nine columns is enough for
+The wall behind everything is **tile group 15**: tile 120 is a brick course
+and tile 121 is the sparse speckle that doubles as the panel backdrop. The
+AC6502 uses them alone — three columns of brick either side with a two-column
+speckled bevel against the panel — and spends none of its artwork budget on
+the margin at all. Budget for the other two:
+
+- **C64:** 2 × 225 = 450 cells + 40 = **490 cells**. Nine columns is enough for
   a proper vertical scene — a wizard at a workbench on the left, a shelf of
-  labelled jars and a bubbling cauldron on the right, a beamed ceiling on row 0
-  and a flagstone floor on row 24.
+  labelled jars and a bubbling cauldron on the right, over the brick — and row
+  24 is the flagstone course under it.
+- **VIC-20:** none. The screen is the panel.
 
 Because margins never redraw, they cost only tiles, not cycles. Use the
 artwork tile budget generously ([Appendix A](#appendix-a--master-tile-map)
@@ -968,8 +1037,8 @@ wait for vblank
 ### 13.4 GAMEOVER
 
 1. The current piece stops.
-2. **Petrify animation**: rows fill with the grey stone tile from row 15 upward,
-   2 frames per row (32 frames total).
+2. **Petrify animation**: rows fill with the petrified tile (122) from row 15
+   upward, 2 frames per row (32 frames total).
 3. "GAME OVER" in the message band; final score stays in the SCORE field.
 4. If a new high score was set, HIGH flashes and a fanfare plays.
 5. FIRE or a 10-second timeout returns to TITLE.
@@ -1064,14 +1133,14 @@ AC6502 and C64 share SID driver code almost verbatim (register base differs:
 | `DIRTY` | 192 | 64 entries × 3 bytes (offset lo/hi, tile) |
 | Piece state | 8 | column, row, A/B/C, rotation |
 | Next piece | 3 | |
-| Score / High | 6 | 3 bytes BCD each |
+| Score / High | 9 | 4 bytes BCD each, + 1 for the high score's level |
 | Level, tiles cleared, chain, stars | 6 | |
 | Timers (gravity, lock, DAS, ARE, anim) | 10 | |
 | Input current/previous/edge | 3 | |
 | RNG seed, frame counter | 4 | |
 | State machine, flags | 8 | |
 | Audio state | 16 | |
-| **Total** | **~530 bytes** | plus row-pointer tables in ROM |
+| **Total** | **~530 bytes** | 526 measured; plus row-pointer tables in ROM |
 
 Fits the VIC-20's constrained RAM with room to spare, which is the whole point
 of designing to the tightest target first.
@@ -1105,21 +1174,21 @@ have tiles to spare) and buys a completely shared renderer.
 | Group | Tiles | Color (TMS fg / CBM) | Contents |
 |---:|---|---|---|
 | 0 | 0–7 | 15 White / 1 | Blank, bar-H, bar-V, corner-TL, corner-TR, corner-BL, corner-BR, joint |
-| 1 | 8–15 | 14 Gray / 15 (C64), 1 (VIC) | Stone/shelf accents, NEXT box frame, rules |
+| 1 | 8–15 | 14 Gray / 15 (C64), 1 (VIC) | *Undecided* — holding a stipple and a copy of the frame set; see A.3 |
 | 2 | 16–23 | 15 White / 1 | Font: `0 1 2 3 4 5 6 7` |
 | 3 | 24–31 | 15 White / 1 | Font: `8 9 A B C D E F` |
 | 4 | 32–39 | 15 White / 1 | Font: `G H I J K L M N` |
 | 5 | 40–47 | 15 White / 1 | Font: `O P Q R S T U V` |
-| 6 | 48–55 | 15 White / 1 | Font: `W X Y Z . × ! -` |
-| 7 | 56–63 | 15 White / 1 | VFX: shatter1, shatter2, blast, beam-H, beam-V, beam-cross, sparkle, arrow |
+| 6 | 48–55 | 15 White / 1 | Font: `W X Y Z . × ! ~` |
+| 7 | 56–63 | 15 White / 1 | VFX: shatter ×3, blast, beam-H, beam-V, beam-cross, sparkle |
 | **8** | **64–71** | **8 Med Red / 2** | **Red:** potion, fireball, bolt, bomb, star, —, glow, — |
 | **9** | **72–79** | **11 Lt Yellow / 7** | **Yellow:** same 8 slots |
 | **10** | **80–87** | **3 Lt Green / 5** | **Green:** same 8 slots |
 | **11** | **88–95** | **7 Cyan / 3** | **Cyan:** same 8 slots |
 | **12** | **96–103** | **5 Lt Blue / 6** | **Blue:** same 8 slots |
 | **13** | **104–111** | **13 Magenta / 4** | **Purple:** same 8 slots |
-| 14 | 112–119 | 15 White / 1 | **Prism** (slot +0), prism glow (+6), wild VFX |
-| 15 | 120–127 | 14 Gray / 11 (C64), 1 (VIC) | Stone (game-over petrify), rubble, reserved hazards |
+| 14 | 112–119 | 15 White / 1 | **Prism** (+0), prism glow (+6), arrows and shimmer — see A.3 |
+| 15 | 120–127 | **6 Dark Red / 2** | Wall: brick, speckle/backdrop, petrify — see A.3 |
 | 16–31 | 128–255 | various | **Artwork** — 128 tiles, 16 color groups, for margins and the title logo |
 
 ### A.1 Glyph slot recap
@@ -1159,6 +1228,125 @@ no outline to lean on. Consequences:
   should read as "brighter," not as a different object.
 - Draw the six potions as **six copies of one pattern**. Identical shape, six
   color groups. Only the reagents need to differ from each other.
+
+### A.3 The unassigned slots below 128
+
+Groups 8–13 are settled — six copies of one pattern, five glyphs each — and
+groups 2–6 are the font. What follows is the brief for everything else under
+tile 128 that is still blank or still placeholder.
+
+#### Group 1, tiles 8–15 — undecided (gray)
+
+**Not settled. Nothing in the game reads these tiles, and no code depends on
+what goes in them.** What is drawn there today is a holding position: tile 8 is
+a soft stipple being tried as the PAUSE wash, and tiles 9–15 are byte-for-byte
+copies of frame tiles 1–7.
+
+Those copies are what makes the option below available, and they cost nothing
+while it stays open.
+
+*Option — the second frame weight.* Group 0 is the heavy white braid the well
+and the four boxes are drawn in. If group 1 becomes **the same eight slots
+again, one weight lighter**, then
+
+```
+dim_tile = frame_tile + FRAME_DIM        ; FRAME_DIM = 8
+```
+
+turns any frame piece into its quieter twin with an `ADC #8`, and the panel can
+establish a hierarchy without a second colour: the **well keeps the heavy
+braid**, the SCORE / HIGH / NEXT / LEVEL boxes step back to the light one, and
+the eye lands on the playfield instead of dividing evenly between five
+identical frames.
+
+| Tile | Slot | Would be |
+|---|---|---|
+| 8 | (mirrors blank) | The only slot the `+8` rule leaves free — the stipple already there fits it |
+| 9 | bar-H | Thinner rope, or the braid at half the stroke |
+| 10 | bar-V | |
+| 11 | corner-TL | |
+| 12 | corner-TR | |
+| 13 | corner-BL | |
+| 14 | corner-BR | |
+| 15 | joint | Where two boxes share an edge |
+
+If it goes that way, keep the outer silhouette **on the same pixel rows** as
+the group 0 piece it mirrors, or the two weights will not line up when a dim
+box sits beside the heavy well. And note the weight has to be carried entirely
+by the pixels: the VIC-20 has no grey, so group 1 renders **white** there and
+grey on the other two.
+
+#### Group 7, tiles 56–63 — VFX (white)
+
+These are the animation frames from [§14](#14-animation--timing), shared by all
+six colours — which is why they are white and not per-colour. Six of the eight
+are already drawn and correct:
+
+| Tile | Role | Frames it has to survive | Art note |
+|---|---|---|---|
+| 56 | Shatter 1 | 2 of the 6-frame shatter | The potion silhouette breaking up: still mostly *there* |
+| 57 | Shatter 2 | 2 | Half gone |
+| 63 | **Shatter 3** | 2 | Nearly gone — a few specks. *Reassigned: this slot was "arrow" and the arrows now live in group 14.* |
+| 58 | Blast | 6 | The bomb's 3 × 3. A solid or near-solid cell is right — it is meant to white out the area |
+| 59 | Beam-H | 6 | The bolt's row. Must butt seamlessly against its neighbours |
+| 60 | Beam-V | 6 | The bolt's column |
+| 61 | Beam-cross | 6 | Drawn once, at the bolt's own cell |
+| 62 | Sparkle | 6 | The star's doubling, and the high-score flash |
+
+Three tiles for the shatter rather than two is the one change worth making
+here: a 6-frame dissolve at 2 frames a step reads as *crumbling*, where 3 + 3
+reads as two hard cuts.
+
+The **fireball** needs no tile. It recolours in place — one poke to the VDP
+colour table on the AC6502, a walk of the dirty list on the Commodores
+([§4.6](#46-the-fireballs-free-trick)).
+
+#### Group 14, tiles 112–119 — prism and white UI
+
+The prism is slot +0 and slot +6 is its glow, exactly like every other colour
+group. The other six slots would be the prism's fireball, bolt, bomb and star —
+but [§5.2](#52-generation) guarantees a wild tile is **always** glyph +0, so no
+board cell can ever land on 113–117 or 119. That makes them six free tiles in
+the one spare *white* group, and the title screen is what needs them.
+
+| Tile | Role |
+|---|---|
+| 112 | **Prism.** Faceted diamond, internal line. Drawn. |
+| 113–116 | **Arrows** — up, down, left, right. The TITLE screen's CONTROLS page ([§13.1](#131-title)); a chunky solid triangle with a short shaft reads at 8 × 8, an outlined one does not. |
+| 117 | **Shimmer.** The prism's clear effect, to go with audio ID 9 |
+| 118 | **Prism glow.** Required — the +6 flash frame. The prism dilated or filled, *not* a different shape |
+| 119 | Spare — a second shimmer frame if 117 wants company |
+
+> **Constraint this rests on:** nothing may construct a wild tile with a
+> non-zero glyph. `WILD_BASE + n` for `n` in 1–5, 7 is UI, not a potion.
+
+#### Group 15, tiles 120–127 — the wall (dark red)
+
+Repurposed. This group used to be grey stone in tiles nobody had drawn; it is
+now the **brick wall the whole screen sits on**, and it is doing the AC6502's
+entire margin by itself — the artwork groups (128–255) are untouched on that
+machine.
+
+| Tile | Role |
+|---|---|
+| 120 | **Brick course.** Drawn. The margin fill |
+| 121 | **Speckle.** Drawn. The panel backdrop, the gutter, and the bevel columns between margin and panel |
+| 122 | **Petrified potion** — the game-over tile ([§13.4](#134-gameover)). The potion silhouette rendered as rough stone, so the well visibly *sets* rather than just changing colour |
+| 123 | Cracked brick |
+| 124 | Offset / half course |
+| 125 | Capstone — the horizontal edge where wall meets the panel bevel |
+| 126–127 | Cobweb, top-left and top-right. Flavour |
+
+Tiles 123 and 124 are the load-bearing ones. A five-column margin of a single
+8 × 8 brick reads as *graph paper*; two or three variants scattered through it
+reads as a wall. Scatter them from the screen image, not at run time — the
+margins are static.
+
+> **VIC-20 note.** The VIC's eight hi-res colours have no grey and no brown, so
+> group 15 lands on red (2) — the same red as potion colour 0. In the margins
+> that is fine, they are never adjacent to the well. At game over the entire
+> well petrifies at once, so there is nothing left to confuse it with. Keep
+> tile 122's silhouette *rough* rather than relying on the colour to sell it.
 
 ---
 
@@ -1232,8 +1420,8 @@ BONUS_BOMB    = 300
 BONUS_PRISM   = 400
 STAR_CAP      = 3               ; max shifts → ×8
 LEVELUP_BONUS = 1000
-SCORE_MAX     = $99,$99,$99
-HIGH_INIT     = 010000
+SCORE_MAX     = $09,$99,$99,$99
+HIGH_INIT     = 0010000
 
 ; ---- Reagent probability, /256 ----
 PSpecial:     .byte 38, 56, 69, 82, 92     ; level bands 1-3,4-6,7-9,10-12,13+
@@ -1291,7 +1479,7 @@ PSpecial:     .byte 38, 56, 69, 82, 92     ; level bands 1-3,4-6,7-9,10-12,13+
   | `$1000-$13FF` | 1 K | **Game RAM** — `BOARD`, `MARKS`, `EFFECTQ`, state |
   | `$1400-$1BFF` | 2 K | **Character set**, copied from cart ROM at boot |
   | `$1C00-$1DFF` | 512 | `DIRTY` list, audio state, spare |
-  | `$1E00-$1FF9` | 506 | Screen matrix (22 × 23) |
+  | `$1E00-$1FF9` | 506 | Screen matrix (22 × 23 — panel row 23 is clipped) |
 
   Color RAM is at `$9600` (matches screen at `$1E00`). Set the VIC character
   base register to select `$1400`.

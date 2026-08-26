@@ -167,9 +167,10 @@ routines, and the lines that pull in its artwork.
 
 Three decisions made that possible:
 
-**The VIC-20 set the shape of the game.** Its 22 × 23 screen is exactly the
-panel all three machines draw — the C64 and AC6502 centre that same panel and
-fill the margins with static artwork. Its eight hi-res colours capped the
+**The VIC-20 set the shape of the game.** Its 22 columns are exactly the panel
+all three machines draw — the C64 and AC6502 centre that same panel and fill
+the margins with static artwork. Vertically it is the AC6502's 24 rows that fit
+the panel exactly; the VIC clips the last row and the C64 has one to spare. Its eight hi-res colours capped the
 palette at six potions plus white. Its roughly 1 KB of usable work RAM is what
 the 523-byte RAM layout was designed against. Designing for the tightest
 target first is why the other two needed no compromises.

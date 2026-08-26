@@ -25,7 +25,8 @@ SCR_COLS         = 40
 SCR_ROWS         = 25
 SCR_CELLS        = 1000          ; 40 x 25
 PANEL_X             = 9             ; (40 - 22) / 2 — exact centring
-PANEL_Y             = 1             ; (25 - 23) / 2
+PANEL_Y             = 0             ; Panel is 24 rows; screen row 24 is the
+                                    ;   one spare course of margin
 HAS_COLOR_RAM       = 1
 
 CHARSET_RAM         = $2000         ; 2 K, VIC bank 0

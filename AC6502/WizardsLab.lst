@@ -966,9 +966,13 @@ Current file: WizardsLab.asm
 000000r 2               TILE_COR_BL         = 5
 000000r 2               TILE_COR_BR         = 6
 000000r 2               TILE_JOINT          = 7
-000000r 2               FONT_BASE           = 16        ; '0'..'9' then 'A'..'Z' then . x ! -
+000000r 2               FONT_BASE           = 16        ; '0'..'9' then 'A'..'Z' then . x ! ~
 000000r 2               FONT_DIGIT_0        = 16
 000000r 2               FONT_LETTER_A       = 26
+000000r 2               FONT_DOT            = 52
+000000r 2               FONT_TIMES          = 53
+000000r 2               FONT_BANG           = 54
+000000r 2               FONT_TILDE          = 55        ; The banner ornament, ~~~LIKE THIS~~~
 000000r 2               VFX_SHATTER1        = 56
 000000r 2               VFX_SHATTER2        = 57
 000000r 2               VFX_BLAST           = 58
@@ -976,32 +980,50 @@ Current file: WizardsLab.asm
 000000r 2               VFX_BEAM_V          = 60
 000000r 2               VFX_BEAM_CROSS      = 61
 000000r 2               VFX_SPARKLE         = 62
-000000r 2               TILE_STONE          = 120       ; Game-over petrify
-000000r 2               TILE_RUBBLE         = 121
+000000r 2               VFX_SHATTER3        = 63
+000000r 2               ARROW_UP            = 113       ; Group 14, white — the title CONTROLS page
+000000r 2               ARROW_DOWN          = 114
+000000r 2               ARROW_LEFT          = 115
+000000r 2               ARROW_RIGHT         = 116
+000000r 2               VFX_SHIMMER         = 117       ; Prism clear
+000000r 2               TILE_PRISM_GLOW     = 118       ; = WILD_BASE + GLYPH_GLOW
+000000r 2               TILE_WALL_BRICK     = 120       ; Wall course — the margin fill
+000000r 2               TILE_WALL_SPECKLE   = 121       ; Sparse speckle — panel backdrop and bevel
+000000r 2               TILE_PETRIFIED      = 122       ; Game-over petrify
+000000r 2               FRAME_DIM           = 8         ; PROVISIONAL (SPEC A.3): frame tile + 8 would
+000000r 2                                               ;   be its lighter twin. Group 1 is undecided
+000000r 2                                               ;   and nothing reads this yet.
 000000r 2               ART_BASE            = 128       ; Groups 16-31, margin artwork
 000000r 2               
 000000r 2               ; --- Panel geometry (SPEC 12) ------------------------------------------------
-000000r 2               ;   One 22 x 23 panel, rendered identically on all three machines. Each
-000000r 2               ;   platform supplies PANEL_X / PANEL_Y to centre it.
+000000r 2               ;   One 22 x 24 panel, rendered identically on all three machines. PANEL_Y is
+000000r 2               ;   0 everywhere; only PANEL_X differs. The panel is vertically symmetric —
+000000r 2               ;   backdrop row, band row, backdrop row, eighteen rows of frame, backdrop row,
+000000r 2               ;   band row, backdrop row — which is why 24 is the height. The AC6502 is the
+000000r 2               ;   exact fit; the VIC-20 clips panel row 23 off the bottom and the C64 has one
+000000r 2               ;   spare screen row (24) below the panel. See SPEC 12.4.
 000000r 2               PANEL_W             = 22
-000000r 2               PANEL_H             = 23
+000000r 2               PANEL_H             = 24
 000000r 2               
 000000r 2               WELL_ORIGIN_X       = 1         ; Panel-relative: board (0,0) lives here
-000000r 2               WELL_ORIGIN_Y       = 3
+000000r 2               WELL_ORIGIN_Y       = 4
 000000r 2               
-000000r 2               SCORE_X             = 9
-000000r 2               SCORE_Y             = 4
-000000r 2               HIGH_X              = 9
-000000r 2               HIGH_Y              = 7
-000000r 2               LEVEL_X             = 9
-000000r 2               LEVEL_Y             = 10
+000000r 2               SCORE_X             = 12        ; 7 digits, cols 12-18
+000000r 2               SCORE_Y             = 5
+000000r 2               HIGH_X              = 12        ; 7 digits, cols 12-18
+000000r 2               HIGH_Y              = 10
+000000r 2               HIGHLVL_X           = 15        ; Level the high score was set on, 2 digits;
+000000r 2                                               ;   the 'L' at col 14 is in the static image
+000000r 2               HIGHLVL_Y           = 11
+000000r 2               LEVEL_X             = 18        ; Single column: tens above units
+000000r 2               LEVEL_Y             = 17        ; Tens at LEVEL_Y, units at LEVEL_Y + 1
 000000r 2               NEXT_X              = 11        ; Single tile column
-000000r 2               NEXT_Y              = 14        ; Cells A, B, C at NEXT_Y, +1, +2
+000000r 2               NEXT_Y              = 16        ; Cells A, B, C at NEXT_Y, +1, +2
 000000r 2               MSG_X               = 0
-000000r 2               MSG_Y               = 21        ; Two rows, full panel width
+000000r 2               MSG_Y               = 22        ; One row, full panel width, centred
 000000r 2               
-000000r 2               SCORE_DIGITS        = 6
-000000r 2               LEVEL_DIGITS        = 2
+000000r 2               SCORE_DIGITS        = 7         ; Always all 7 drawn, zero padded
+000000r 2               LEVEL_DIGITS        = 2         ; Always zero padded — level 5 draws "0" / "5"
 000000r 2               
 000000r 2               ; --- Levels (SPEC 10) --------------------------------------------------------
 000000r 2               LEVEL_TILES         = 30        ; Tiles cleared per level
@@ -1015,10 +1037,13 @@ Current file: WizardsLab.asm
 000000r 2               BONUS_PRISM         = $0400
 000000r 2               BONUS_LEVELUP       = $1000
 000000r 2               STAR_SHIFT_CAP      = 3         ; Three doublings — x8
-000000r 2               SCORE_BYTES         = 3         ; 6 digits packed BCD
-000000r 2               HIGH_INIT_LO        = $00       ; 010000
+000000r 2               SCORE_BYTES         = 4         ; 8 nibbles packed BCD; the top one stays 0,
+000000r 2                                               ;   so 7 digits show and the score wraps at
+000000r 2                                               ;   10,000,000.
+000000r 2               HIGH_INIT_LO        = $00       ; 0010000
 000000r 2               HIGH_INIT_MID       = $00
 000000r 2               HIGH_INIT_HI        = $01
+000000r 2               HIGH_INIT_TOP       = $00
 000000r 2               
 000000r 2               ; --- Reagent probability, out of 256 (SPEC 5.3) ------------------------------
 000000r 2               PSPECIAL_BANDS      = 5
@@ -1148,110 +1173,115 @@ Current file: WizardsLab.asm
 0001E1r 2  xx           NextC:          .res 1
 0001E2r 2               
 0001E2r 2               ; --- Progress (SPEC 9, 10) ---------------------------------------------------
-0001E2r 2  xx           ScoreLo:        .res 1                  ; 6 digits packed BCD, low byte first
-0001E3r 2  xx           ScoreMid:       .res 1
+0001E2r 2  xx           ScoreLo:        .res 1                  ; 7 digits packed BCD, low byte first;
+0001E3r 2  xx           ScoreMid:       .res 1                  ;   the top nibble of ScoreTop stays 0
 0001E4r 2  xx           ScoreHi:        .res 1
-0001E5r 2  xx           HighLo:         .res 1
-0001E6r 2  xx           HighMid:        .res 1
-0001E7r 2  xx           HighHi:         .res 1
-0001E8r 2  xx           Level:          .res 1                  ; Binary, 1-99
-0001E9r 2  xx           TilesCleared:   .res 1                  ; Toward the next level, wraps at 30
-0001EAr 2               
-0001EAr 2               ; --- Timers, all in frames (SPEC 14) -----------------------------------------
-0001EAr 2  xx           GravityTimer:   .res 1
-0001EBr 2  xx           LockTimer:      .res 1
-0001ECr 2  xx           LockResets:     .res 1
-0001EDr 2  xx           DasTimer:       .res 1
-0001EEr 2  xx           DasDir:         .res 1
-0001EFr 2  xx           AreTimer:       .res 1
-0001F0r 2  xx           AnimTimer:      .res 1
-0001F1r 2  xx           BannerTimer:    .res 1
-0001F2r 2  xx           FrameCounter:   .res 1                  ; Free-running from power-on; seeds RNG
-0001F3r 2               
-0001F3r 2               ; --- Input (SPEC 11.1) -------------------------------------------------------
-0001F3r 2  xx           InputNow:       .res 1
-0001F4r 2  xx           InputPrev:      .res 1
-0001F5r 2  xx           InputEdge:      .res 1                  ; Newly pressed this frame
+0001E5r 2  xx           ScoreTop:       .res 1
+0001E6r 2  xx           HighLo:         .res 1
+0001E7r 2  xx           HighMid:        .res 1
+0001E8r 2  xx           HighHi:         .res 1
+0001E9r 2  xx           HighTop:        .res 1
+0001EAr 2  xx           HighLevel:      .res 1                  ; Level the high score was set on, BCD
+0001EBr 2  xx           Level:          .res 1                  ; Binary, 1-99
+0001ECr 2  xx           TilesCleared:   .res 1                  ; Toward the next level, wraps at 30
+0001EDr 2               
+0001EDr 2               ; --- Timers, all in frames (SPEC 14) -----------------------------------------
+0001EDr 2  xx           GravityTimer:   .res 1
+0001EEr 2  xx           LockTimer:      .res 1
+0001EFr 2  xx           LockResets:     .res 1
+0001F0r 2  xx           DasTimer:       .res 1
+0001F1r 2  xx           DasDir:         .res 1
+0001F2r 2  xx           AreTimer:       .res 1
+0001F3r 2  xx           AnimTimer:      .res 1
+0001F4r 2  xx           BannerTimer:    .res 1
+0001F5r 2  xx           FrameCounter:   .res 1                  ; Free-running from power-on; seeds RNG
 0001F6r 2               
-0001F6r 2               ; --- State machine (SPEC 13) -------------------------------------------------
-0001F6r 2  xx           GameState:      .res 1                  ; STATE_*
-0001F7r 2  xx           PlayState:      .res 1                  ; PLAY_*
-0001F8r 2  xx           TitlePage:      .res 1
-0001F9r 2  xx           Region:         .res 1                  ; 0 = NTSC, 1 = PAL
-0001FAr 2  xx           NeedsRedraw:    .res 1
-0001FBr 2               
-0001FBr 2               ; --- Audio (SPEC 16) ---------------------------------------------------------
-0001FBr 2  xx           SfxRequest:     .res 1                  ; Written by logic, consumed by AudioTick
-0001FCr 2  xx           SfxTimer:       .res 1
-0001FDr 2  xx xx xx xx  SfxState:       .res 14
-000201r 2  xx xx xx xx  
-000205r 2  xx xx xx xx  
-00020Br 2               
-00020Br 1               .include "../src/hal.inc"
-00020Br 2               ; =============================================================================
-00020Br 2               ;   hal.inc — Wizards Lab, the platform contract
-00020Br 2               ; =============================================================================
-00020Br 2               ;   Everything in src/ is shared, unmodified, by all three machines. The only
-00020Br 2               ;   things that differ are collected here: each platform's WizardsLab.asm must
-00020Br 2               ;   define these constants and implement these seven routines, and nothing
-00020Br 2               ;   else in src/ may touch hardware directly.
-00020Br 2               ;
-00020Br 2               ;   This file declares nothing. It is the documentation for the boundary, kept
-00020Br 2               ;   next to the code it constrains so it cannot drift out of date unnoticed.
-00020Br 2               ;
-00020Br 2               ;   CONSTANTS the platform must define BEFORE including the shared sources
-00020Br 2               ;   ---------------------------------------------------------------------
-00020Br 2               ;     PANEL_X, PANEL_Y      Where the 22 x 23 panel sits on this screen.
-00020Br 2               ;                             AC6502  5, 0      VIC-20  0, 0      C64  9, 1
-00020Br 2               ;     SCR_COLS           32 / 22 / 40
-00020Br 2               ;     SCR_ROWS           24 / 23 / 25
-00020Br 2               ;     HAS_COLOR_RAM         1 on the Commodores, 0 on the AC6502, whose colour
-00020Br 2               ;                           lives in the VDP colour table instead.
-00020Br 2               ;
-00020Br 2               ;   ROUTINES the platform must implement
-00020Br 2               ;   ------------------------------------
-00020Br 2               ;     HalInitVideo      Bring up the video hardware: black background and
-00020Br 2               ;                       border, the correct text/tile mode, tileset in place,
-00020Br 2               ;                       colours configured, screen cleared. Called once.
-00020Br 2               ;                       In:  nothing        Out: nothing
-00020Br 2               ;
-00020Br 2               ;     HalWaitFrame      Block until the start of the next vertical blank.
-00020Br 2               ;                       Everything below is called only between frames.
-00020Br 2               ;                       In:  nothing        Out: nothing
-00020Br 2               ;
-00020Br 2               ;     HalPlotCell       Write one cell, colour included where the platform has
-00020Br 2               ;                       per-cell colour.
-00020Br 2               ;                       In:  A = tile, X = screen column, Y = screen row
-00020Br 2               ;                       Out: nothing.  Modifies: A, X, Y, Ptr1, Ptr2
-00020Br 2               ;
-00020Br 2               ;     HalBlitScreen     Draw a whole static screen from a name-table image in
-00020Br 2               ;                       ROM: SCR_COLS * SCR_ROWS bytes, row-major, plus
-00020Br 2               ;                       the matching colour image where the platform needs one.
-00020Br 2               ;                       In:  SrcPtr -> name table, Ptr1 -> colour table
-00020Br 2               ;                       Out: nothing
-00020Br 2               ;
-00020Br 2               ;     HalReadInput      Read stick and keyboard, fold both into one mask.
-00020Br 2               ;                       In:  nothing
-00020Br 2               ;                       Out: A = INPUT_* bits, ACTIVE HIGH
-00020Br 2               ;
-00020Br 2               ;     HalDetectRegion   Decide NTSC or PAL so the timing tables can be picked.
-00020Br 2               ;                       In:  nothing        Out: A = 0 NTSC, 1 PAL
-00020Br 2               ;
-00020Br 2               ;     HalSfx            Start a sound effect. May be a bare RTS until audio
-00020Br 2               ;                       exists.
-00020Br 2               ;                       In:  A = effect id (SPEC 16)
-00020Br 2               ;                       Out: nothing
-00020Br 2               ;
-00020Br 2               ;   The shared code assumes nothing about interrupts. Each platform may drive
-00020Br 2               ;   HalWaitFrame from a raster IRQ, a timer, or a status-register poll.
-00020Br 2               ; =============================================================================
-00020Br 2               
-00020Br 1               
-00020Br 1               ; =============================================================================
-00020Br 1               ;   Cartridge entry
-00020Br 1               ; =============================================================================
-00020Br 1               
-00020Br 1               .segment "CODE"
+0001F6r 2               ; --- Input (SPEC 11.1) -------------------------------------------------------
+0001F6r 2  xx           InputNow:       .res 1
+0001F7r 2  xx           InputPrev:      .res 1
+0001F8r 2  xx           InputEdge:      .res 1                  ; Newly pressed this frame
+0001F9r 2               
+0001F9r 2               ; --- State machine (SPEC 13) -------------------------------------------------
+0001F9r 2  xx           GameState:      .res 1                  ; STATE_*
+0001FAr 2  xx           PlayState:      .res 1                  ; PLAY_*
+0001FBr 2  xx           TitlePage:      .res 1
+0001FCr 2  xx           Region:         .res 1                  ; 0 = NTSC, 1 = PAL
+0001FDr 2  xx           NeedsRedraw:    .res 1
+0001FEr 2               
+0001FEr 2               ; --- Audio (SPEC 16) ---------------------------------------------------------
+0001FEr 2  xx           SfxRequest:     .res 1                  ; Written by logic, consumed by AudioTick
+0001FFr 2  xx           SfxTimer:       .res 1
+000200r 2  xx xx xx xx  SfxState:       .res 14
+000204r 2  xx xx xx xx  
+000208r 2  xx xx xx xx  
+00020Er 2               
+00020Er 1               .include "../src/hal.inc"
+00020Er 2               ; =============================================================================
+00020Er 2               ;   hal.inc — Wizards Lab, the platform contract
+00020Er 2               ; =============================================================================
+00020Er 2               ;   Everything in src/ is shared, unmodified, by all three machines. The only
+00020Er 2               ;   things that differ are collected here: each platform's WizardsLab.asm must
+00020Er 2               ;   define these constants and implement these seven routines, and nothing
+00020Er 2               ;   else in src/ may touch hardware directly.
+00020Er 2               ;
+00020Er 2               ;   This file declares nothing. It is the documentation for the boundary, kept
+00020Er 2               ;   next to the code it constrains so it cannot drift out of date unnoticed.
+00020Er 2               ;
+00020Er 2               ;   CONSTANTS the platform must define BEFORE including the shared sources
+00020Er 2               ;   ---------------------------------------------------------------------
+00020Er 2               ;     PANEL_X, PANEL_Y      Where the 22 x 24 panel sits on this screen.
+00020Er 2               ;                             AC6502  5, 0      VIC-20  0, 0      C64  9, 0
+00020Er 2               ;                           PANEL_Y is 0 everywhere; the VIC-20 clips panel
+00020Er 2               ;                           row 23 and the C64 has one spare row below it.
+00020Er 2               ;     SCR_COLS           32 / 22 / 40
+00020Er 2               ;     SCR_ROWS           24 / 23 / 25
+00020Er 2               ;     HAS_COLOR_RAM         1 on the Commodores, 0 on the AC6502, whose colour
+00020Er 2               ;                           lives in the VDP colour table instead.
+00020Er 2               ;
+00020Er 2               ;   ROUTINES the platform must implement
+00020Er 2               ;   ------------------------------------
+00020Er 2               ;     HalInitVideo      Bring up the video hardware: black background and
+00020Er 2               ;                       border, the correct text/tile mode, tileset in place,
+00020Er 2               ;                       colours configured, screen cleared. Called once.
+00020Er 2               ;                       In:  nothing        Out: nothing
+00020Er 2               ;
+00020Er 2               ;     HalWaitFrame      Block until the start of the next vertical blank.
+00020Er 2               ;                       Everything below is called only between frames.
+00020Er 2               ;                       In:  nothing        Out: nothing
+00020Er 2               ;
+00020Er 2               ;     HalPlotCell       Write one cell, colour included where the platform has
+00020Er 2               ;                       per-cell colour.
+00020Er 2               ;                       In:  A = tile, X = screen column, Y = screen row
+00020Er 2               ;                       Out: nothing.  Modifies: A, X, Y, Ptr1, Ptr2
+00020Er 2               ;
+00020Er 2               ;     HalBlitScreen     Draw a whole static screen from a name-table image in
+00020Er 2               ;                       ROM: SCR_COLS * SCR_ROWS bytes, row-major, plus
+00020Er 2               ;                       the matching colour image where the platform needs one.
+00020Er 2               ;                       In:  SrcPtr -> name table, Ptr1 -> colour table
+00020Er 2               ;                       Out: nothing
+00020Er 2               ;
+00020Er 2               ;     HalReadInput      Read stick and keyboard, fold both into one mask.
+00020Er 2               ;                       In:  nothing
+00020Er 2               ;                       Out: A = INPUT_* bits, ACTIVE HIGH
+00020Er 2               ;
+00020Er 2               ;     HalDetectRegion   Decide NTSC or PAL so the timing tables can be picked.
+00020Er 2               ;                       In:  nothing        Out: A = 0 NTSC, 1 PAL
+00020Er 2               ;
+00020Er 2               ;     HalSfx            Start a sound effect. May be a bare RTS until audio
+00020Er 2               ;                       exists.
+00020Er 2               ;                       In:  A = effect id (SPEC 16)
+00020Er 2               ;                       Out: nothing
+00020Er 2               ;
+00020Er 2               ;   The shared code assumes nothing about interrupts. Each platform may drive
+00020Er 2               ;   HalWaitFrame from a raster IRQ, a timer, or a status-register poll.
+00020Er 2               ; =============================================================================
+00020Er 2               
+00020Er 1               
+00020Er 1               ; =============================================================================
+00020Er 1               ;   Cartridge entry
+00020Er 1               ; =============================================================================
+00020Er 1               
+00020Er 1               .segment "CODE"
 000000r 1               
 000000r 1               CartReset:
 000000r 1  78             sei
@@ -1437,7 +1467,7 @@ Current file: WizardsLab.asm
 0000D1r 2               ;   SPEC 13.4
 0000D1r 2               ; -----------------------------------------------------------------------------
 0000D1r 2               StateGameOver:
-0000D1r 2                 ; TODO: fill the well with TILE_STONE from the bottom up, 2 frames a row,
+0000D1r 2                 ; TODO: fill the well with TILE_PETRIFIED from the bottom up, 2 frames a row,
 0000D1r 2                 ; then the banner and a 10 second timeout.
 0000D1r 2  AD rr rr       lda InputEdge
 0000D4r 2  29 10          and #INPUT_FIRE
@@ -1457,7 +1487,9 @@ Current file: WizardsLab.asm
 0000E3r 2               ;   name-table image per platform. Code only ever draws over the top of it:
 0000E3r 2               ;   the well, the score and level digits, the preview, and the message band.
 0000E3r 2               ;
-0000E3r 2               ;   The images are PLACEHOLDER until the artwork lands. See data/README.md.
+0000E3r 2               ;   The AC6502 and VIC-20 images are real, exported from artwork/. The C64's
+0000E3r 2               ;   are derived from the same panel but its margins are still placeholder.
+0000E3r 2               ;   See data/README.md.
 0000E3r 2               ; =============================================================================
 0000E3r 2               
 0000E3r 2               DrawTitleScreen:
@@ -1821,18 +1853,21 @@ Current file: WizardsLab.asm
 00016Dr 2               ; =============================================================================
 00016Dr 2               ;   score.asm — Wizards Lab, scoring
 00016Dr 2               ; =============================================================================
-00016Dr 2               ;   SPEC.md section 9. Six digits of packed BCD in three bytes, low byte
-00016Dr 2               ;   first. Every value in tables.inc is a multiple of ten, so scoring is a
-00016Dr 2               ;   SED / ADC chain and never a multiply — the one place a tile count has to
-00016Dr 2               ;   be multiplied by a table value, it is done as a loop of BCD additions,
-00016Dr 2               ;   and the count is at most 21.
+00016Dr 2               ;   SPEC.md section 9. Seven digits of packed BCD in four bytes, low byte
+00016Dr 2               ;   first; the top nibble of ScoreTop is held at zero. Every value in
+00016Dr 2               ;   tables.inc is a multiple of ten, so scoring is a SED / ADC chain and never
+00016Dr 2               ;   a multiply — the one place a tile count has to be multiplied by a table
+00016Dr 2               ;   value, it is done as a loop of BCD additions, and the count is at most 21.
 00016Dr 2               ;
-00016Dr 2               ;   The score clamps at 999999. It never wraps.
+00016Dr 2               ;   The score clamps at 9999999. It never wraps.
+00016Dr 2               ;
+00016Dr 2               ;   Display is always all seven digits, zero padded — see TextBcd. Nothing
+00016Dr 2               ;   here strips a leading zero, and nothing downstream may either.
 00016Dr 2               ; =============================================================================
 00016Dr 2               
 00016Dr 2               ; -----------------------------------------------------------------------------
 00016Dr 2               ;   ScoreReset — zero the score, seed the session high score
-00016Dr 2               ;   SPEC 9.8 — the high score is not persisted; it starts at 010000 on every
+00016Dr 2               ;   SPEC 9.8 — the high score is not persisted; it starts at 0010000 on every
 00016Dr 2               ;   power-on, which is the target the first game is played against.
 00016Dr 2               ; -----------------------------------------------------------------------------
 00016Dr 2               ScoreReset:
@@ -1968,7 +2003,7 @@ Current file: WizardsLab.asm
 000189r 2               ; =============================================================================
 000189r 2               ;   The font lives in tile groups 2-6, forty glyphs in the order
 000189r 2               ;
-000189r 2               ;       0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ . x ! -
+000189r 2               ;       0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ . x ! ~
 000189r 2               ;
 000189r 2               ;   starting at FONT_BASE, so a digit is FONT_DIGIT_0 + value and a letter is
 000189r 2               ;   FONT_LETTER_A + (letter - 'A'). Strings are stored pre-converted to tile
@@ -1985,19 +2020,35 @@ Current file: WizardsLab.asm
 00018Ar 2               
 00018Ar 2               ; -----------------------------------------------------------------------------
 00018Ar 2               ;   TextBcd — draw a packed-BCD number, zero padded
-00018Ar 2               ;   In:  Ptr1 -> BCD bytes (low first), A = byte count,
+00018Ar 2               ;   In:  Ptr1 -> BCD bytes (low first), A = digit count,
 00018Ar 2               ;        X = panel column, Y = panel row
-00018Ar 2               ;   Six digits for the score, two for the level.
+00018Ar 2               ;   SCORE_DIGITS (7) for the score and the high score, 2 for the high score's
+00018Ar 2               ;   level. The LEVEL box is not drawn with this — see TextLevel.
+00018Ar 2               ;
+00018Ar 2               ;   The count is in DIGITS, not bytes, because the score is seven digits in
+00018Ar 2               ;   four bytes: the top nibble of the most significant byte is held at zero
+00018Ar 2               ;   (SPEC 9) and must not be drawn, or the field would be eight cells wide and
+00018Ar 2               ;   no longer centred. An odd count starts at the LOW nibble of the top byte.
+00018Ar 2               ;
+00018Ar 2               ;   **Every digit is drawn, every time.** A leading zero is a zero glyph, not
+00018Ar 2               ;   a blank: 1250 draws as 0001250. There is no suppression pass and no
+00018Ar 2               ;   right-alignment — the field is fixed width so a digit never changes
+00018Ar 2               ;   column while the player is watching it (SPEC 9). This also makes the
+00018Ar 2               ;   routine branchless, and lets RenderScore mark a fixed run of cells dirty.
 00018Ar 2               ; -----------------------------------------------------------------------------
 00018Ar 2               TextBcd:
-00018Ar 2                 ; TODO: high nibble then low nibble of each byte, most significant byte
-00018Ar 2                 ; first, each nibble drawn as FONT_DIGIT_0 + nibble.
+00018Ar 2                 ; TODO: walk the bytes most significant first, drawing high nibble then low
+00018Ar 2                 ; nibble as FONT_DIGIT_0 + nibble, skipping the first high nibble when the
+00018Ar 2                 ; digit count is odd. Stop after A digits.
 00018Ar 2  60             rts
 00018Br 2               
 00018Br 2               ; -----------------------------------------------------------------------------
-00018Br 2               ;   TextBanner — centre a string in the two-row message band
-00018Br 2               ;   In:  Ptr1 -> string, A = row within the band (0 or 1)
-00018Br 2               ;   SPEC 12.2 — the band is panel rows MSG_Y and MSG_Y+1, full width.
+00018Br 2               ;   TextBanner — centre a string in the one-row message band
+00018Br 2               ;   In:  Ptr1 -> string
+00018Br 2               ;   SPEC 12.2 — the band is panel row MSG_Y, full width, one row only. The
+00018Br 2               ;   string arrives already wrapped as `~~ TEXT ~~` — two FONT_TILDE, a blank,
+00018Br 2               ;   the text, a blank, two FONT_TILDE. Centring is (PANEL_W - length) / 2,
+00018Br 2               ;   which is why banner strings are drawn even-length.
 00018Br 2               ; -----------------------------------------------------------------------------
 00018Br 2               TextBanner:
 00018Br 2  60             rts
@@ -2005,340 +2056,350 @@ Current file: WizardsLab.asm
 00018Cr 2               TextBannerClear:
 00018Cr 2  60             rts
 00018Dr 2               
-00018Dr 1               .include "../src/audio.asm"
-00018Dr 2               ; =============================================================================
-00018Dr 2               ;   audio.asm — Wizards Lab, sound
-00018Dr 2               ; =============================================================================
-00018Dr 2               ;   SPEC.md section 16. Out of scope for the first playable build, but the
-00018Dr 2               ;   hook is here from the start so game logic never has to be revisited to add
-00018Dr 2               ;   it: logic writes an effect id to SfxRequest and forgets about it.
-00018Dr 2               ;
-00018Dr 2               ;   The AC6502 and the C64 both have a SID and can share a driver — only the
-00018Dr 2               ;   register base differs ($9800 against $D400). The VIC-20 needs its own,
-00018Dr 2               ;   against $900A-$900E.
-00018Dr 2               ; =============================================================================
-00018Dr 2               
-00018Dr 2               SFX_MOVE        = 1
-00018Dr 2               SFX_ROTATE      = 2
-00018Dr 2               SFX_LOCK        = 3
-00018Dr 2               SFX_MATCH       = 4
-00018Dr 2               SFX_FIREBALL    = 5
-00018Dr 2               SFX_BOLT        = 6
-00018Dr 2               SFX_BOMB        = 7
-00018Dr 2               SFX_STAR        = 8
-00018Dr 2               SFX_PRISM       = 9
-00018Dr 2               SFX_LEVELUP     = 10
-00018Dr 2               SFX_HIGHSCORE   = 11
-00018Dr 2               SFX_GAMEOVER    = 12
-00018Dr 2               
 00018Dr 2               ; -----------------------------------------------------------------------------
-00018Dr 2               ;   AudioInit — silence everything
+00018Dr 2               ;   TextLevel — the LEVEL box, tens above units in one column
+00018Dr 2               ;   In:  A = level (binary, 1-99)
+00018Dr 2               ;   SPEC 12.2 — LEVEL_X, tens at LEVEL_Y and units at LEVEL_Y + 1. Always two
+00018Dr 2               ;   digits: level 5 draws "0" over "5".
 00018Dr 2               ; -----------------------------------------------------------------------------
-00018Dr 2               AudioInit:
-00018Dr 2  A9 00          lda #0
-00018Fr 2  8D rr rr       sta SfxRequest
-000192r 2  8D rr rr       sta SfxTimer
-000195r 2  60             rts
-000196r 2               
-000196r 2               ; -----------------------------------------------------------------------------
-000196r 2               ;   AudioTick — called once per frame, consumes SfxRequest
-000196r 2               ; -----------------------------------------------------------------------------
-000196r 2               AudioTick:
-000196r 2                 ; TODO: start a new effect when SfxRequest is non-zero, then advance the
-000196r 2                 ; envelope of whatever is playing. Calls HalSfx for the register writes.
-000196r 2  A9 00          lda #0
-000198r 2  8D rr rr       sta SfxRequest
-00019Br 2  60             rts
-00019Cr 2               
-00019Cr 1               
-00019Cr 1               ; =============================================================================
-00019Cr 1               ;   HAL — TMS9918 Graphics Mode I
-00019Cr 1               ; =============================================================================
-00019Cr 1               
-00019Cr 1               ; -----------------------------------------------------------------------------
-00019Cr 1               ;   VdpSetWrite — point the VDP at a VRAM address for writing
-00019Cr 1               ;   In:  A = address low, X = address high
-00019Cr 1               ; -----------------------------------------------------------------------------
-00019Cr 1               VdpSetWrite:
-00019Cr 1  8D 01 9C       sta VC_REG
-00019Fr 1  8A             txa
-0001A0r 1  09 40          ora #$40                      ; Bit 6 selects write
-0001A2r 1  8D 01 9C       sta VC_REG
-0001A5r 1  60             rts
-0001A6r 1               
-0001A6r 1               ; -----------------------------------------------------------------------------
-0001A6r 1               ;   VdpSetReg — write a VDP control register
-0001A6r 1               ;   In:  A = value, X = register number
-0001A6r 1               ; -----------------------------------------------------------------------------
-0001A6r 1               VdpSetReg:
-0001A6r 1  8D 01 9C       sta VC_REG
-0001A9r 1  8A             txa
-0001AAr 1  09 80          ora #$80
-0001ACr 1  8D 01 9C       sta VC_REG
-0001AFr 1  60             rts
-0001B0r 1               
-0001B0r 1               ; -----------------------------------------------------------------------------
-0001B0r 1               ;   HalInitVideo — Graphics I, tiles loaded, screen cleared, everything black
-0001B0r 1               ; -----------------------------------------------------------------------------
-0001B0r 1               HalInitVideo:
-0001B0r 1  A2 00          ldx #0                        ; R0: external VDP disabled, Graphics I
-0001B2r 1  A9 00          lda #$00
-0001B4r 1  20 rr rr       jsr VdpSetReg
-0001B7r 1  A2 01          ldx #1                        ; R1: 16 K, display on, IRQ enabled, 8x8 sprites
-0001B9r 1  A9 E0          lda #$E0                      ; The IE bit stays SET even though this game
-0001BBr 1  20 rr rr       jsr VdpSetReg                 ;   polls: HalWaitFrame reads the status
-0001BEr 1                                               ;   register for the vblank flag, and the flag
-0001BEr 1                                               ;   only raises when IE is on. The CPU's own I
-0001BEr 1                                               ;   flag is never cleared, so the interrupt is
-0001BEr 1                                               ;   asserted and simply ignored — reading the
-0001BEr 1                                               ;   status register acknowledges it.
-0001BEr 1  A2 02          ldx #2                        ; R2: name table    $1400 / $400
-0001C0r 1  A9 05          lda #$05
-0001C2r 1  20 rr rr       jsr VdpSetReg
-0001C5r 1  A2 03          ldx #3                        ; R3: colour table  $2000 / $40
-0001C7r 1  A9 80          lda #$80
-0001C9r 1  20 rr rr       jsr VdpSetReg
-0001CCr 1  A2 04          ldx #4                        ; R4: pattern table $0000 / $800
-0001CEr 1  A9 00          lda #$00
-0001D0r 1  20 rr rr       jsr VdpSetReg
-0001D3r 1  A2 05          ldx #5                        ; R5: sprite attrs  $1B00 / $80
-0001D5r 1  A9 36          lda #$36
-0001D7r 1  20 rr rr       jsr VdpSetReg
-0001DAr 1  A2 06          ldx #6                        ; R6: sprite patterns $0000
-0001DCr 1  A9 00          lda #$00
-0001DEr 1  20 rr rr       jsr VdpSetReg
-0001E1r 1  A2 07          ldx #7                        ; R7: backdrop black
-0001E3r 1  A9 01          lda #$01
-0001E5r 1  20 rr rr       jsr VdpSetReg
-0001E8r 1               
-0001E8r 1  20 rr rr       jsr LoadTileset
-0001EBr 1  20 rr rr       jsr LoadColorTable
-0001EEr 1  20 rr rr       jsr DisableSprites
-0001F1r 1                 ; falls through
-0001F1r 1               
-0001F1r 1               ; -----------------------------------------------------------------------------
-0001F1r 1               ;   HalClearScreen — fill the name table with the blank tile
-0001F1r 1               ; -----------------------------------------------------------------------------
-0001F1r 1               HalClearScreen:
-0001F1r 1  A9 00          lda #<VRAM_NAMES
-0001F3r 1  A2 14          ldx #>VRAM_NAMES
-0001F5r 1  20 rr rr       jsr VdpSetWrite
-0001F8r 1  A2 03          ldx #3                        ; 3 x 256 = 768 cells
-0001FAr 1  A0 00          ldy #0
-0001FCr 1               @Cell:
-0001FCr 1  A9 00          lda #TILE_BLANK
-0001FEr 1  8D 00 9C       sta VC_DATA
-000201r 1  C8             iny
-000202r 1  D0 F8          bne @Cell
-000204r 1  CA             dex
-000205r 1  D0 F5          bne @Cell
-000207r 1  60             rts
-000208r 1               
-000208r 1               ; -----------------------------------------------------------------------------
-000208r 1               ;   LoadTileset — 2 K of patterns into VRAM
-000208r 1               ;   PLACEHOLDER ART: Tileset is data/tileset.bin. See data/README.md.
-000208r 1               ; -----------------------------------------------------------------------------
-000208r 1               LoadTileset:
-000208r 1  A9 00          lda #<VRAM_PATTERNS
-00020Ar 1  A2 00          ldx #>VRAM_PATTERNS
-00020Cr 1  20 rr rr       jsr VdpSetWrite
-00020Fr 1               
-00020Fr 1  A9 rr          lda #<Tileset
-000211r 1  85 rr          sta SrcPtr
-000213r 1  A9 rr          lda #>Tileset
-000215r 1  85 rr          sta SrcPtr+1
-000217r 1               
-000217r 1  A2 08          ldx #8                        ; 8 x 256 = 2048 bytes
-000219r 1  A0 00          ldy #0
-00021Br 1               @Byte:
-00021Br 1  B1 rr          lda (SrcPtr),y
-00021Dr 1  8D 00 9C       sta VC_DATA
-000220r 1  C8             iny
-000221r 1  D0 F8          bne @Byte
-000223r 1  E6 rr          inc SrcPtr+1
-000225r 1  CA             dex
-000226r 1  D0 F3          bne @Byte
-000228r 1  60             rts
-000229r 1               
-000229r 1               ; -----------------------------------------------------------------------------
-000229r 1               ;   LoadColorTable — 32 bytes, one per 8-pattern group
-000229r 1               ;   This is what makes a tile red: its pattern number selects the group, and
-000229r 1               ;   the group's byte here selects the colour. Nothing is per cell.
-000229r 1               ; -----------------------------------------------------------------------------
-000229r 1               LoadColorTable:
-000229r 1  A9 00          lda #<VRAM_COLORS
-00022Br 1  A2 20          ldx #>VRAM_COLORS
-00022Dr 1  20 rr rr       jsr VdpSetWrite
-000230r 1  A0 00          ldy #0
-000232r 1               @Byte:
-000232r 1  B9 rr rr       lda TileColorTMS,y
-000235r 1  8D 00 9C       sta VC_DATA
-000238r 1  C8             iny
-000239r 1  C0 20          cpy #32
-00023Br 1  D0 F5          bne @Byte
-00023Dr 1  60             rts
-00023Er 1               
-00023Er 1               ; -----------------------------------------------------------------------------
-00023Er 1               ;   DisableSprites — park every sprite off screen
-00023Er 1               ;   The game uses none; $D0 in the first Y byte terminates the sprite list.
-00023Er 1               ; -----------------------------------------------------------------------------
-00023Er 1               DisableSprites:
-00023Er 1  A9 00          lda #<VRAM_SPRITES
-000240r 1  A2 1B          ldx #>VRAM_SPRITES
-000242r 1  20 rr rr       jsr VdpSetWrite
-000245r 1  A9 D0          lda #$D0
-000247r 1  8D 00 9C       sta VC_DATA
-00024Ar 1  60             rts
-00024Br 1               
-00024Br 1               ; -----------------------------------------------------------------------------
-00024Br 1               ;   HalWaitFrame — poll the VDP status register for vertical blank
-00024Br 1               ;   No raster interrupt here, and the status poll is self-syncing.
-00024Br 1               ; -----------------------------------------------------------------------------
-00024Br 1               HalWaitFrame:
-00024Br 1               @Wait:
-00024Br 1  AD 01 9C       lda VC_STATUS
-00024Er 1  29 80          and #$80                      ; Bit 7 sets at the end of each frame
-000250r 1  F0 F9          beq @Wait
-000252r 1  60             rts
-000253r 1               
-000253r 1               ; -----------------------------------------------------------------------------
-000253r 1               ;   HalPlotCell — In: A = tile, X = screen column, Y = screen row
-000253r 1               ; -----------------------------------------------------------------------------
-000253r 1               HalPlotCell:
-000253r 1  48             pha
-000254r 1  20 rr rr       jsr NameAddr                  ; Ptr1 = VRAM_NAMES + row * 32 + col
-000257r 1  A5 rr          lda Ptr1
-000259r 1  A6 rr          ldx Ptr1+1
-00025Br 1  20 rr rr       jsr VdpSetWrite
-00025Er 1  68             pla
-00025Fr 1  8D 00 9C       sta VC_DATA
-000262r 1  60             rts
-000263r 1               
-000263r 1               ; -----------------------------------------------------------------------------
-000263r 1               ;   NameAddr — In: X = column, Y = row.  Out: Ptr1 = name table address
-000263r 1               ; -----------------------------------------------------------------------------
-000263r 1               NameAddr:
-000263r 1  98             tya
-000264r 1  29 07          and #$07
-000266r 1  0A             asl a                         ; (row & 7) * 32 lands in bits 5-7...
-000267r 1  0A             asl a
+00018Dr 2               TextLevel:
+00018Dr 2                 ; TODO: divide by ten, draw FONT_DIGIT_0 + tens then FONT_DIGIT_0 + units.
+00018Dr 2  60             rts
+00018Er 2               
+00018Er 1               .include "../src/audio.asm"
+00018Er 2               ; =============================================================================
+00018Er 2               ;   audio.asm — Wizards Lab, sound
+00018Er 2               ; =============================================================================
+00018Er 2               ;   SPEC.md section 16. Out of scope for the first playable build, but the
+00018Er 2               ;   hook is here from the start so game logic never has to be revisited to add
+00018Er 2               ;   it: logic writes an effect id to SfxRequest and forgets about it.
+00018Er 2               ;
+00018Er 2               ;   The AC6502 and the C64 both have a SID and can share a driver — only the
+00018Er 2               ;   register base differs ($9800 against $D400). The VIC-20 needs its own,
+00018Er 2               ;   against $900A-$900E.
+00018Er 2               ; =============================================================================
+00018Er 2               
+00018Er 2               SFX_MOVE        = 1
+00018Er 2               SFX_ROTATE      = 2
+00018Er 2               SFX_LOCK        = 3
+00018Er 2               SFX_MATCH       = 4
+00018Er 2               SFX_FIREBALL    = 5
+00018Er 2               SFX_BOLT        = 6
+00018Er 2               SFX_BOMB        = 7
+00018Er 2               SFX_STAR        = 8
+00018Er 2               SFX_PRISM       = 9
+00018Er 2               SFX_LEVELUP     = 10
+00018Er 2               SFX_HIGHSCORE   = 11
+00018Er 2               SFX_GAMEOVER    = 12
+00018Er 2               
+00018Er 2               ; -----------------------------------------------------------------------------
+00018Er 2               ;   AudioInit — silence everything
+00018Er 2               ; -----------------------------------------------------------------------------
+00018Er 2               AudioInit:
+00018Er 2  A9 00          lda #0
+000190r 2  8D rr rr       sta SfxRequest
+000193r 2  8D rr rr       sta SfxTimer
+000196r 2  60             rts
+000197r 2               
+000197r 2               ; -----------------------------------------------------------------------------
+000197r 2               ;   AudioTick — called once per frame, consumes SfxRequest
+000197r 2               ; -----------------------------------------------------------------------------
+000197r 2               AudioTick:
+000197r 2                 ; TODO: start a new effect when SfxRequest is non-zero, then advance the
+000197r 2                 ; envelope of whatever is playing. Calls HalSfx for the register writes.
+000197r 2  A9 00          lda #0
+000199r 2  8D rr rr       sta SfxRequest
+00019Cr 2  60             rts
+00019Dr 2               
+00019Dr 1               
+00019Dr 1               ; =============================================================================
+00019Dr 1               ;   HAL — TMS9918 Graphics Mode I
+00019Dr 1               ; =============================================================================
+00019Dr 1               
+00019Dr 1               ; -----------------------------------------------------------------------------
+00019Dr 1               ;   VdpSetWrite — point the VDP at a VRAM address for writing
+00019Dr 1               ;   In:  A = address low, X = address high
+00019Dr 1               ; -----------------------------------------------------------------------------
+00019Dr 1               VdpSetWrite:
+00019Dr 1  8D 01 9C       sta VC_REG
+0001A0r 1  8A             txa
+0001A1r 1  09 40          ora #$40                      ; Bit 6 selects write
+0001A3r 1  8D 01 9C       sta VC_REG
+0001A6r 1  60             rts
+0001A7r 1               
+0001A7r 1               ; -----------------------------------------------------------------------------
+0001A7r 1               ;   VdpSetReg — write a VDP control register
+0001A7r 1               ;   In:  A = value, X = register number
+0001A7r 1               ; -----------------------------------------------------------------------------
+0001A7r 1               VdpSetReg:
+0001A7r 1  8D 01 9C       sta VC_REG
+0001AAr 1  8A             txa
+0001ABr 1  09 80          ora #$80
+0001ADr 1  8D 01 9C       sta VC_REG
+0001B0r 1  60             rts
+0001B1r 1               
+0001B1r 1               ; -----------------------------------------------------------------------------
+0001B1r 1               ;   HalInitVideo — Graphics I, tiles loaded, screen cleared, everything black
+0001B1r 1               ; -----------------------------------------------------------------------------
+0001B1r 1               HalInitVideo:
+0001B1r 1  A2 00          ldx #0                        ; R0: external VDP disabled, Graphics I
+0001B3r 1  A9 00          lda #$00
+0001B5r 1  20 rr rr       jsr VdpSetReg
+0001B8r 1  A2 01          ldx #1                        ; R1: 16 K, display on, IRQ enabled, 8x8 sprites
+0001BAr 1  A9 E0          lda #$E0                      ; The IE bit stays SET even though this game
+0001BCr 1  20 rr rr       jsr VdpSetReg                 ;   polls: HalWaitFrame reads the status
+0001BFr 1                                               ;   register for the vblank flag, and the flag
+0001BFr 1                                               ;   only raises when IE is on. The CPU's own I
+0001BFr 1                                               ;   flag is never cleared, so the interrupt is
+0001BFr 1                                               ;   asserted and simply ignored — reading the
+0001BFr 1                                               ;   status register acknowledges it.
+0001BFr 1  A2 02          ldx #2                        ; R2: name table    $1400 / $400
+0001C1r 1  A9 05          lda #$05
+0001C3r 1  20 rr rr       jsr VdpSetReg
+0001C6r 1  A2 03          ldx #3                        ; R3: colour table  $2000 / $40
+0001C8r 1  A9 80          lda #$80
+0001CAr 1  20 rr rr       jsr VdpSetReg
+0001CDr 1  A2 04          ldx #4                        ; R4: pattern table $0000 / $800
+0001CFr 1  A9 00          lda #$00
+0001D1r 1  20 rr rr       jsr VdpSetReg
+0001D4r 1  A2 05          ldx #5                        ; R5: sprite attrs  $1B00 / $80
+0001D6r 1  A9 36          lda #$36
+0001D8r 1  20 rr rr       jsr VdpSetReg
+0001DBr 1  A2 06          ldx #6                        ; R6: sprite patterns $0000
+0001DDr 1  A9 00          lda #$00
+0001DFr 1  20 rr rr       jsr VdpSetReg
+0001E2r 1  A2 07          ldx #7                        ; R7: backdrop black
+0001E4r 1  A9 01          lda #$01
+0001E6r 1  20 rr rr       jsr VdpSetReg
+0001E9r 1               
+0001E9r 1  20 rr rr       jsr LoadTileset
+0001ECr 1  20 rr rr       jsr LoadColorTable
+0001EFr 1  20 rr rr       jsr DisableSprites
+0001F2r 1                 ; falls through
+0001F2r 1               
+0001F2r 1               ; -----------------------------------------------------------------------------
+0001F2r 1               ;   HalClearScreen — fill the name table with the blank tile
+0001F2r 1               ; -----------------------------------------------------------------------------
+0001F2r 1               HalClearScreen:
+0001F2r 1  A9 00          lda #<VRAM_NAMES
+0001F4r 1  A2 14          ldx #>VRAM_NAMES
+0001F6r 1  20 rr rr       jsr VdpSetWrite
+0001F9r 1  A2 03          ldx #3                        ; 3 x 256 = 768 cells
+0001FBr 1  A0 00          ldy #0
+0001FDr 1               @Cell:
+0001FDr 1  A9 00          lda #TILE_BLANK
+0001FFr 1  8D 00 9C       sta VC_DATA
+000202r 1  C8             iny
+000203r 1  D0 F8          bne @Cell
+000205r 1  CA             dex
+000206r 1  D0 F5          bne @Cell
+000208r 1  60             rts
+000209r 1               
+000209r 1               ; -----------------------------------------------------------------------------
+000209r 1               ;   LoadTileset — 2 K of patterns into VRAM
+000209r 1               ;   PLACEHOLDER ART: Tileset is data/tileset.bin. See data/README.md.
+000209r 1               ; -----------------------------------------------------------------------------
+000209r 1               LoadTileset:
+000209r 1  A9 00          lda #<VRAM_PATTERNS
+00020Br 1  A2 00          ldx #>VRAM_PATTERNS
+00020Dr 1  20 rr rr       jsr VdpSetWrite
+000210r 1               
+000210r 1  A9 rr          lda #<Tileset
+000212r 1  85 rr          sta SrcPtr
+000214r 1  A9 rr          lda #>Tileset
+000216r 1  85 rr          sta SrcPtr+1
+000218r 1               
+000218r 1  A2 08          ldx #8                        ; 8 x 256 = 2048 bytes
+00021Ar 1  A0 00          ldy #0
+00021Cr 1               @Byte:
+00021Cr 1  B1 rr          lda (SrcPtr),y
+00021Er 1  8D 00 9C       sta VC_DATA
+000221r 1  C8             iny
+000222r 1  D0 F8          bne @Byte
+000224r 1  E6 rr          inc SrcPtr+1
+000226r 1  CA             dex
+000227r 1  D0 F3          bne @Byte
+000229r 1  60             rts
+00022Ar 1               
+00022Ar 1               ; -----------------------------------------------------------------------------
+00022Ar 1               ;   LoadColorTable — 32 bytes, one per 8-pattern group
+00022Ar 1               ;   This is what makes a tile red: its pattern number selects the group, and
+00022Ar 1               ;   the group's byte here selects the colour. Nothing is per cell.
+00022Ar 1               ; -----------------------------------------------------------------------------
+00022Ar 1               LoadColorTable:
+00022Ar 1  A9 00          lda #<VRAM_COLORS
+00022Cr 1  A2 20          ldx #>VRAM_COLORS
+00022Er 1  20 rr rr       jsr VdpSetWrite
+000231r 1  A0 00          ldy #0
+000233r 1               @Byte:
+000233r 1  B9 rr rr       lda TileColorTMS,y
+000236r 1  8D 00 9C       sta VC_DATA
+000239r 1  C8             iny
+00023Ar 1  C0 20          cpy #32
+00023Cr 1  D0 F5          bne @Byte
+00023Er 1  60             rts
+00023Fr 1               
+00023Fr 1               ; -----------------------------------------------------------------------------
+00023Fr 1               ;   DisableSprites — park every sprite off screen
+00023Fr 1               ;   The game uses none; $D0 in the first Y byte terminates the sprite list.
+00023Fr 1               ; -----------------------------------------------------------------------------
+00023Fr 1               DisableSprites:
+00023Fr 1  A9 00          lda #<VRAM_SPRITES
+000241r 1  A2 1B          ldx #>VRAM_SPRITES
+000243r 1  20 rr rr       jsr VdpSetWrite
+000246r 1  A9 D0          lda #$D0
+000248r 1  8D 00 9C       sta VC_DATA
+00024Br 1  60             rts
+00024Cr 1               
+00024Cr 1               ; -----------------------------------------------------------------------------
+00024Cr 1               ;   HalWaitFrame — poll the VDP status register for vertical blank
+00024Cr 1               ;   No raster interrupt here, and the status poll is self-syncing.
+00024Cr 1               ; -----------------------------------------------------------------------------
+00024Cr 1               HalWaitFrame:
+00024Cr 1               @Wait:
+00024Cr 1  AD 01 9C       lda VC_STATUS
+00024Fr 1  29 80          and #$80                      ; Bit 7 sets at the end of each frame
+000251r 1  F0 F9          beq @Wait
+000253r 1  60             rts
+000254r 1               
+000254r 1               ; -----------------------------------------------------------------------------
+000254r 1               ;   HalPlotCell — In: A = tile, X = screen column, Y = screen row
+000254r 1               ; -----------------------------------------------------------------------------
+000254r 1               HalPlotCell:
+000254r 1  48             pha
+000255r 1  20 rr rr       jsr NameAddr                  ; Ptr1 = VRAM_NAMES + row * 32 + col
+000258r 1  A5 rr          lda Ptr1
+00025Ar 1  A6 rr          ldx Ptr1+1
+00025Cr 1  20 rr rr       jsr VdpSetWrite
+00025Fr 1  68             pla
+000260r 1  8D 00 9C       sta VC_DATA
+000263r 1  60             rts
+000264r 1               
+000264r 1               ; -----------------------------------------------------------------------------
+000264r 1               ;   NameAddr — In: X = column, Y = row.  Out: Ptr1 = name table address
+000264r 1               ; -----------------------------------------------------------------------------
+000264r 1               NameAddr:
+000264r 1  98             tya
+000265r 1  29 07          and #$07
+000267r 1  0A             asl a                         ; (row & 7) * 32 lands in bits 5-7...
 000268r 1  0A             asl a
 000269r 1  0A             asl a
 00026Ar 1  0A             asl a
-00026Br 1  85 rr          sta Ptr1
-00026Dr 1  8A             txa
-00026Er 1  05 rr          ora Ptr1                      ; ...leaving bits 0-4 free for the column
-000270r 1  85 rr          sta Ptr1
-000272r 1  98             tya
-000273r 1  4A             lsr a                         ; row >> 3 is the page within the name table
-000274r 1  4A             lsr a
+00026Br 1  0A             asl a
+00026Cr 1  85 rr          sta Ptr1
+00026Er 1  8A             txa
+00026Fr 1  05 rr          ora Ptr1                      ; ...leaving bits 0-4 free for the column
+000271r 1  85 rr          sta Ptr1
+000273r 1  98             tya
+000274r 1  4A             lsr a                         ; row >> 3 is the page within the name table
 000275r 1  4A             lsr a
-000276r 1  18             clc
-000277r 1  69 14          adc #>VRAM_NAMES
-000279r 1  85 rr          sta Ptr1+1
-00027Br 1  60             rts
-00027Cr 1               
-00027Cr 1               ; -----------------------------------------------------------------------------
-00027Cr 1               ;   HalBlitScreen — draw a full 768-byte name table image
-00027Cr 1               ;   In: SrcPtr -> image. Ptr1 (colour) is ignored: this machine has no colour
-00027Cr 1               ;   RAM, so the same image drives every platform's layout and only the palette
-00027Cr 1               ;   mechanism differs.
-00027Cr 1               ; -----------------------------------------------------------------------------
-00027Cr 1               HalBlitScreen:
-00027Cr 1  A9 00          lda #<VRAM_NAMES
-00027Er 1  A2 14          ldx #>VRAM_NAMES
-000280r 1  20 rr rr       jsr VdpSetWrite
-000283r 1               
-000283r 1  A2 03          ldx #3                        ; 3 full pages
-000285r 1  A0 00          ldy #0
-000287r 1               @Byte:
-000287r 1  B1 rr          lda (SrcPtr),y
-000289r 1  8D 00 9C       sta VC_DATA
-00028Cr 1  C8             iny
-00028Dr 1  D0 F8          bne @Byte
-00028Fr 1  E6 rr          inc SrcPtr+1
-000291r 1  CA             dex
-000292r 1  D0 F3          bne @Byte
-000294r 1  60             rts
-000295r 1               
-000295r 1               ; -----------------------------------------------------------------------------
-000295r 1               ;   HalReadInput — joystick 1, folded into the abstract active-high mask
-000295r 1               ;   The port is active low, %RLDUYXBA (6502.inc). Keyboard is TODO: it arrives
-000295r 1               ;   through the same VIA, so it reads from GPIO_PORTB alongside the stick.
-000295r 1               ; -----------------------------------------------------------------------------
-000295r 1               HalReadInput:
-000295r 1  AD 0D 03       lda HW_PRESENT
-000298r 1  29 20          and #HW_GPIO                  ; No GPIO card means a floating bus, not input
-00029Ar 1  F0 4A          beq @None
-00029Cr 1               
-00029Cr 1  20 48 A0       jsr ReadJoystick1
-00029Fr 1  49 FF          eor #$FF                      ; Active low in, active high out
-0002A1r 1  85 rr          sta Tmp0
-0002A3r 1               
-0002A3r 1  A9 00          lda #0
-0002A5r 1  85 rr          sta Tmp1
-0002A7r 1               
-0002A7r 1  A5 rr          lda Tmp0
-0002A9r 1  29 10          and #%00010000                  ; U
-0002ABr 1  F0 06          beq @NoUp
-0002ADr 1  A5 rr          lda Tmp1
-0002AFr 1  09 01          ora #INPUT_UP
-0002B1r 1  85 rr          sta Tmp1
-0002B3r 1               @NoUp:
-0002B3r 1  A5 rr          lda Tmp0
-0002B5r 1  29 20          and #%00100000                  ; D
-0002B7r 1  F0 06          beq @NoDown
-0002B9r 1  A5 rr          lda Tmp1
-0002BBr 1  09 02          ora #INPUT_DOWN
-0002BDr 1  85 rr          sta Tmp1
-0002BFr 1               @NoDown:
-0002BFr 1  A5 rr          lda Tmp0
-0002C1r 1  29 40          and #%01000000                  ; L
-0002C3r 1  F0 06          beq @NoLeft
-0002C5r 1  A5 rr          lda Tmp1
-0002C7r 1  09 04          ora #INPUT_LEFT
-0002C9r 1  85 rr          sta Tmp1
-0002CBr 1               @NoLeft:
-0002CBr 1  A5 rr          lda Tmp0
-0002CDr 1  29 80          and #%10000000                  ; R
-0002CFr 1  F0 06          beq @NoRight
-0002D1r 1  A5 rr          lda Tmp1
-0002D3r 1  09 08          ora #INPUT_RIGHT
-0002D5r 1  85 rr          sta Tmp1
-0002D7r 1               @NoRight:
-0002D7r 1  A5 rr          lda Tmp0
-0002D9r 1  29 01          and #%00000001                  ; A
-0002DBr 1  F0 06          beq @NoFire
-0002DDr 1  A5 rr          lda Tmp1
-0002DFr 1  09 10          ora #INPUT_FIRE
-0002E1r 1  85 rr          sta Tmp1
-0002E3r 1               @NoFire:
-0002E3r 1               
-0002E3r 1  A5 rr          lda Tmp1
-0002E5r 1  60             rts
-0002E6r 1               
-0002E6r 1               @None:
-0002E6r 1  A9 00          lda #0
-0002E8r 1  60             rts
-0002E9r 1               
-0002E9r 1               ; -----------------------------------------------------------------------------
-0002E9r 1               ;   HalDetectRegion — the TMS9918 here is 60 Hz
-0002E9r 1               ; -----------------------------------------------------------------------------
-0002E9r 1               HalDetectRegion:
-0002E9r 1  A9 00          lda #0                        ; NTSC
-0002EBr 1  60             rts
-0002ECr 1               
-0002ECr 1               ; -----------------------------------------------------------------------------
-0002ECr 1               ;   HalSfx — TODO: SID at $9800. Shares a driver with the C64's $D400.
-0002ECr 1               ; -----------------------------------------------------------------------------
-0002ECr 1               HalSfx:
+000276r 1  4A             lsr a
+000277r 1  18             clc
+000278r 1  69 14          adc #>VRAM_NAMES
+00027Ar 1  85 rr          sta Ptr1+1
+00027Cr 1  60             rts
+00027Dr 1               
+00027Dr 1               ; -----------------------------------------------------------------------------
+00027Dr 1               ;   HalBlitScreen — draw a full 768-byte name table image
+00027Dr 1               ;   In: SrcPtr -> image. Ptr1 (colour) is ignored: this machine has no colour
+00027Dr 1               ;   RAM, so the same image drives every platform's layout and only the palette
+00027Dr 1               ;   mechanism differs.
+00027Dr 1               ; -----------------------------------------------------------------------------
+00027Dr 1               HalBlitScreen:
+00027Dr 1  A9 00          lda #<VRAM_NAMES
+00027Fr 1  A2 14          ldx #>VRAM_NAMES
+000281r 1  20 rr rr       jsr VdpSetWrite
+000284r 1               
+000284r 1  A2 03          ldx #3                        ; 3 full pages
+000286r 1  A0 00          ldy #0
+000288r 1               @Byte:
+000288r 1  B1 rr          lda (SrcPtr),y
+00028Ar 1  8D 00 9C       sta VC_DATA
+00028Dr 1  C8             iny
+00028Er 1  D0 F8          bne @Byte
+000290r 1  E6 rr          inc SrcPtr+1
+000292r 1  CA             dex
+000293r 1  D0 F3          bne @Byte
+000295r 1  60             rts
+000296r 1               
+000296r 1               ; -----------------------------------------------------------------------------
+000296r 1               ;   HalReadInput — joystick 1, folded into the abstract active-high mask
+000296r 1               ;   The port is active low, %RLDUYXBA (6502.inc). Keyboard is TODO: it arrives
+000296r 1               ;   through the same VIA, so it reads from GPIO_PORTB alongside the stick.
+000296r 1               ; -----------------------------------------------------------------------------
+000296r 1               HalReadInput:
+000296r 1  AD 0D 03       lda HW_PRESENT
+000299r 1  29 20          and #HW_GPIO                  ; No GPIO card means a floating bus, not input
+00029Br 1  F0 4A          beq @None
+00029Dr 1               
+00029Dr 1  20 48 A0       jsr ReadJoystick1
+0002A0r 1  49 FF          eor #$FF                      ; Active low in, active high out
+0002A2r 1  85 rr          sta Tmp0
+0002A4r 1               
+0002A4r 1  A9 00          lda #0
+0002A6r 1  85 rr          sta Tmp1
+0002A8r 1               
+0002A8r 1  A5 rr          lda Tmp0
+0002AAr 1  29 10          and #%00010000                  ; U
+0002ACr 1  F0 06          beq @NoUp
+0002AEr 1  A5 rr          lda Tmp1
+0002B0r 1  09 01          ora #INPUT_UP
+0002B2r 1  85 rr          sta Tmp1
+0002B4r 1               @NoUp:
+0002B4r 1  A5 rr          lda Tmp0
+0002B6r 1  29 20          and #%00100000                  ; D
+0002B8r 1  F0 06          beq @NoDown
+0002BAr 1  A5 rr          lda Tmp1
+0002BCr 1  09 02          ora #INPUT_DOWN
+0002BEr 1  85 rr          sta Tmp1
+0002C0r 1               @NoDown:
+0002C0r 1  A5 rr          lda Tmp0
+0002C2r 1  29 40          and #%01000000                  ; L
+0002C4r 1  F0 06          beq @NoLeft
+0002C6r 1  A5 rr          lda Tmp1
+0002C8r 1  09 04          ora #INPUT_LEFT
+0002CAr 1  85 rr          sta Tmp1
+0002CCr 1               @NoLeft:
+0002CCr 1  A5 rr          lda Tmp0
+0002CEr 1  29 80          and #%10000000                  ; R
+0002D0r 1  F0 06          beq @NoRight
+0002D2r 1  A5 rr          lda Tmp1
+0002D4r 1  09 08          ora #INPUT_RIGHT
+0002D6r 1  85 rr          sta Tmp1
+0002D8r 1               @NoRight:
+0002D8r 1  A5 rr          lda Tmp0
+0002DAr 1  29 01          and #%00000001                  ; A
+0002DCr 1  F0 06          beq @NoFire
+0002DEr 1  A5 rr          lda Tmp1
+0002E0r 1  09 10          ora #INPUT_FIRE
+0002E2r 1  85 rr          sta Tmp1
+0002E4r 1               @NoFire:
+0002E4r 1               
+0002E4r 1  A5 rr          lda Tmp1
+0002E6r 1  60             rts
+0002E7r 1               
+0002E7r 1               @None:
+0002E7r 1  A9 00          lda #0
+0002E9r 1  60             rts
+0002EAr 1               
+0002EAr 1               ; -----------------------------------------------------------------------------
+0002EAr 1               ;   HalDetectRegion — the TMS9918 here is 60 Hz
+0002EAr 1               ; -----------------------------------------------------------------------------
+0002EAr 1               HalDetectRegion:
+0002EAr 1  A9 00          lda #0                        ; NTSC
 0002ECr 1  60             rts
 0002EDr 1               
-0002EDr 1               ; =============================================================================
-0002EDr 1               ;   Data
-0002EDr 1               ; =============================================================================
-0002EDr 1               
-0002EDr 1               .segment "RODATA"
+0002EDr 1               ; -----------------------------------------------------------------------------
+0002EDr 1               ;   HalSfx — TODO: SID at $9800. Shares a driver with the C64's $D400.
+0002EDr 1               ; -----------------------------------------------------------------------------
+0002EDr 1               HalSfx:
+0002EDr 1  60             rts
+0002EEr 1               
+0002EEr 1               ; =============================================================================
+0002EEr 1               ;   Data
+0002EEr 1               ; =============================================================================
+0002EEr 1               
+0002EEr 1               .segment "RODATA"
 000000r 1               
 000000r 1               .include "../data/tilecolor-tms9918.inc"
 000000r 2               ; =============================================================================
@@ -2370,7 +2431,7 @@ Current file: WizardsLab.asm
 00000Cr 2  51             .byte $51                        ; group 12 tiles  96-103  POTION 4  BLUE
 00000Dr 2  D1             .byte $D1                        ; group 13 tiles 104-111  POTION 5  PURPLE
 00000Er 2  F1             .byte $F1                        ; group 14 tiles 112-119  POTION 6  WILD / prism white
-00000Fr 2  E1             .byte $E1                        ; group 15 tiles 120-127  Stone / rubble         gray
+00000Fr 2  61             .byte $61                        ; group 15 tiles 120-127  Wall / stone           dark red
 000010r 2  E1             .byte $E1                        ; group 16 tiles 128-135  artwork
 000011r 2  61             .byte $61                        ; group 17 tiles 136-143  artwork
 000012r 2  C1             .byte $C1                        ; group 18 tiles 144-151  artwork
@@ -2391,11 +2452,11 @@ Current file: WizardsLab.asm
 000020r 1               
 000020r 1               ; --- PLACEHOLDER ART — replace via TMS9918-EDITOR, see data/README.md --------
 000020r 1  00 00 00 00  TitleScreen:  .incbin "../data/screen-title-ac6502.bin"
-000024r 1  00 03 01 01  
-000028r 1  01 01 01 01  
-000320r 1  00 00 00 00  PlayScreen:   .incbin "../data/screen-play-ac6502.bin"
-000324r 1  00 00 00 00  
-000328r 1  00 00 30 22  
+000024r 1  00 00 00 00  
+000028r 1  00 00 00 00  
+000320r 1  78 78 78 78  PlayScreen:   .incbin "../data/screen-play-ac6502.bin"
+000324r 1  78 79 79 79  
+000328r 1  79 79 79 79  
 000620r 1               TitleColor    = TitleScreen      ; No colour RAM on this machine
 000620r 1               PlayColor     = PlayScreen
 000620r 1               
@@ -2403,7 +2464,7 @@ Current file: WizardsLab.asm
 000000r 1               
 000000r 1  00 00 00 00  Tileset:      .incbin "../data/tileset.bin"
 000004r 1  00 00 00 00  
-000008r 1  00 00 FF FF  
+000008r 1  00 00 7E AB  
 000800r 1               
 000800r 1               ; =============================================================================
 000800r 1               ;   Interrupt trampolines and CPU vectors
@@ -2413,14 +2474,14 @@ Current file: WizardsLab.asm
 000800r 1               ;   cartridge writing a handler of its own.
 000800r 1               
 000800r 1               .segment "CODE"
-0002EDr 1               
-0002EDr 1               IrqTrampoline:
-0002EDr 1  6C 00 03       jmp (IRQ_PTR)
-0002F0r 1               
-0002F0r 1               NmiTrampoline:
-0002F0r 1  6C 04 03       jmp (NMI_PTR)
-0002F3r 1               
-0002F3r 1               .segment "VECTORS"
+0002EEr 1               
+0002EEr 1               IrqTrampoline:
+0002EEr 1  6C 00 03       jmp (IRQ_PTR)
+0002F1r 1               
+0002F1r 1               NmiTrampoline:
+0002F1r 1  6C 04 03       jmp (NMI_PTR)
+0002F4r 1               
+0002F4r 1               .segment "VECTORS"
 000000r 1               
 000000r 1  rr rr        .word   NmiTrampoline           ; NMI
 000002r 1  rr rr        .word   CartReset               ; RESET — the cartridge entry point

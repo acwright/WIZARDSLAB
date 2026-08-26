@@ -46,12 +46,15 @@ NextB:          .res 1
 NextC:          .res 1
 
 ; --- Progress (SPEC 9, 10) ---------------------------------------------------
-ScoreLo:        .res 1                  ; 6 digits packed BCD, low byte first
-ScoreMid:       .res 1
+ScoreLo:        .res 1                  ; 7 digits packed BCD, low byte first;
+ScoreMid:       .res 1                  ;   the top nibble of ScoreTop stays 0
 ScoreHi:        .res 1
+ScoreTop:       .res 1
 HighLo:         .res 1
 HighMid:        .res 1
 HighHi:         .res 1
+HighTop:        .res 1
+HighLevel:      .res 1                  ; Level the high score was set on, BCD
 Level:          .res 1                  ; Binary, 1-99
 TilesCleared:   .res 1                  ; Toward the next level, wraps at 30
 

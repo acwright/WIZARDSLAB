@@ -11,6 +11,12 @@ files, not build inputs — nothing here is assembled. The build reads
 | `WizardsLab.tms9918` | [TMS9918-EDITOR](https://github.com/acwright/TMS9918-EDITOR) | Graphics I, 32 × 24 |
 | `WizardsLab.vic20` | [VIC-EDITOR](https://github.com/acwright/VIC-EDITOR) | Hires, 22 × 23, unexpanded |
 
+**The TMS9918 project is the master.** The 22 × 24 panel only fits on a 24-row
+screen, so it is drawn there and everything else is derived from it: the VIC-20
+project's screens are the same panel with row 23 clipped, and the C64's screen
+images are generated from it by `tools/make-placeholders.py`. Lay the panel out
+in TMS9918-EDITOR; do not redraw it twice.
+
 Both open by double-click in the desktop builds.
 
 ## Draw the tiles in TMS9918-EDITOR
@@ -25,10 +31,10 @@ consecutive patterns, not per cell. Tiles 64–111 are the six potion colours,
 one group each, and every glyph of a colour lives inside its group. If the art
 reads correctly there, it reads correctly everywhere.
 
-Both projects are seeded with the current placeholder tileset and the panel
-laid out at the right offset for their machine, so they open ready to draw
-over rather than blank. The TMS9918 project's 32 colour groups are already set
-to the SPEC.md §4.3 values.
+Both projects carry the same tileset and the panel laid out for their machine.
+The TMS9918 project's 32 colour groups and `data/tilecolor-tms9918.inc` match
+byte for byte today — including group 15, which is now dark red, the brick
+wall, rather than the grey it started as.
 
 ## What VIC-EDITOR is for
 

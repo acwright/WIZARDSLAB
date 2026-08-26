@@ -27,7 +27,7 @@ TileColorTMS:
   .byte $51                        ; group 12 tiles  96-103  POTION 4  BLUE
   .byte $D1                        ; group 13 tiles 104-111  POTION 5  PURPLE
   .byte $F1                        ; group 14 tiles 112-119  POTION 6  WILD / prism white
-  .byte $E1                        ; group 15 tiles 120-127  Stone / rubble         gray
+  .byte $61                        ; group 15 tiles 120-127  Wall / stone           dark red
   .byte $E1                        ; group 16 tiles 128-135  artwork
   .byte $61                        ; group 17 tiles 136-143  artwork
   .byte $C1                        ; group 18 tiles 144-151  artwork

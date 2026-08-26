@@ -11,8 +11,10 @@
 ;
 ;   CONSTANTS the platform must define BEFORE including the shared sources
 ;   ---------------------------------------------------------------------
-;     PANEL_X, PANEL_Y      Where the 22 x 23 panel sits on this screen.
-;                             AC6502  5, 0      VIC-20  0, 0      C64  9, 1
+;     PANEL_X, PANEL_Y      Where the 22 x 24 panel sits on this screen.
+;                             AC6502  5, 0      VIC-20  0, 0      C64  9, 0
+;                           PANEL_Y is 0 everywhere; the VIC-20 clips panel
+;                           row 23 and the C64 has one spare row below it.
 ;     SCR_COLS           32 / 22 / 40
 ;     SCR_ROWS           24 / 23 / 25
 ;     HAS_COLOR_RAM         1 on the Commodores, 0 on the AC6502, whose colour

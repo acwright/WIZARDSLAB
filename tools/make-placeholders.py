@@ -6,15 +6,25 @@ Everything this script writes is PLACEHOLDER and is meant to be overwritten by
 a Binary export from TMS9918-EDITOR or VIC-EDITOR. It exists so the project
 builds and runs on all three machines before any real art is drawn.
 
-    python3 tools/make-placeholders.py
+    python3 tools/make-placeholders.py            # C64 screens only
+    python3 tools/make-placeholders.py --all      # everything, from scratch
+
+**Real artwork now exists** for the tileset and for the AC6502 and VIC-20
+screens — they come out of artwork/WizardsLab.tms9918 and .vic20. A plain run
+will not touch those files. Only the C64's four screen images have no editor
+project behind them, so those are the ones this script still owns. Pass
+--all to regenerate the lot, which throws the real art away.
 
 See data/README.md for which editor export replaces which file.
 """
 
+import json
 import os
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, os.pardir, "data")
+ARTWORK = os.path.join(HERE, os.pardir, "artwork")
 
 # ---------------------------------------------------------------------------
 # Tile map (SPEC.md Appendix A)
@@ -24,13 +34,13 @@ BAR_H, BAR_V = 1, 2
 COR_TL, COR_TR, COR_BL, COR_BR = 3, 4, 5, 6
 
 FONT_BASE = 16                       # group 2..6, 40 glyphs
-FONT_ORDER = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ.x!-"
+FONT_ORDER = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ.x!~"
 
 COLOR_BASE = 0x40                    # potion colour groups start here
 GLYPH_POTION, GLYPH_FIRE, GLYPH_BOLT = 0, 1, 2
 GLYPH_BOMB, GLYPH_STAR, GLYPH_GLOW = 3, 4, 6
 WILD_BASE = 0x70
-STONE = 0x78                         # group 15, game-over petrify
+WALL_BRICK, WALL_SPECKLE, PETRIFIED = 120, 121, 122   # group 15, the wall
 
 
 def tile_for(ch):
@@ -80,7 +90,7 @@ FONT5x7 = {
     ".": "00000 00000 00000 00000 00000 01100 01100",
     "x": "00000 10001 01010 00100 01010 10001 00000",
     "!": "00100 00100 00100 00100 00100 00000 00100",
-    "-": "00000 00000 00000 11111 00000 00000 00000",
+    "~": "00000 00000 01001 10110 00000 00000 00000",
 }
 
 
@@ -173,7 +183,7 @@ def build_tileset():
     tiles[60] = SHAPES["bar_v"]    # beam V
     tiles[61] = SHAPES["joint"]    # beam cross
     tiles[62] = SHAPES["star"]     # sparkle
-    tiles[63] = SHAPES["bolt"]     # arrow
+    tiles[63] = SHAPES["shard2"]   # shatter 3
 
     # Groups 8-13 (64-111) — the six potion colours, identical patterns
     for color in range(6):
@@ -189,9 +199,10 @@ def build_tileset():
     tiles[WILD_BASE + GLYPH_POTION] = SHAPES["prism"]
     tiles[WILD_BASE + GLYPH_GLOW] = SHAPES["glow"]
 
-    # Group 15 (120-127) — stone / rubble
-    tiles[STONE + 0] = SHAPES["stone"]
-    tiles[STONE + 1] = SHAPES["shard1"]
+    # Group 15 (120-127) — the wall
+    tiles[WALL_BRICK] = SHAPES["stone"]
+    tiles[WALL_SPECKLE] = SHAPES["shard2"]
+    tiles[PETRIFIED] = SHAPES["stone"]
 
     # Groups 16-31 (128-255) — artwork. Hatched so unreplaced art is obvious.
     for i in range(128, 256):
@@ -203,20 +214,23 @@ def build_tileset():
 # ---------------------------------------------------------------------------
 # Static screens (SPEC.md section 12)
 # ---------------------------------------------------------------------------
-PANEL_W, PANEL_H = 22, 23
+# SPEC.md 12.1 — the panel is 22 x 24 and PANEL_Y is 0 everywhere. The VIC-20
+# clips panel row 23; the C64 has one spare screen row below the panel.
+PANEL_W, PANEL_H = 22, 24
+MARGIN_BEVEL = 2                     # speckle columns between margin and panel
 PLATFORMS = {
     # name        cols rows  panel_x panel_y  colour_ram
     "ac6502": (32, 24, 5, 0, False),
     "vic20":  (22, 23, 0, 0, True),
-    "c64":    (40, 25, 9, 1, True),
+    "c64":    (40, 25, 9, 0, True),
 }
 
 
 class Panel:
-    """A 22x23 grid in panel-relative coordinates."""
+    """A 22x24 grid in panel-relative coordinates."""
 
-    def __init__(self):
-        self.cells = [[BLANK] * PANEL_W for _ in range(PANEL_H)]
+    def __init__(self, backdrop=BLANK):
+        self.cells = [[backdrop] * PANEL_W for _ in range(PANEL_H)]
 
     def put(self, x, y, tile):
         if 0 <= x < PANEL_W and 0 <= y < PANEL_H:
@@ -239,40 +253,100 @@ class Panel:
         self.put(x0, y1, COR_BL)
         self.put(x1, y1, COR_BR)
 
+    def banner(self, y, s):
+        """Centre a string in a full-width band, ~~ ornaments either side."""
+        body = "~~ " + s + " ~~"
+        self.text((PANEL_W - len(body)) // 2, y, body)
+
 
 def play_panel():
-    p = Panel()
-    p.text(5, 0, "WIZARDS LAB")          # title rule
-    p.frame(0, 2, 7, 19)                 # well: interior cols 1-6, rows 3-18
-    p.text(9, 3, "SCORE")
-    p.text(9, 6, "HIGH")
-    p.text(9, 9, "LEVEL")
-    p.text(9, 12, "NEXT")
-    p.frame(10, 13, 12, 17)              # next viewer, tile column 11
+    """SPEC.md 12.2, exactly."""
+    p = Panel(WALL_SPECKLE)
+    p.banner(1, "WIZARDS LAB")
+    p.frame(0, 3, 7, 20)                 # well: interior cols 1-6, rows 4-19
+    p.frame(9, 3, 21, 6)                 # SCORE
+    p.text(13, 4, "SCORE")
+    p.text(12, 5, "0000000")
+    p.frame(9, 8, 21, 12)                # HIGH
+    p.text(11, 9, "HIGHSCORE")
+    p.text(12, 10, "0010000")
+    p.text(14, 11, "L01")
+    p.frame(9, 14, 13, 20)               # NEXT, unlabelled; tile column 11
+    p.frame(15, 14, 21, 20)              # LEVEL
+    p.text(16, 15, "LEVEL")
+    p.text(18, 17, "0")                  # tens
+    p.text(18, 18, "1")                  # units
+    p.banner(22, "PAUSED")
     return p
 
 
 def title_panel():
-    p = Panel()
-    p.frame(0, 0, 21, 22)
+    p = Panel(WALL_SPECKLE)
+    p.frame(0, 1, 21, 22)
     p.text(5, 4, "WIZARDS LAB")
     p.text(6, 10, "PRESS FIRE")
     p.text(4, 18, "PLACEHOLDER ART")
     return p
 
 
+def panel_from_artwork(name):
+    """The drawn panel, lifted out of the TMS9918 project.
+
+    The panel is defined once, in TMS9918-EDITOR, on the one machine whose
+    screen is exactly 24 rows tall (SPEC.md 12.1). Everything else is that
+    same 22 x 24 block on a different grid — including the C64 screens this
+    script still owns. Falls back to the synthesized placeholder when the
+    project file is not there.
+    """
+    path = os.path.join(ARTWORK, "WizardsLab.tms9918")
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        proj = json.load(f)
+    px = PLATFORMS["ac6502"][2]
+    for screen in proj["screens"]:
+        if screen["name"].lower() != name:
+            continue
+        cells = screen["cells"]
+        p = Panel()
+        p.cells = [cells[r * 32 + px: r * 32 + px + PANEL_W]
+                   for r in range(PANEL_H)]
+        return p
+    return None
+
+
 def render(panel, platform):
+    """Panel on the screen grid, margins filled with the wall (SPEC 12.5)."""
     cols, rows, px, py, _ = PLATFORMS[platform]
-    grid = [[BLANK] * cols for _ in range(rows)]
+    grid = [[WALL_BRICK] * cols for _ in range(rows)]
+    for y in range(rows):
+        for x in range(cols):
+            near = (px - MARGIN_BEVEL <= x < px
+                    or px + PANEL_W <= x < px + PANEL_W + MARGIN_BEVEL)
+            if near:
+                grid[y][x] = WALL_SPECKLE
     for y in range(PANEL_H):
         for x in range(PANEL_W):
             gy, gx = py + y, px + x
             if 0 <= gy < rows and 0 <= gx < cols:
                 grid[gy][gx] = panel.cells[y][x]
+    return grid
+
+
+def flat(grid):
     return bytes(t for row in grid for t in row)
 
 
-WHITE = 1
+# Tile group -> colour RAM, kept in step with data/tilecolor-*.inc
+VIC_GROUP = [1, 1, 1, 1, 1, 1, 1, 1, 2, 7, 5, 3, 6, 4, 1, 2,
+             1, 2, 5, 7, 6, 5, 2, 3, 7, 6, 4, 5, 2, 1, 1, 1]
+C64_GROUP = [1, 15, 1, 1, 1, 1, 1, 1, 2, 7, 5, 3, 6, 4, 1, 2,
+             15, 9, 12, 8, 11, 13, 10, 3, 7, 14, 4, 5, 2, 1, 15, 1]
+
+
+def colors(grid, platform):
+    table = VIC_GROUP if platform == "vic20" else C64_GROUP
+    return bytes(table[t >> 3] for row in grid for t in row)
 
 
 def write(name, blob):
@@ -282,17 +356,33 @@ def write(name, blob):
     print(f"  {name:34s} {len(blob):6d} bytes")
 
 
-def main():
-    os.makedirs(DATA, exist_ok=True)
-    print("Writing placeholder data:")
-    write("tileset.bin", build_tileset())
+# Files an editor project owns. Only --all overwrites them.
+REAL_ART = ("tileset.bin", "screen-play-ac6502.bin", "screen-title-ac6502.bin",
+            "screen-play-vic20.bin", "screen-play-vic20-color.bin",
+            "screen-title-vic20.bin", "screen-title-vic20-color.bin")
 
-    for screen, panel in (("play", play_panel()), ("title", title_panel())):
-        for platform, (cols, rows, _, _, has_color) in PLATFORMS.items():
-            write(f"screen-{screen}-{platform}.bin", render(panel, platform))
+
+def main():
+    everything = "--all" in sys.argv[1:]
+    os.makedirs(DATA, exist_ok=True)
+
+    def guarded(name, blob):
+        if name in REAL_ART and not everything:
+            print(f"  {name:34s} skipped — real artwork, see data/README.md")
+        else:
+            write(name, blob)
+
+    print("Writing placeholder data:")
+    guarded("tileset.bin", build_tileset())
+
+    for screen, fallback in (("play", play_panel), ("title", title_panel)):
+        panel = panel_from_artwork(screen) or fallback()
+        for platform, (_, _, _, _, has_color) in PLATFORMS.items():
+            grid = render(panel, platform)
+            guarded(f"screen-{screen}-{platform}.bin", flat(grid))
             if has_color:
-                write(f"screen-{screen}-{platform}-color.bin",
-                      bytes([WHITE]) * (cols * rows))
+                guarded(f"screen-{screen}-{platform}-color.bin",
+                        colors(grid, platform))
 
 
 if __name__ == "__main__":

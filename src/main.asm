@@ -171,7 +171,7 @@ StatePause:
 ;   SPEC 13.4
 ; -----------------------------------------------------------------------------
 StateGameOver:
-  ; TODO: fill the well with TILE_STONE from the bottom up, 2 frames a row,
+  ; TODO: fill the well with TILE_PETRIFIED from the bottom up, 2 frames a row,
   ; then the banner and a 10 second timeout.
   lda InputEdge
   and #INPUT_FIRE
@@ -191,7 +191,9 @@ StateGameOver:
 ;   name-table image per platform. Code only ever draws over the top of it:
 ;   the well, the score and level digits, the preview, and the message band.
 ;
-;   The images are PLACEHOLDER until the artwork lands. See data/README.md.
+;   The AC6502 and VIC-20 images are real, exported from artwork/. The C64's
+;   are derived from the same panel but its margins are still placeholder.
+;   See data/README.md.
 ; =============================================================================
 
 DrawTitleScreen:

@@ -51,9 +51,13 @@ TILE_COR_TR         = 4
 TILE_COR_BL         = 5
 TILE_COR_BR         = 6
 TILE_JOINT          = 7
-FONT_BASE           = 16        ; '0'..'9' then 'A'..'Z' then . x ! -
+FONT_BASE           = 16        ; '0'..'9' then 'A'..'Z' then . x ! ~
 FONT_DIGIT_0        = 16
 FONT_LETTER_A       = 26
+FONT_DOT            = 52
+FONT_TIMES          = 53
+FONT_BANG           = 54
+FONT_TILDE          = 55        ; The banner ornament, ~~~LIKE THIS~~~
 VFX_SHATTER1        = 56
 VFX_SHATTER2        = 57
 VFX_BLAST           = 58
@@ -61,32 +65,50 @@ VFX_BEAM_H          = 59
 VFX_BEAM_V          = 60
 VFX_BEAM_CROSS      = 61
 VFX_SPARKLE         = 62
-TILE_STONE          = 120       ; Game-over petrify
-TILE_RUBBLE         = 121
+VFX_SHATTER3        = 63
+ARROW_UP            = 113       ; Group 14, white — the title CONTROLS page
+ARROW_DOWN          = 114
+ARROW_LEFT          = 115
+ARROW_RIGHT         = 116
+VFX_SHIMMER         = 117       ; Prism clear
+TILE_PRISM_GLOW     = 118       ; = WILD_BASE + GLYPH_GLOW
+TILE_WALL_BRICK     = 120       ; Wall course — the margin fill
+TILE_WALL_SPECKLE   = 121       ; Sparse speckle — panel backdrop and bevel
+TILE_PETRIFIED      = 122       ; Game-over petrify
+FRAME_DIM           = 8         ; PROVISIONAL (SPEC A.3): frame tile + 8 would
+                                ;   be its lighter twin. Group 1 is undecided
+                                ;   and nothing reads this yet.
 ART_BASE            = 128       ; Groups 16-31, margin artwork
 
 ; --- Panel geometry (SPEC 12) ------------------------------------------------
-;   One 22 x 23 panel, rendered identically on all three machines. Each
-;   platform supplies PANEL_X / PANEL_Y to centre it.
+;   One 22 x 24 panel, rendered identically on all three machines. PANEL_Y is
+;   0 everywhere; only PANEL_X differs. The panel is vertically symmetric —
+;   backdrop row, band row, backdrop row, eighteen rows of frame, backdrop row,
+;   band row, backdrop row — which is why 24 is the height. The AC6502 is the
+;   exact fit; the VIC-20 clips panel row 23 off the bottom and the C64 has one
+;   spare screen row (24) below the panel. See SPEC 12.4.
 PANEL_W             = 22
-PANEL_H             = 23
+PANEL_H             = 24
 
 WELL_ORIGIN_X       = 1         ; Panel-relative: board (0,0) lives here
-WELL_ORIGIN_Y       = 3
+WELL_ORIGIN_Y       = 4
 
-SCORE_X             = 9
-SCORE_Y             = 4
-HIGH_X              = 9
-HIGH_Y              = 7
-LEVEL_X             = 9
-LEVEL_Y             = 10
+SCORE_X             = 12        ; 7 digits, cols 12-18
+SCORE_Y             = 5
+HIGH_X              = 12        ; 7 digits, cols 12-18
+HIGH_Y              = 10
+HIGHLVL_X           = 15        ; Level the high score was set on, 2 digits;
+                                ;   the 'L' at col 14 is in the static image
+HIGHLVL_Y           = 11
+LEVEL_X             = 18        ; Single column: tens above units
+LEVEL_Y             = 17        ; Tens at LEVEL_Y, units at LEVEL_Y + 1
 NEXT_X              = 11        ; Single tile column
-NEXT_Y              = 14        ; Cells A, B, C at NEXT_Y, +1, +2
+NEXT_Y              = 16        ; Cells A, B, C at NEXT_Y, +1, +2
 MSG_X               = 0
-MSG_Y               = 21        ; Two rows, full panel width
+MSG_Y               = 22        ; One row, full panel width, centred
 
-SCORE_DIGITS        = 6
-LEVEL_DIGITS        = 2
+SCORE_DIGITS        = 7         ; Always all 7 drawn, zero padded
+LEVEL_DIGITS        = 2         ; Always zero padded — level 5 draws "0" / "5"
 
 ; --- Levels (SPEC 10) --------------------------------------------------------
 LEVEL_TILES         = 30        ; Tiles cleared per level
@@ -100,10 +122,13 @@ BONUS_BOMB          = $0300
 BONUS_PRISM         = $0400
 BONUS_LEVELUP       = $1000
 STAR_SHIFT_CAP      = 3         ; Three doublings — x8
-SCORE_BYTES         = 3         ; 6 digits packed BCD
-HIGH_INIT_LO        = $00       ; 010000
+SCORE_BYTES         = 4         ; 8 nibbles packed BCD; the top one stays 0,
+                                ;   so 7 digits show and the score wraps at
+                                ;   10,000,000.
+HIGH_INIT_LO        = $00       ; 0010000
 HIGH_INIT_MID       = $00
 HIGH_INIT_HI        = $01
+HIGH_INIT_TOP       = $00
 
 ; --- Reagent probability, out of 256 (SPEC 5.3) ------------------------------
 PSPECIAL_BANDS      = 5

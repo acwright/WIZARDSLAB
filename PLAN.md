@@ -20,7 +20,7 @@ checkboxes and the "Current Status" section as work progresses.**
   emulator and draw their title screen at the correct offset. The build system,
   the platform layer and the artwork pipeline are in place; every game module
   in `src/` exists with the routines SPEC.md calls for and a `TODO` where the
-  body goes. Work RAM is 523 bytes on every platform, against SPEC §17.1's
+  body goes. Work RAM is 526 bytes on every platform, against SPEC §17.1's
   530-byte budget. ROM use is 27% / 31% / 43% of 16 KB.
 - P0 settled three things worth carrying forward. **The AC6502's VDP needs
   register 1's interrupt-enable bit set** even though the game polls, because
@@ -201,7 +201,7 @@ them.
 
 **Exit criteria: met.** All three boot headless and render the title screen
 with the panel at the right offset, confirmed by screenshot. VIC-20 framing
-verified against `../VIC-20/TileDemo`. Work RAM 523 bytes on each.
+verified against `../VIC-20/TileDemo`. Work RAM 526 bytes on each.
 
 What P0 settled, for the phases that inherit it: D7, D8, and §3's note about
 `--console video`. The VIC-20's 506-byte screen is **one page plus 250**, not
@@ -226,8 +226,9 @@ driven by data rather than by the game.
 - [ ] A temporary debug path that fills the board with a known pattern
 
 **Exit criteria:** a hand-seeded board renders correctly in the well on all
-three platforms; six-digit and two-digit BCD numbers draw in the right panel
-cells; a banner centres in the message band; the flush cap is respected and a
+three platforms; seven-digit and two-digit BCD numbers draw in the right panel
+cells; the level draws as two stacked digits; a banner centres in the one-row
+message band; the flush cap is respected and a
 full-board redraw completes over several frames without tearing or dropping
 cells.
 
@@ -281,7 +282,7 @@ terminate; the board is never left in an impossible state. Playable, scoreless.
 **Goal:** the full scoring loop from SPEC §9 and the speed ramp from §10.
 
 - [ ] `score.asm`: `ScoreReset`, `CascadeAdd`, `CascadeAddTimes`, `ScoreAdd`
-- [ ] Three-byte BCD accumulate, clamped at 999999, never wrapping
+- [ ] Four-byte BCD accumulate, clamped at 9999999, never wrapping
 - [ ] Per-run scoring: `TileValue[chain]`, `LengthBonus`, `MultiBonus`
 - [ ] `ScoreLevelCheck` — 30 tiles a level, one advance per step, surplus carries
 - [ ] `ScoreGravity` indexing `SpeedNTSC` / `SpeedPAL` by region
