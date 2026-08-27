@@ -6,7 +6,7 @@
 
 PLATFORMS = AC6502 VIC20 C64
 
-.PHONY: all clean data smoke $(PLATFORMS) \
+.PHONY: all clean artwork artwork-check data smoke $(PLATFORMS) \
         run-AC6502 run-VIC20 run-C64 \
         smoke-AC6502 smoke-VIC20 smoke-C64
 
@@ -37,9 +37,19 @@ smoke-C64: C64
 
 smoke: smoke-AC6502 smoke-VIC20 smoke-C64
 
-# Regenerate the placeholder artwork in data/. Only needed after editing
-# tools/make-placeholders.py — real artwork arrives as editor exports and is
-# not generated. See data/README.md.
+# Pull the drawn artwork out of artwork/WizardsLab.tms9918 — the master — into
+# the binaries the build reads, and push the tileset and the clipped panel back
+# into the VIC-EDITOR project so the two never drift. Run this after saving in
+# TMS9918-EDITOR. See artwork/README.md.
+artwork:
+	python3 tools/import-artwork.py
+
+# Fail if data/ is behind the master. Cheap enough to run before a release.
+artwork-check:
+	python3 tools/import-artwork.py --check
+
+# Regenerate the placeholder artwork from scratch. Bootstrap only — this throws
+# the real art away, and a plain run writes nothing. See data/README.md.
 data:
 	python3 tools/make-placeholders.py
 

@@ -40,7 +40,10 @@ GLYPH_FIREBALL      = 1
 GLYPH_BOLT          = 2
 GLYPH_BOMB          = 3
 GLYPH_STAR          = 4
-GLYPH_GLOW          = 6         ; Match-flash frame
+GLYPH_GLOW          = 6         ; Match-flash frame. Potion colours only —
+                                ;   WILD_BASE + GLYPH_GLOW is an arrow, not a
+                                ;   glow, so the prism never takes this path.
+                                ;   See PRISM_BLIP below and SPEC 4.4.
 
 ; --- Named tiles -------------------------------------------------------------
 TILE_BLANK          = 0
@@ -50,35 +53,57 @@ TILE_COR_TL         = 3
 TILE_COR_TR         = 4
 TILE_COR_BL         = 5
 TILE_COR_BR         = 6
-TILE_JOINT          = 7
+TILE_WASH           = 7         ; PAUSE / dim wash, white
 FONT_BASE           = 16        ; '0'..'9' then 'A'..'Z' then . x ! ~
 FONT_DIGIT_0        = 16
 FONT_LETTER_A       = 26
-FONT_DOT            = 52
+FONT_DOT            = 52        ; A CENTRED dot, not a baseline period — it is
+                                ;   also frame 0 of the removal ring below
 FONT_TIMES          = 53
 FONT_BANG           = 54
 FONT_TILDE          = 55        ; The banner ornament, ~~~LIKE THIS~~~
-VFX_SHATTER1        = 56
-VFX_SHATTER2        = 57
-VFX_BLAST           = 58
-VFX_BEAM_H          = 59
-VFX_BEAM_V          = 60
-VFX_BEAM_CROSS      = 61
-VFX_SPARKLE         = 62
-VFX_SHATTER3        = 63
-ARROW_UP            = 113       ; Group 14, white — the title CONTROLS page
-ARROW_DOWN          = 114
-ARROW_LEFT          = 115
-ARROW_RIGHT         = 116
-VFX_SHIMMER         = 117       ; Prism clear
-TILE_PRISM_GLOW     = 118       ; = WILD_BASE + GLYPH_GLOW
-TILE_WALL_BRICK     = 120       ; Wall course — the margin fill
-TILE_WALL_SPECKLE   = 121       ; Sparse speckle — panel backdrop and bevel
-TILE_PETRIFIED      = 122       ; Game-over petrify
-FRAME_DIM           = 8         ; PROVISIONAL (SPEC A.3): frame tile + 8 would
-                                ;   be its lighter twin. Group 1 is undecided
-                                ;   and nothing reads this yet.
-ART_BASE            = 128       ; Groups 16-31, margin artwork
+
+; The removal ring (SPEC 14). One animation, used for every removal there is:
+; the match shatter, the bomb blast, the star. It opens outward
+;
+;       FONT_DOT -> VFX_REMOVE1 -> VFX_REMOVE2 -> VFX_REMOVE3 -> empty
+;
+; and the prism's blip-out runs the same tiles closed inward (PRISM_BLIP).
+VFX_REMOVE1         = 56
+VFX_REMOVE2         = 57
+VFX_REMOVE3         = 58
+VFX_BEAM_H          = 59        ; The bolt's row
+VFX_BEAM_V          = 60        ; The bolt's column
+VFX_BEAM_CROSS      = 61        ; Drawn once, at the bolt's own cell
+ARROW_UP            = 62        ; The title screen's controls (SPEC 13.1).
+ARROW_DOWN          = 63        ;   Up and down live in group 7, left and
+ARROW_LEFT          = 118       ;   right in group 14 — whichever white group
+ARROW_RIGHT         = 119       ;   had a slot spare. Nothing indexes them.
+
+; Group 14 is the prism's. Slots +0..+3 are its idle rotation and +4..+5 its
+; blip-out; there is no glow slot (SPEC A.3).
+PRISM_SPIN          = WILD_BASE ; Four frames, WILD_BASE + 0..3
+PRISM_SPIN_FRAMES   = 4
+PRISM_BLIP          = WILD_BASE + 4     ; Two frames, then VFX_REMOVE2,
+                                        ;   VFX_REMOVE1, FONT_DOT, empty
+
+; Group 15 is the stone group: the petrified glyph set at the same offsets the
+; potions use, so a cell petrifies into its own shape —
+;
+;       petrified = PETRIFY_BASE + (tile & GLYPH_MASK)     for glyphs 0-4
+;
+; — and then the two tiles the margins are built from.
+PETRIFY_BASE        = 120       ; +0 potion, +1 fireball, +2 bolt,
+                                ;   +3 bomb, +4 star
+TILE_RESERVED       = 125       ; Held for a sixth glyph, if one is ever added
+TILE_SHELF          = 126       ; The shelf the panel stands on
+TILE_BRICK          = 127       ; Brick — the margin fill
+FRAME_DIM           = 8         ; Group 1 is group 0 byte for byte, one colour
+                                ;   quieter, so frame_tile + FRAME_DIM is any
+                                ;   frame piece's dim twin (SPEC A.3)
+ART_BASE            = 128       ; Groups 16-31 — one hatch in sixteen colours,
+                                ;   the title screen's magic field (SPEC 13.1)
+ART_TILES           = 128
 
 ; --- Panel geometry (SPEC 12) ------------------------------------------------
 ;   One 22 x 24 panel, rendered identically on all three machines. PANEL_Y is

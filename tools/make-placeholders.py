@@ -2,20 +2,23 @@
 """
 Generate the placeholder artwork binaries in data/.
 
-Everything this script writes is PLACEHOLDER and is meant to be overwritten by
-a Binary export from TMS9918-EDITOR or VIC-EDITOR. It exists so the project
-builds and runs on all three machines before any real art is drawn.
+Everything this script writes is PLACEHOLDER. It exists so the project builds
+and runs on all three machines before any real art is drawn, and it is how the
+project was bootstrapped.
 
-    python3 tools/make-placeholders.py            # C64 screens only
+    python3 tools/make-placeholders.py            # nothing — see below
     python3 tools/make-placeholders.py --all      # everything, from scratch
 
-**Real artwork now exists** for the tileset and for the AC6502 and VIC-20
-screens — they come out of artwork/WizardsLab.tms9918 and .vic20. A plain run
-will not touch those files. Only the C64's four screen images have no editor
-project behind them, so those are the ones this script still owns. Pass
---all to regenerate the lot, which throws the real art away.
+**Every file in data/ is real artwork.** The tileset and all six screens,
+the C64's included, come out of artwork/WizardsLab.tms9918 by way of
+tools/import-artwork.py. So a plain run writes nothing at all, and --all
+overwrites the real art with synthetic shapes — it is for starting over.
 
-See data/README.md for which editor export replaces which file.
+What this script earns its keep for is being a second, executable statement of
+the tile map: the group assignments in build_tileset() track SPEC.md Appendix
+A, so if the two disagree one of them is wrong.
+
+See data/README.md for which import replaces which file.
 """
 
 import json
@@ -40,7 +43,8 @@ COLOR_BASE = 0x40                    # potion colour groups start here
 GLYPH_POTION, GLYPH_FIRE, GLYPH_BOLT = 0, 1, 2
 GLYPH_BOMB, GLYPH_STAR, GLYPH_GLOW = 3, 4, 6
 WILD_BASE = 0x70
-WALL_BRICK, WALL_SPECKLE, PETRIFIED = 120, 121, 122   # group 15, the wall
+PETRIFY_BASE = 0x78                  # group 15: petrified glyph +0..+4,
+WALL_SHELF, WALL_BRICK = 0x7E, 0x7F  #   then the shelf and the brick fill
 
 
 def tile_for(ch):
@@ -87,7 +91,7 @@ FONT5x7 = {
     "X": "10001 10001 01010 00100 01010 10001 10001",
     "Y": "10001 10001 01010 00100 00100 00100 00100",
     "Z": "11111 00001 00010 00100 01000 10000 11111",
-    ".": "00000 00000 00000 00000 00000 01100 01100",
+    ".": "00000 00000 01100 01100 00000 00000 00000",   # centred, not a period
     "x": "00000 10001 01010 00100 01010 10001 00000",
     "!": "00100 00100 00100 00100 00100 00000 00100",
     "~": "00000 00000 01001 10110 00000 00000 00000",
@@ -151,10 +155,27 @@ SHAPES = {
                     "#...#...", ".#...#..", "..#...#.", "...#...#"),
     "box":    shape("########", "#......#", "#......#", "#......#",
                     "#......#", "#......#", "#......#", "########"),
-    "shard1": shape("#..#..#.", ".#...#..", "#..#..#.", "..#..#..",
-                    "#..#..#.", ".#...#..", "#..#..#.", "..#..#.."),
-    "shard2": shape("........", "..#..#..", ".#....#.", "........",
+    # Removal: one ring opening outward. Frame 0 is the centred dot the font
+    # carries as its full stop, so the sequence is dot -> ring -> ring -> gone.
+    "ring1":  shape("........", "........", "...##...", "..#..#..",
+                    "..#..#..", "...##...", "........", "........"),
+    "ring2":  shape("........", "..#..#..", ".#....#.", "........",
                     "........", ".#....#.", "..#..#..", "........"),
+    "ring3":  shape(".#....#.", "#......#", "........", "........",
+                    "........", "........", "#......#", ".#....#."),
+    "arrow_u": shape("...##...", "..####..", ".######.", "...##...",
+                     "...##...", "...##...", "...##...", "...##..."),
+    "arrow_d": shape("...##...", "...##...", "...##...", "...##...",
+                     "...##...", ".######.", "..####..", "...##..."),
+    "arrow_l": shape("........", "..#.....", ".##.....", "########",
+                     "########", ".##.....", "..#.....", "........"),
+    "arrow_r": shape("........", ".....#..", ".....##.", "########",
+                     "########", ".....##.", ".....#..", "........"),
+    # The PAUSE wash. Drawn once and used twice: white in group 0, grey in 1.
+    "wash":   shape("........", ".#......", "...#..#.", "..#.#...",
+                    "...#....", ".....#..", ".#..#.#.", ".....#.."),
+    "shelf":  shape("........", "........", "########", "#.####.#",
+                    "###.####", "........", "........", "........"),
 }
 
 
@@ -162,28 +183,26 @@ def build_tileset():
     """2048 bytes: 256 patterns x 8, laid out per SPEC.md Appendix A."""
     tiles = [SHAPES["blank"]] * 256
 
-    # Group 0 (0-7) — well frame, white
+    # Groups 0 and 1 (0-15) — the frame, twice. Byte for byte the same eight
+    # slots, white in group 0 and grey in group 1, so frame_tile + 8 is the
+    # quieter twin of any piece of frame (SPEC A.3).
     for i, name in enumerate(["blank", "bar_h", "bar_v", "cor_tl",
-                              "cor_tr", "cor_bl", "cor_br", "joint"]):
-        tiles[i] = SHAPES[name]
-
-    # Group 1 (8-15) — accents, reserved for art
-    for i in range(8, 16):
-        tiles[i] = SHAPES["blank"]
+                              "cor_tr", "cor_bl", "cor_br", "wash"]):
+        tiles[i] = tiles[i + 8] = SHAPES[name]
 
     # Groups 2-6 (16-55) — font
     for i, ch in enumerate(FONT_ORDER):
         tiles[FONT_BASE + i] = glyph5x7(FONT5x7[ch])
 
     # Group 7 (56-63) — VFX
-    tiles[56] = SHAPES["shard1"]   # shatter 1
-    tiles[57] = SHAPES["shard2"]   # shatter 2
-    tiles[58] = SHAPES["glow"]     # blast
+    tiles[56] = SHAPES["ring1"]    # removal 1
+    tiles[57] = SHAPES["ring2"]    # removal 2
+    tiles[58] = SHAPES["ring3"]    # removal 3
     tiles[59] = SHAPES["bar_h"]    # beam H
     tiles[60] = SHAPES["bar_v"]    # beam V
     tiles[61] = SHAPES["joint"]    # beam cross
-    tiles[62] = SHAPES["star"]     # sparkle
-    tiles[63] = SHAPES["shard2"]   # shatter 3
+    tiles[62] = SHAPES["arrow_u"]
+    tiles[63] = SHAPES["arrow_d"]
 
     # Groups 8-13 (64-111) — the six potion colours, identical patterns
     for color in range(6):
@@ -195,16 +214,24 @@ def build_tileset():
         tiles[base + GLYPH_STAR] = SHAPES["star"]
         tiles[base + GLYPH_GLOW] = SHAPES["glow"]
 
-    # Group 14 (112-119) — wild
-    tiles[WILD_BASE + GLYPH_POTION] = SHAPES["prism"]
-    tiles[WILD_BASE + GLYPH_GLOW] = SHAPES["glow"]
+    # Group 14 (112-119) — the prism: four rotation frames, two blip-out
+    # frames, then the two remaining arrows. There is no glow slot here; the
+    # prism does not use the glow-then-shatter path (SPEC A.3).
+    for i in range(4):
+        tiles[WILD_BASE + i] = SHAPES["prism"]
+    tiles[WILD_BASE + 4] = SHAPES["ring2"]     # blip out 1
+    tiles[WILD_BASE + 5] = SHAPES["ring1"]     # blip out 2
+    tiles[WILD_BASE + 6] = SHAPES["arrow_l"]
+    tiles[WILD_BASE + 7] = SHAPES["arrow_r"]
 
-    # Group 15 (120-127) — the wall
+    # Group 15 (120-127) — the petrified glyph set, then the wall
+    for i, name in enumerate(["potion", "fire", "bolt", "bomb", "star"]):
+        tiles[PETRIFY_BASE + i] = SHAPES[name]
+    tiles[WALL_SHELF] = SHAPES["shelf"]
     tiles[WALL_BRICK] = SHAPES["stone"]
-    tiles[WALL_SPECKLE] = SHAPES["shard2"]
-    tiles[PETRIFIED] = SHAPES["stone"]
 
-    # Groups 16-31 (128-255) — artwork. Hatched so unreplaced art is obvious.
+    # Groups 16-31 (128-255) — the title screen's magic field, one hatch in
+    # sixteen colours. Nothing else reads these.
     for i in range(128, 256):
         tiles[i] = SHAPES["hatch"]
 
@@ -261,7 +288,7 @@ class Panel:
 
 def play_panel():
     """SPEC.md 12.2, exactly."""
-    p = Panel(WALL_SPECKLE)
+    p = Panel(BLANK)
     p.banner(1, "WIZARDS LAB")
     p.frame(0, 3, 7, 20)                 # well: interior cols 1-6, rows 4-19
     p.frame(9, 3, 21, 6)                 # SCORE
@@ -281,7 +308,7 @@ def play_panel():
 
 
 def title_panel():
-    p = Panel(WALL_SPECKLE)
+    p = Panel(BLANK)
     p.frame(0, 1, 21, 22)
     p.text(5, 4, "WIZARDS LAB")
     p.text(6, 10, "PRESS FIRE")
@@ -324,7 +351,7 @@ def render(panel, platform):
             near = (px - MARGIN_BEVEL <= x < px
                     or px + PANEL_W <= x < px + PANEL_W + MARGIN_BEVEL)
             if near:
-                grid[y][x] = WALL_SPECKLE
+                grid[y][x] = BLANK
     for y in range(PANEL_H):
         for x in range(PANEL_W):
             gy, gx = py + y, px + x
@@ -356,10 +383,13 @@ def write(name, blob):
     print(f"  {name:34s} {len(blob):6d} bytes")
 
 
-# Files an editor project owns. Only --all overwrites them.
+# Files tools/import-artwork.py owns. Only --all overwrites them, and today
+# that is every file this script can write.
 REAL_ART = ("tileset.bin", "screen-play-ac6502.bin", "screen-title-ac6502.bin",
             "screen-play-vic20.bin", "screen-play-vic20-color.bin",
-            "screen-title-vic20.bin", "screen-title-vic20-color.bin")
+            "screen-title-vic20.bin", "screen-title-vic20-color.bin",
+            "screen-play-c64.bin", "screen-play-c64-color.bin",
+            "screen-title-c64.bin", "screen-title-c64-color.bin")
 
 
 def main():

@@ -13,8 +13,9 @@ bombs, stars and prisms. Placed well, they set each other off, and a single
 piece can unravel half the board.
 
 > **Status: in development.** The three cartridges build, boot and draw their
-> screens; the game logic is being written. The artwork is placeholder. See
-> [PLAN.md](PLAN.md) for what is done and what is next.
+> screens. **The artwork is finished** — all 256 tiles and both screens are
+> drawn. The game logic is being written. See [PLAN.md](PLAN.md) for what is
+> done and what is next.
 
 ---
 
@@ -69,6 +70,7 @@ Then:
 make              # Build all three cartridges
 make run-C64      # Launch one in an emulator
 make smoke        # Boot all three headless and check they come up
+make artwork      # Re-import the art after drawing in TMS9918-EDITOR
 make clean
 ```
 
@@ -146,10 +148,10 @@ src/               Shared game code. Identical on all three machines.
   board.asm  piece.asm  match.asm  cascade.asm
   score.asm  render.asm  input.asm  text.asm  rng.asm  audio.asm
 
-artwork/           Editor projects for the tiles — see artwork/README.md
+artwork/           Editor projects — the drawn master; see artwork/README.md
 data/              Tileset, screens and colour tables — see data/README.md
 include/           Platform hardware definitions
-tools/             Placeholder art generator
+tools/             import-artwork.py, the master -> data/ pipeline
 
 AC6502/  VIC20/  C64/
                    Cartridge header, linker config, and each machine's HAL
@@ -169,11 +171,12 @@ Three decisions made that possible:
 
 **The VIC-20 set the shape of the game.** Its 22 columns are exactly the panel
 all three machines draw — the C64 and AC6502 centre that same panel and fill
-the margins with static artwork. Vertically it is the AC6502's 24 rows that fit
-the panel exactly; the VIC clips the last row and the C64 has one to spare. Its eight hi-res colours capped the
-palette at six potions plus white. Its roughly 1 KB of usable work RAM is what
-the 523-byte RAM layout was designed against. Designing for the tightest
-target first is why the other two needed no compromises.
+the margin either side with a brick wall. Vertically it is the AC6502's 24 rows
+that fit the panel exactly; the VIC clips the last row and the C64 has one to
+spare. Its eight hi-res colours capped the palette at six potions plus white.
+Its roughly 1 KB of usable work RAM is what the 523-byte RAM layout was
+designed against. Designing for the tightest target first is why the other two
+needed no compromises.
 
 **The TMS9918's colour model became the tile layout.** Graphics Mode I colours
 patterns in groups of eight rather than per cell, so tiles are laid out as

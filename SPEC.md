@@ -31,7 +31,7 @@
 16. [Audio](#16-audio)
 17. [Memory Budget](#17-memory-budget)
 - [Appendix A — Master Tile Map](#appendix-a--master-tile-map)
-  - [A.3 The unassigned slots below 128](#a3-the-unassigned-slots-below-128)
+  - [A.3 The groups that do not hold potions](#a3-the-groups-that-do-not-hold-potions)
 - [Appendix B — Constants Summary](#appendix-b--constants-summary)
 - [Appendix C — Platform Build Notes](#appendix-c--platform-build-notes)
 - [Appendix D — Build Order](#appendix-d--build-order) *(moved to PLAN.md)*
@@ -489,6 +489,10 @@ It is drawn in white and reads instantly as "not a potion."
 - Because a prism has no color, it is **immune to fireballs** — it can only be
   removed by matching, a bolt, or a bomb. This is a small, learnable wrinkle
   that rewards attention.
+- It is also the only tile that **animates at rest** (a slow rotation) and the
+  only one that **does not shatter** when it clears — it blips out to a point
+  ([§14](#14-animation--timing)). Both say the same thing to the player: this
+  one is not a potion.
 
 ---
 
@@ -540,7 +544,8 @@ STEP:
                     cascade_pts += TriggerBonus[glyph]
                   (Terminates: cells are only ever added to MARKS, max 96.)
 
-  5. ANIMATE      Glow phase, then shatter phase. See §14.
+  5. ANIMATE      Glow phase, then removal phase. Marked prisms sit out the
+                  glow and blip out instead of shattering. See §14.
 
   6. REMOVE       Zero every marked cell. tiles_cleared += popcount(MARKS)
                   Clear MARKS.
@@ -814,13 +819,13 @@ Twenty-four rows is not an arbitrary choice. The panel is vertically
 symmetric —
 
 ```
-row  0   backdrop
+row  0   shelf
 row  1   banner        ~~~WIZARDS LAB🧪~~~
-row  2   backdrop
+row  2   shelf
 rows 3-20  the frames  (18 rows)
-row 21   backdrop
+row 21   shelf
 row 22   banner        ~~~PAUSED~~~
-row 23   backdrop
+row 23   shelf
 ```
 
 — and that only closes at an even height. The three machines give us 23, 24
@@ -837,9 +842,9 @@ Nothing else moves. Rows 0–22 are identical on all three.
 ```
       0         1         2
       0123456789012345678901
-  0  |······················|   backdrop
-  1  |··~~ WIZARDS LAB🧪 ~~··|   title banner
-  2  |······················|   backdrop
+  0  |▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤|   shelf
+  1  |▤▤~~ WIZARDS LAB🧪 ~~▤▤|   title banner
+  2  |▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤|   shelf
   3  |╔══════╗·╔═══════════╗|   well top · SCORE box top
   4  |║······║·║···SCORE···║|
   5  |║······║·║··0123456··║|   ← 7 digits
@@ -858,14 +863,15 @@ Nothing else moves. Rows 0–22 are identical on all three.
  18  |║······║·║·▓·║·║··0··║|   ← next cell C · level units
  19  |║······║·║···║·║·····║|
  20  |╚══════╝·╚═══╝·╚═════╝|
- 21  |······················|   backdrop
- 22  |·····~~ PAUSED ~~·····|   message band
- 23  |······················|   backdrop  (VIC-20 clips this row)
+ 21  |▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤|   shelf
+ 22  |▤▤···~~ PAUSED ~~···▤▤|   message band
+ 23  |▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤▤|   shelf  (VIC-20 clips this row)
 ```
 
 *(The box-drawing above is illustrative — the real frame uses custom tiles from
-[Appendix A](#appendix-a--master-tile-map), a braided rope border. `·` is the
-backdrop, tile 121, not blank.)*
+[Appendix A](#appendix-a--master-tile-map), a braided rope border. `·` is
+blank: the panel is black behind the frames. `▤` is the shelf, tile 126, and
+the brick wall is outside the panel entirely.)*
 
 The well interior is **cols 1–6, rows 4–19**, so board (0,0) sits at panel
 (1,4). Everything to the right of the gutter is a box of the same braid: the
@@ -876,7 +882,8 @@ the four frames line up top and bottom with the well.
 
 | Region | Cols | Rows | Notes |
 |---|---|---|---|
-| Backdrop | 0–21 | 0, 2, 21, 23 | tile 121, full width |
+| Shelf | 0–21 | 0, 2, 21, 23 | tile 126, full width — the panel stands on it |
+| Backdrop | 0–21 | 3–20 | blank; the panel is black behind the frames |
 | Title banner | 2–19 | 1 | `~~ WIZARDS LAB` + potion + ` ~~`, 18 cells |
 | Well frame — top | 0–7 | 3 | |
 | Well frame — left wall | 0 | 4–19 | |
@@ -898,7 +905,15 @@ the four frames line up top and bottom with the well.
 | **LEVEL digits** | **18** | **17, 18** | **tens above units, always zero padded** |
 | Message band | 0–21 | 22 | **one row**, centred |
 
-Three things are worth calling out because they are not what you would guess:
+Four things are worth calling out because they are not what you would guess:
+
+- **The backdrop is black and the panel stands on a shelf.** Behind the frames
+  there is nothing — no texture, no wall — which is what makes the well read as
+  depth rather than as a box drawn on a surface. The three rows at the top and
+  the three at the bottom are the **shelf** (tile 126), stepping out to the
+  brick at the screen edge; rows 1 and 22 carry the banner text with the shelf
+  tapering in at either end. Those six rows are the only place the panel meets
+  the margin.
 
 - **The score is seven digits, not six.** The boxes are eleven cells wide
   inside, and only an odd-width field centres exactly. Seven digits is what
@@ -942,26 +957,33 @@ column. This is the same code on all three machines; only the table differs.
 aligned everywhere and the difference in screen height is taken at the bottom,
 one row either way.
 
-### 12.5 Margin artwork
+### 12.5 The margin
 
 The margins are **static** — drawn once on entering the PLAY state, never
 touched again.
 
-The wall behind everything is **tile group 15**: tile 120 is a brick course
-and tile 121 is the sparse speckle that doubles as the panel backdrop. The
-AC6502 uses them alone — three columns of brick either side with a two-column
-speckled bevel against the panel — and spends none of its artwork budget on
-the margin at all. Budget for the other two:
+**Two tiles do all of it, on all three machines.** Tile 127 is a brick course
+and tile 126 is the shelf; both are group 15, dark red. The panel sits on the
+shelf, the shelf steps out to the brick, and the brick runs to the edge of
+whatever screen the machine has:
 
-- **C64:** 2 × 225 = 450 cells + 40 = **490 cells**. Nine columns is enough for
-  a proper vertical scene — a wizard at a workbench on the left, a shelf of
-  labelled jars and a bubbling cauldron on the right, over the brick — and row
-  24 is the flagstone course under it.
-- **VIC-20:** none. The screen is the panel.
+- **VIC-20:** none. The screen *is* the panel.
+- **AC6502:** five columns either side — three of brick, then a two-column
+  bevel of backdrop against the panel.
+- **C64:** the same five columns, with four more of brick outside them, plus
+  row 24 as one spare course underneath.
 
-Because margins never redraw, they cost only tiles, not cycles. Use the
-artwork tile budget generously ([Appendix A](#appendix-a--master-tile-map)
-reserves 128 tiles for it).
+Two reasons the margin is a wall and not a scene, in order of weight:
+
+1. **A dark red wall either side is the right frame for a black playfield.**
+   Anything with detail in it competes with the well. The wall recedes. The
+   panel is the game and the margin's whole job is to not be.
+2. It is the same 22-column panel on three different screen widths, so
+   whatever is drawn in the margin exists only on the two wide machines. A
+   VIC-20 player must not be looking at a different game.
+
+Because margins never redraw, they cost only tiles, not cycles — and they cost
+two.
 
 ### 12.6 Rendering strategy
 
@@ -1000,18 +1022,48 @@ reserves 128 tiles for it).
 
 ### 13.1 TITLE
 
-- Large "WIZARDS LAB" logo built from artwork tiles.
-- "PRESS FIRE" / "PRESS SPACE" blinking at 30-frame intervals.
-- **Auto-cycling help pages**, one every 240 frames (4 s), looping:
-  1. **CONTROLS** — the four directions with arrow glyphs.
-  2. **REAGENTS** — the five specials, each icon shown in a sample color with a
-     one-line description. This is the only place the rules are taught, so it
-     gets the most room.
-  3. **SCORING** — run values, chain multiplier, star.
-  4. **HIGH SCORE** — current session best.
-- Any direction press skips to the next page; FIRE starts the game.
-- The RNG is seeded from the frame counter at the moment FIRE is pressed
-  ([§15](#15-randomness)).
+The screen is one image, `data/screen-title-*.bin`, drawn once on entry
+([§12.6](#126-rendering-strategy)). It is a single framed page, not a logo over
+a background:
+
+```
+      0         1         2
+      0123456789012345678901
+  1  |╔════════════════════╗|
+  4  |║    WIZARDS LAB♦    ║|   the title, in the font, tail potion green
+  6  |║     ~~♦♦♦♦♦♦~~     ║|   one potion of each of the six colours
+  8  |║   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓   ║|   the magic field — 14 x 2
+  9  |║   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓   ║|
+ 11  |║     PRESS FIRE     ║|
+ 14  |║   ← →        MOVE  ║|
+ 16  |║   ↑ ○      ROTATE  ║|
+ 18  |║   ↓          DROP  ║|
+ 20  |║    BY AC WRIGHT    ║|
+ 22  |╚════════════════════╝|
+```
+
+*(Rows 0, 2, 3, 5, 7, 10, 12, 13, 15, 17, 19, 21 and 23 are blank, and so is
+every column outside the frame — the title screen has no margin art at all. `♦`
+is a potion, `▓` the hatch, `○` the FIRE button.)*
+
+- **The magic field** at rows 8–9 is 28 cells of tile 128–255
+  ([Appendix A](#appendix-a--master-tile-map)). Every cell is the same diagonal
+  hatch in a different color, so writing a random index from that range into a
+  random cell each frame makes the block crawl and shimmer. Two `NextRandom`
+  bytes and one `RenderMark` per frame — it is the cheapest animation in the
+  game and the only thing moving on the screen besides the prompt.
+- **"PRESS FIRE"** blinks at 30-frame intervals. On the Commodores the wording
+  is "PRESS SPACE" if the game is being played on the keyboard.
+- **The controls are on the page.** Four glyphs and three words: arrows
+  left/right for MOVE, arrow up (or the FIRE dot) for ROTATE, arrow down for
+  DROP. The whole control scheme fits on the screen at once, so nothing here
+  cycles and the player never waits to read it.
+- **Nothing else is taught here.** No reagent legend, no scoring table. The
+  reagents teach themselves the first time one goes off, and a page nobody is
+  reading teaches nothing. If a rules screen is ever wanted, it belongs
+  somewhere the player asks for it.
+- FIRE starts the game. The RNG is seeded from the frame counter at that
+  moment ([§15](#15-randomness)).
 
 ### 13.2 PLAY
 
@@ -1029,16 +1081,23 @@ wait for vblank
 ### 13.3 PAUSE
 
 - `P` toggles. Fire also resumes.
-- The well interior is **blanked** (all 96 cells drawn empty) so pausing cannot
+- The well interior is **washed** — all 96 cells drawn as tile 7, the stipple
+  in group 0 ([Appendix A](#appendix-a--master-tile-map)) — so pausing cannot
   be used to study the board. Panel and margins stay.
+- A wash rather than a blank: a blank well reads as *crashed*, a stippled one
+  reads as *covered*. It is the same 96 writes either way, and the restore on
+  resume is `RenderBoard` either way.
 - "PAUSED" flashes in the message band.
 - All timers freeze; the frame counter keeps running (it feeds the RNG).
 
 ### 13.4 GAMEOVER
 
 1. The current piece stops.
-2. **Petrify animation**: rows fill with the petrified tile (122) from row 15
-   upward, 2 frames per row (32 frames total).
+2. **Petrify animation**: rows convert to stone from row 15 upward, 2 frames
+   per row (32 frames total). Each cell keeps its own shape —
+   `PETRIFY_BASE + (tile & GLYPH_MASK)`, one `AND` and one `ORA`
+   ([Appendix A](#appendix-a--master-tile-map)) — so a bomb sets as a stone
+   bomb. Empty cells stay empty; the pile petrifies, not the well.
 3. "GAME OVER" in the message band; final score stays in the SCORE field.
 4. If a new high score was set, HIGH flashes and a fanfare plays.
 5. FIRE or a 10-second timeout returns to TITLE.
@@ -1052,11 +1111,12 @@ difference matters; where it doesn't, the same count is used on both.
 
 | Event | NTSC | PAL | Detail |
 |---|---|---|---|
-| Match glow | 6 | 5 | Matched cells swap to glyph +6 (glow) of their own color |
-| Shatter | 6 | 5 | Matched cells swap to the shared white shatter tile |
-| Fireball flash | 8 | 7 | Every tile of the target color turns white, then shatters |
+| Match glow | 6 | 5 | Matched cells swap to glyph +6 (glow) of their own color. **Prisms are exempt** — see below |
+| Removal | 6 | 5 | The white ring opening outward, 3 tiles at 2 frames each |
+| Prism blip-out | 10 | 8 | The prism's own 5 frames, the same ring closing inward |
+| Fireball flash | 8 | 7 | Every tile of the target color turns white, then removes |
 | Bolt beam | 6 | 5 | White beam tiles drawn along the row and column |
-| Bomb blast | 6 | 5 | White blast tile drawn over the 3 × 3 |
+| Bomb blast | 6 | 5 | The removal ring over the 3 × 3, all nine cells in step |
 | Gravity fall | 2/row | 2/row | Tiles descend one row every 2 frames |
 | Lock delay | 16 | 14 | Resets on horizontal move, max 4 resets |
 | Entry delay (ARE) | 12 | 10 | After a cascade fully settles |
@@ -1069,6 +1129,23 @@ difference matters; where it doesn't, the same count is used on both.
 A single clear step therefore costs **12 frames of animation plus gravity**
 (0–32 frames). A deep chain reads as a satisfying half-second per link rather
 than an instant score jump.
+
+**One removal animation, two directions.** The match shatter, the bomb blast
+and the star all play the same three white tiles (56, 57, 58) opening outward —
+a tile coming apart and blowing away. The prism plays the same ring *closing*
+(116, 117, 57, 56, 52) and winks out to a point. Nothing else on the board
+disappears that way, which is how the player learns that the wildcard is not a
+potion. See [Appendix A](#appendix-a--master-tile-map).
+
+**Prisms skip the glow phase.** Group 14 has no glyph +6 — that slot is an
+arrow — so a matched prism holds its rotation frame through the glow window and
+then blips out while everything around it shatters. `WILD_BASE + GLYPH_GLOW`
+must never be constructed.
+
+**A prism sitting in the well animates.** Tiles 112–115 are four rotation
+frames; a prism on the board advances one frame every 8 frames whether or not
+anything else is happening. It is the only tile that moves at rest, and at
+roughly one prism per 90 pieces it costs nothing worth measuring.
 
 **Fireball flash implementation note:** on the AC6502 this is one byte written
 to the VDP color table (set the target group's foreground nibble to 15, then
@@ -1152,16 +1229,17 @@ of designing to the tightest target first.
 | Tileset (256 × 8 bytes) | 2048 |
 | Game logic (board, match, cascade, scoring) | ~3000 |
 | Render + platform HAL | ~1500 |
-| Title / help / game-over screens + text | ~1500 |
-| Margin artwork layouts (RLE-compressed) | ~800 |
+| Title / game-over screens + text | ~1500 |
+| Screen images (RLE-compressed) | ~800 |
 | Audio driver + data | ~1500 |
 | Tables (speed, scoring, color, row pointers) | ~800 |
 | **Subtotal** | **~11,150** |
 | **Headroom** | **~5,200** |
 
-Comfortable. The margin artwork layouts should be run-length encoded — they are
-mostly repeated stone and shelf tiles, and RLE typically gets 530 C64 cells
-down to under 150 bytes.
+Comfortable. The six screen images should be run-length encoded: the margin is
+two tiles ([§12.5](#125-the-margin)), so the images are almost entirely runs of
+brick and shelf and the C64's 1000-cell images should come down under 200 bytes
+each. The 800-byte line above is a conservative estimate.
 
 ---
 
@@ -1173,23 +1251,32 @@ have tiles to spare) and buys a completely shared renderer.
 
 | Group | Tiles | Color (TMS fg / CBM) | Contents |
 |---:|---|---|---|
-| 0 | 0–7 | 15 White / 1 | Blank, bar-H, bar-V, corner-TL, corner-TR, corner-BL, corner-BR, joint |
-| 1 | 8–15 | 14 Gray / 15 (C64), 1 (VIC) | *Undecided* — holding a stipple and a copy of the frame set; see A.3 |
+| 0 | 0–7 | 15 White / 1 | Blank, bar-H, bar-V, corner-TL, corner-TR, corner-BL, corner-BR, wash |
+| 1 | 8–15 | 14 Gray / 15 (C64), 1 (VIC) | Group 0 again, byte for byte, one color quieter; see A.3 |
 | 2 | 16–23 | 15 White / 1 | Font: `0 1 2 3 4 5 6 7` |
 | 3 | 24–31 | 15 White / 1 | Font: `8 9 A B C D E F` |
 | 4 | 32–39 | 15 White / 1 | Font: `G H I J K L M N` |
 | 5 | 40–47 | 15 White / 1 | Font: `O P Q R S T U V` |
-| 6 | 48–55 | 15 White / 1 | Font: `W X Y Z . × ! ~` |
-| 7 | 56–63 | 15 White / 1 | VFX: shatter ×3, blast, beam-H, beam-V, beam-cross, sparkle |
+| 6 | 48–55 | 15 White / 1 | Font: `W X Y Z · × ! ~` — the dot is **centred**, see A.3 |
+| 7 | 56–63 | 15 White / 1 | VFX: removal ring ×3, beam-H, beam-V, beam-cross, arrow up, arrow down |
 | **8** | **64–71** | **8 Med Red / 2** | **Red:** potion, fireball, bolt, bomb, star, —, glow, — |
 | **9** | **72–79** | **11 Lt Yellow / 7** | **Yellow:** same 8 slots |
 | **10** | **80–87** | **3 Lt Green / 5** | **Green:** same 8 slots |
 | **11** | **88–95** | **7 Cyan / 3** | **Cyan:** same 8 slots |
 | **12** | **96–103** | **5 Lt Blue / 6** | **Blue:** same 8 slots |
 | **13** | **104–111** | **13 Magenta / 4** | **Purple:** same 8 slots |
-| 14 | 112–119 | 15 White / 1 | **Prism** (+0), prism glow (+6), arrows and shimmer — see A.3 |
-| 15 | 120–127 | **6 Dark Red / 2** | Wall: brick, speckle/backdrop, petrify — see A.3 |
-| 16–31 | 128–255 | various | **Artwork** — 128 tiles, 16 color groups, for margins and the title logo |
+| 14 | 112–119 | 15 White / 1 | **Prism:** four rotation frames, two blip-out frames, arrow left, arrow right — see A.3 |
+| 15 | 120–127 | **6 Dark Red / 2** | Stone: the petrified glyph set, a reserved slot, the shelf, the brick — see A.3 |
+| 16–31 | 128–255 | various | **The magic field** — one hatch in 16 colors, for the title screen ([§13.1](#131-title)) |
+
+Two things here are not what you would guess:
+
+- **There is no joint tile.** No two frames on the panel share an edge — the
+  well, SCORE, HIGH, NEXT and LEVEL boxes all stand clear of one another with a
+  backdrop cell between — so group 0's slot +7 carries the wash instead.
+- **The margin is not artwork.** It is two tiles in group 15, the same on all
+  three machines ([§12.5](#125-the-margin)). That leaves the whole upper half
+  of the tile map for one purpose: the title screen's field.
 
 ### A.1 Glyph slot recap
 
@@ -1205,6 +1292,12 @@ Within any color group `G` (base = `64 + G×8` for the six potion colors):
 | +5 | *reserved* |
 | +6 | Glow (flash frame) |
 | +7 | *reserved* |
+
+This is the layout of the **six potion groups**. Group 14, the prism's, does
+not follow it: [§5.2](#52-generation) guarantees a wild tile is always glyph
++0, so no board cell can land on 113–119 and those seven slots hold other
+things. Group 15 borrows the first five offsets for the petrified set. See
+A.3.
 
 ### A.2 Art direction
 
@@ -1224,129 +1317,193 @@ no outline to lean on. Consequences:
   - **Star** — 5-point star, hollow center. Only glyph with radial symmetry.
   - **Prism** — a faceted diamond with an internal line. Always white, which
     already sets it apart from every other tile on the board.
-- **Glow** is the potion silhouette dilated by one pixel (or fully filled). It
-  should read as "brighter," not as a different object.
+- **Glow** is a 50 % dither over the whole cell — not the potion silhouette
+  filled in, which reads as a *block* rather than a bright potion. A dither
+  reads as shimmer, and against black it is genuinely half as bright, so a
+  field of glowing tiles does not white out the well.
 - Draw the six potions as **six copies of one pattern**. Identical shape, six
   color groups. Only the reagents need to differ from each other.
 
-### A.3 The unassigned slots below 128
+All 256 tiles are drawn, in `artwork/WizardsLab.tms9918`, and
+`tools/import-artwork.py` is the only way they reach the build. This appendix
+describes what is in that file; if the two ever disagree, this document is
+right and the art is wrong.
 
-Groups 8–13 are settled — six copies of one pattern, five glyphs each — and
-groups 2–6 are the font. What follows is the brief for everything else under
-tile 128 that is still blank or still placeholder.
+### A.3 The groups that do not hold potions
 
-#### Group 1, tiles 8–15 — undecided (gray)
+Groups 8–13 are six copies of one pattern, five glyphs each, and groups 2–6 are
+the font. The rest of the tile map is the frame, the effects, the prism, the
+stone, and the field.
 
-**Not settled. Nothing in the game reads these tiles, and no code depends on
-what goes in them.** What is drawn there today is a holding position: tile 8 is
-a soft stipple being tried as the PAUSE wash, and tiles 9–15 are byte-for-byte
-copies of frame tiles 1–7.
+#### Groups 0 and 1, tiles 0–15 — the frame, twice
 
-Those copies are what makes the option below available, and they cost nothing
-while it stays open.
-
-*Option — the second frame weight.* Group 0 is the heavy white braid the well
-and the four boxes are drawn in. If group 1 becomes **the same eight slots
-again, one weight lighter**, then
+Group 1 is **group 0 byte for byte**, one color quieter: white on the
+AC6502 and C64 becomes gray, so
 
 ```
 dim_tile = frame_tile + FRAME_DIM        ; FRAME_DIM = 8
 ```
 
-turns any frame piece into its quieter twin with an `ADC #8`, and the panel can
-establish a hierarchy without a second colour: the **well keeps the heavy
-braid**, the SCORE / HIGH / NEXT / LEVEL boxes step back to the light one, and
-the eye lands on the playfield instead of dividing evenly between five
-identical frames.
+turns any piece of frame into its quieter twin with an `ADC #8`. The panel can
+then establish a hierarchy without a second stroke weight: the **well keeps
+white** and the SCORE / HIGH / NEXT / LEVEL boxes step back to gray, so the eye
+lands on the playfield instead of dividing evenly between five identical
+frames.
 
-| Tile | Slot | Would be |
+| Slot | Tile 0–7 (white) | Tile 8–15 (gray) |
 |---|---|---|
-| 8 | (mirrors blank) | The only slot the `+8` rule leaves free — the stipple already there fits it |
-| 9 | bar-H | Thinner rope, or the braid at half the stroke |
-| 10 | bar-V | |
-| 11 | corner-TL | |
-| 12 | corner-TR | |
-| 13 | corner-BL | |
-| 14 | corner-BR | |
-| 15 | joint | Where two boxes share an edge |
+| +0 | Blank | Blank |
+| +1 | bar-H | |
+| +2 | bar-V | |
+| +3 | corner-TL | |
+| +4 | corner-TR | |
+| +5 | corner-BL | |
+| +6 | corner-BR | |
+| +7 | **Wash** | **Wash** |
 
-If it goes that way, keep the outer silhouette **on the same pixel rows** as
-the group 0 piece it mirrors, or the two weights will not line up when a dim
-box sits beside the heavy well. And note the weight has to be carried entirely
-by the pixels: the VIC-20 has no grey, so group 1 renders **white** there and
-grey on the other two.
+Slot +7 is the **wash**: a sparse stipple, about one pixel in eight, that knocks
+a region back without erasing it. [§13.3](#133-pause) draws it over the well.
+The white one and the gray one are the same eight bytes, so which of the two
+reads better over the well is a taste call the art can make without touching
+code.
+
+> **VIC-20 note.** The VIC's eight hi-res colors have no gray, so group 1
+> renders **white** there and the two weights are identical. The hierarchy is
+> a bonus on two machines, not something the layout may depend on.
+
+#### Group 6, tiles 48–55 — the font's tail
+
+`W X Y Z · × ! ~`. Tile 52 is a **centred dot, not a baseline period.** No
+string the game draws contains a full stop — the labels are `SCORE`,
+`HIGHSCORE`, `LEVEL`, `PAUSED`, `GAME OVER`, `PRESS FIRE` — so the slot earns
+more as the innermost frame of the removal ring below than as punctuation. If a
+string ever does need a period, it can have the dot and nobody will notice.
 
 #### Group 7, tiles 56–63 — VFX (white)
 
-These are the animation frames from [§14](#14-animation--timing), shared by all
-six colours — which is why they are white and not per-colour. Six of the eight
-are already drawn and correct:
+| Tile | Role | Art note |
+|---|---|---|
+| 56 | **Removal 1** | A small hollow ring at the centre of the cell |
+| 57 | **Removal 2** | Eight specks, opened out one pixel |
+| 58 | **Removal 3** | Eight specks again, at the corners — nearly gone |
+| 59 | Beam-H | The bolt's row. Must butt seamlessly against its neighbours |
+| 60 | Beam-V | The bolt's column |
+| 61 | Beam-cross | Drawn once, at the bolt's own cell |
+| 62 | **Arrow up** | The title screen's controls ([§13.1](#131-title)) |
+| 63 | **Arrow down** | |
 
-| Tile | Role | Frames it has to survive | Art note |
-|---|---|---|---|
-| 56 | Shatter 1 | 2 of the 6-frame shatter | The potion silhouette breaking up: still mostly *there* |
-| 57 | Shatter 2 | 2 | Half gone |
-| 63 | **Shatter 3** | 2 | Nearly gone — a few specks. *Reassigned: this slot was "arrow" and the arrows now live in group 14.* |
-| 58 | Blast | 6 | The bomb's 3 × 3. A solid or near-solid cell is right — it is meant to white out the area |
-| 59 | Beam-H | 6 | The bolt's row. Must butt seamlessly against its neighbours |
-| 60 | Beam-V | 6 | The bolt's column |
-| 61 | Beam-cross | 6 | Drawn once, at the bolt's own cell |
-| 62 | Sparkle | 6 | The star's doubling, and the high-score flash |
+**There is one removal animation and everything uses it.** Tiles 56–58, with
+the centred dot (52) as an optional innermost frame, are a single ring opening
+outward:
 
-Three tiles for the shatter rather than two is the one change worth making
-here: a 6-frame dissolve at 2 frames a step reads as *crumbling*, where 3 + 3
-reads as two hard cuts.
+```
+·  →  ○  →  ˙ ˙ ˙  →  ˙   ˙   ˙  →  empty
+52    56       57            58
+```
 
-The **fireball** needs no tile. It recolours in place — one poke to the VDP
-colour table on the AC6502, a walk of the dirty list on the Commodores
+It reads as *dispersal* — the tile coming apart and blowing away — and it
+covers the match shatter, the bomb blast and the star between them. One
+animation for every removal is a better rule than three, because the player
+learns it once. The bolt keeps its own beams, because a beam has to join up
+with the cell next to it and a ring does not.
+
+Run the same four tiles in the other order and you have the prism's blip-out
+(group 14), for no extra art.
+
+Arrows up and down sit here because group 7 has two slots spare after the ring;
+left and right are in group 14 for the same reason. Splitting them across two
+groups is untidy and costs nothing — nothing indexes the arrows as a set.
+
+The **fireball** needs no tile at all. It recolors in place — one poke to the
+VDP color table on the AC6502, a walk of the dirty list on the Commodores
 ([§4.6](#46-the-fireballs-free-trick)).
 
-#### Group 14, tiles 112–119 — prism and white UI
+#### Group 14, tiles 112–119 — the prism
 
-The prism is slot +0 and slot +6 is its glow, exactly like every other colour
-group. The other six slots would be the prism's fireball, bolt, bomb and star —
-but [§5.2](#52-generation) guarantees a wild tile is **always** glyph +0, so no
-board cell can ever land on 113–117 or 119. That makes them six free tiles in
-the one spare *white* group, and the title screen is what needs them.
+[§5.2](#52-generation) guarantees a wild tile is **always** glyph +0, so no
+board cell can ever hold 113–119. That is seven free slots in the one spare
+*white* group, and the prism spends six of them on itself.
 
 | Tile | Role |
 |---|---|
-| 112 | **Prism.** Faceted diamond, internal line. Drawn. |
-| 113–116 | **Arrows** — up, down, left, right. The TITLE screen's CONTROLS page ([§13.1](#131-title)); a chunky solid triangle with a short shaft reads at 8 × 8, an outlined one does not. |
-| 117 | **Shimmer.** The prism's clear effect, to go with audio ID 9 |
-| 118 | **Prism glow.** Required — the +6 flash frame. The prism dilated or filled, *not* a different shape |
-| 119 | Spare — a second shimmer frame if 117 wants company |
+| 112–115 | **Prism rotation.** Four frames of a faceted diamond turning. The idle animation — a prism sitting in the well is the only tile on the board that moves |
+| 116–117 | **Blip-out**, frames 1–2. The diamond coming apart |
+| 118 | **Arrow left** |
+| 119 | **Arrow right** |
 
-> **Constraint this rests on:** nothing may construct a wild tile with a
-> non-zero glyph. `WILD_BASE + n` for `n` in 1–5, 7 is UI, not a potion.
+**The prism has no glow slot**, and that is the one thing here that code has to
+know. Slot +6 of every potion group is the match-flash frame; slot +6 of *this*
+group is an arrow. So `WILD_BASE + GLYPH_GLOW` is not a tile — it is a bug —
+and a prism does not take the glow-then-shatter path with the run it clears.
+It plays its own five frames instead:
 
-#### Group 15, tiles 120–127 — the wall (dark red)
+```
+🔷  →  ✳  →  ˙ ˙ ˙  →  ○  →  ·  →  empty
+116    117      57       56    52
+```
 
-Repurposed. This group used to be grey stone in tiles nobody had drawn; it is
-now the **brick wall the whole screen sits on**, and it is doing the AC6502's
-entire margin by itself — the artwork groups (128–255) are untouched on that
-machine.
+The removal ring, closing inward. A prism *contracts to a point and winks
+out*; everything else *bursts apart*. Same tiles, opposite direction, and the
+one wildcard on the board is the one thing that disappears differently.
+
+> **Two constraints this rests on.** Nothing may construct a wild tile with a
+> non-zero glyph, and nothing may add `GLYPH_GLOW` to `WILD_BASE`. Both are
+> `WILD_BASE + n` arithmetic that looks harmless and is not: it lands on an
+> arrow or a blip frame, in the middle of the board.
+
+#### Group 15, tiles 120–127 — stone
+
+The game-over tile and the two tiles the whole screen is built on, in one dark
+red group.
 
 | Tile | Role |
 |---|---|
-| 120 | **Brick course.** Drawn. The margin fill |
-| 121 | **Speckle.** Drawn. The panel backdrop, the gutter, and the bevel columns between margin and panel |
-| 122 | **Petrified potion** — the game-over tile ([§13.4](#134-gameover)). The potion silhouette rendered as rough stone, so the well visibly *sets* rather than just changing colour |
-| 123 | Cracked brick |
-| 124 | Offset / half course |
-| 125 | Capstone — the horizontal edge where wall meets the panel bevel |
-| 126–127 | Cobweb, top-left and top-right. Flavour |
+| 120–124 | **The petrified glyph set** — potion, fireball, bolt, bomb, star, at the same five offsets the potions use |
+| 125 | Reserved. Held for the +5 glyph, if a sixth reagent is ever added |
+| 126 | **Shelf.** The plank the panel stands on, top and bottom |
+| 127 | **Brick.** The margin fill |
 
-Tiles 123 and 124 are the load-bearing ones. A five-column margin of a single
-8 × 8 brick reads as *graph paper*; two or three variants scattered through it
-reads as a wall. Scatter them from the screen image, not at run time — the
-margins are static.
+The petrified set is the shape of the group. Because it sits at the same five
+offsets as the potion glyphs,
 
-> **VIC-20 note.** The VIC's eight hi-res colours have no grey and no brown, so
-> group 15 lands on red (2) — the same red as potion colour 0. In the margins
+```asm
+petrified = PETRIFY_BASE + (tile & GLYPH_MASK)     ; glyphs 0-4
+```
+
+is the whole of [§13.4](#134-gameover)'s conversion — one `AND`, one `ORA` —
+and the well petrifies **into its own contents**. A bomb sets as a stone bomb,
+not as a generic block, so the board keeps its detail at the exact moment the
+player is looking hardest at it.
+
+Two of the five (bolt and star) are byte-identical to their potion-group
+counterparts: those silhouettes are solid enough that the color change alone
+sells stone. The other three are the outlined shapes filled in.
+
+> **VIC-20 note.** The VIC's eight hi-res colors have no gray and no brown, so
+> group 15 lands on red (2) — the same red as potion color 0. In the margins
 > that is fine, they are never adjacent to the well. At game over the entire
-> well petrifies at once, so there is nothing left to confuse it with. Keep
-> tile 122's silhouette *rough* rather than relying on the colour to sell it.
+> well petrifies at once, so there is nothing left to confuse it with. The
+> petrified silhouettes are *filled* rather than outlined, which is what sells
+> them as stone when the color cannot.
+
+#### Groups 16–31, tiles 128–255 — the magic field
+
+All 128 tiles are **the same diagonal hatch**, in sixteen different colors.
+That is the entire content of the upper half of the tile map.
+
+The title screen carries a 14 × 2 block of them ([§13.1](#131-title)). Poking
+random indices from this range into those 28 cells makes the block crawl and
+change color, which is the cheapest convincing "magic" the machine can do — no
+per-tile art, no animation frames, one `NextRandom` and one write per cell.
+
+The hatch tiles seamlessly with itself in both axes, so the block reads as one
+moving surface rather than 28 squares.
+
+The sixteen colors are the artwork groups in `data/tilecolor-*.inc`, and they
+span the machine's whole palette rather than a chosen ramp — several are dark,
+so the field flickers as much as it shimmers. That is the intended read: a
+field that pulses light and dark is more alive than one that stays bright.
+Narrowing it to a ramp is a sixteen-line `.inc` edit that touches no artwork.
 
 ---
 
@@ -1374,19 +1531,39 @@ GLYPH_FIREBALL   = 1
 GLYPH_BOLT       = 2
 GLYPH_BOMB       = 3
 GLYPH_STAR       = 4
-GLYPH_GLOW       = 6
+GLYPH_GLOW       = 6            ; potion groups only — never WILD_BASE + this
 
 NUM_COLORS       = 6
 
+TILE_WASH        = 7            ; PAUSE stipple, white; +8 is the grey one
+FONT_DOT         = 52           ; centred, and removal frame 0
+VFX_REMOVE1      = 56           ; the ring, opening outward
+VFX_REMOVE2      = 57
+VFX_REMOVE3      = 58
+VFX_BEAM_H       = 59
+VFX_BEAM_V       = 60
+VFX_BEAM_CROSS   = 61
+ARROW_UP         = 62
+ARROW_DOWN       = 63
+PRISM_SPIN       = $70          ; 4 idle frames, WILD_BASE + 0..3
+PRISM_BLIP       = $74          ; 2 frames, then VFX_REMOVE2, 1, FONT_DOT
+ARROW_LEFT       = 118
+ARROW_RIGHT      = 119
+PETRIFY_BASE     = 120          ; + (tile & GLYPH_MASK), glyphs 0-4
+TILE_SHELF       = 126
+TILE_BRICK       = 127
+FRAME_DIM        = 8            ; frame tile + 8 is its grey twin
+ART_BASE         = 128          ; 128 hatch tiles — the title screen's field
+
 ; ---- Panel ----
 PANEL_W          = 22
-PANEL_H          = 23
+PANEL_H          = 24
 WELL_ORIGIN_X    = 1            ; panel-relative
-WELL_ORIGIN_Y    = 3
-; per-platform:
-;   VIC-20   PANEL_X = 0   PANEL_Y = 0
-;   AC6502   PANEL_X = 5   PANEL_Y = 0
-;   C64      PANEL_X = 9   PANEL_Y = 1
+WELL_ORIGIN_Y    = 4
+; per-platform, PANEL_Y is 0 on all three:
+;   VIC-20   PANEL_X = 0        panel row 23 clipped
+;   AC6502   PANEL_X = 5        exact fit
+;   C64      PANEL_X = 9        screen row 24 spare
 
 ; ---- Levels ----
 LEVEL_TILES      = 30           ; tiles cleared per level
@@ -1404,7 +1581,9 @@ DAS_INITIAL      = 12 / 10
 DAS_REPEAT       =  4 /  3
 SOFTDROP_RATE    =  3 /  2
 GLOW_FRAMES      =  6 /  5
-SHATTER_FRAMES   =  6 /  5
+REMOVE_FRAMES    =  6 /  5      ; 3 tiles x 2 frames
+BLIP_FRAMES      = 10 /  8      ; the prism, 5 x 2
+SPIN_FRAMES      =  8 /  7      ; per prism rotation frame, at rest
 FALL_FRAMES      =  2 /  2
 BANNER_FRAMES    = 45 / 38
 
@@ -1499,7 +1678,8 @@ PSpecial:     .byte 38, 56, 69, 82, 92     ; level bands 1-3,4-6,7-9,10-12,13+
 - **Memory:** VIC bank 0. Screen `$0400`, character set copied to `$2000`
   (2 K). All of `$0800-$1FFF` and `$2800-$7FFF` is free work RAM.
 - **Colors:** color RAM `$D800`. Uses the same values 0–7 as the VIC-20 for the
-  playfield, and the upper 8 colors for margin artwork only.
+  playfield; the upper 8 are reached only by tile groups 16–31, the title
+  screen's magic field.
 - **Timing:** raster IRQ at a fixed line, standard practice. Disable the
   KERNAL IRQ (`$0314` revectored, `$DC0D`/`$D01A` configured) and scan the
   keyboard directly.
@@ -1519,8 +1699,9 @@ Two things from this document shape that order and are worth restating here:
 - Steps that set up a platform (cartridge header, video mode, tile format,
   colour model, frame sync) are done per-platform and first, so that when the
   shared game code goes in, anything that breaks is the game.
-- The margin artwork is last, because it is the only part that can be trimmed
-  if ROM runs short.
+- The artwork is finished. Both screens and all 256 tiles are drawn
+  (`artwork/WizardsLab.tms9918`), so no phase waits on art. Everything left in
+  that area is compression, not drawing.
 
 ---
 
@@ -1528,21 +1709,28 @@ Two things from this document shape that order and are worth restating here:
 
 ### If ROM or schedule runs short, cut in this order
 
-1. **Margin artwork** → plain black margins. Costs nothing mechanically.
-2. **Bomb** (glyph +3) → its role overlaps most with the bolt. Redistribute its
+1. **The magic field** → a static block of one tile. Costs nothing
+   mechanically and saves the per-frame writes, though not the tiles.
+2. **Prism rotation** → hold frame 0. The blip-out is what carries the idea;
+   the rotation is the flourish.
+3. **Bomb** (glyph +3) → its role overlaps most with the bolt. Redistribute its
    probability to bolt and fireball.
-3. **Title help pages 3–4** → keep controls and reagents.
 4. **Reverse rotate** (fire button) → up-only rotation is playable.
 5. **Star** → it is the least mechanical reagent, though also the cheapest to
    implement, so it should survive almost anything.
+
+**Not on this list:** the margin, which is two tiles and has nothing left to
+give ([§12.5](#125-the-margin)), and the artwork, which is drawn and costs no
+schedule.
 
 **Never cut:** the prism (it is what keeps a bad board recoverable) or the
 fireball (it is the game's identity).
 
 ### Stretch ideas for a v2
 
-- **Slot +5 and +7 are free in every color group** — two more reagents with no
-  tileset reflow required. Candidates:
+- **Slots +5 and +7 are free in all six potion groups**, and tile 125 is held
+  for a +5 petrified frame — one more reagent with no tileset reflow required.
+  A second would need a stone twin that group 15 has no room for. Candidates:
   - **Hourglass** — on removal, halves gravity for 300 frames. A relief valve
     that becomes precious at level 14+.
   - **Skull / cursed vial** — a colorless *hazard* that cannot be matched and

@@ -955,7 +955,10 @@ Current file: WizardsLab.asm
 000000r 2               GLYPH_BOLT          = 2
 000000r 2               GLYPH_BOMB          = 3
 000000r 2               GLYPH_STAR          = 4
-000000r 2               GLYPH_GLOW          = 6         ; Match-flash frame
+000000r 2               GLYPH_GLOW          = 6         ; Match-flash frame. Potion colours only —
+000000r 2                                               ;   WILD_BASE + GLYPH_GLOW is an arrow, not a
+000000r 2                                               ;   glow, so the prism never takes this path.
+000000r 2                                               ;   See PRISM_BLIP below and SPEC 4.4.
 000000r 2               
 000000r 2               ; --- Named tiles -------------------------------------------------------------
 000000r 2               TILE_BLANK          = 0
@@ -965,35 +968,57 @@ Current file: WizardsLab.asm
 000000r 2               TILE_COR_TR         = 4
 000000r 2               TILE_COR_BL         = 5
 000000r 2               TILE_COR_BR         = 6
-000000r 2               TILE_JOINT          = 7
+000000r 2               TILE_WASH           = 7         ; PAUSE / dim wash, white
 000000r 2               FONT_BASE           = 16        ; '0'..'9' then 'A'..'Z' then . x ! ~
 000000r 2               FONT_DIGIT_0        = 16
 000000r 2               FONT_LETTER_A       = 26
-000000r 2               FONT_DOT            = 52
+000000r 2               FONT_DOT            = 52        ; A CENTRED dot, not a baseline period — it is
+000000r 2                                               ;   also frame 0 of the removal ring below
 000000r 2               FONT_TIMES          = 53
 000000r 2               FONT_BANG           = 54
 000000r 2               FONT_TILDE          = 55        ; The banner ornament, ~~~LIKE THIS~~~
-000000r 2               VFX_SHATTER1        = 56
-000000r 2               VFX_SHATTER2        = 57
-000000r 2               VFX_BLAST           = 58
-000000r 2               VFX_BEAM_H          = 59
-000000r 2               VFX_BEAM_V          = 60
-000000r 2               VFX_BEAM_CROSS      = 61
-000000r 2               VFX_SPARKLE         = 62
-000000r 2               VFX_SHATTER3        = 63
-000000r 2               ARROW_UP            = 113       ; Group 14, white — the title CONTROLS page
-000000r 2               ARROW_DOWN          = 114
-000000r 2               ARROW_LEFT          = 115
-000000r 2               ARROW_RIGHT         = 116
-000000r 2               VFX_SHIMMER         = 117       ; Prism clear
-000000r 2               TILE_PRISM_GLOW     = 118       ; = WILD_BASE + GLYPH_GLOW
-000000r 2               TILE_WALL_BRICK     = 120       ; Wall course — the margin fill
-000000r 2               TILE_WALL_SPECKLE   = 121       ; Sparse speckle — panel backdrop and bevel
-000000r 2               TILE_PETRIFIED      = 122       ; Game-over petrify
-000000r 2               FRAME_DIM           = 8         ; PROVISIONAL (SPEC A.3): frame tile + 8 would
-000000r 2                                               ;   be its lighter twin. Group 1 is undecided
-000000r 2                                               ;   and nothing reads this yet.
-000000r 2               ART_BASE            = 128       ; Groups 16-31, margin artwork
+000000r 2               
+000000r 2               ; The removal ring (SPEC 14). One animation, used for every removal there is:
+000000r 2               ; the match shatter, the bomb blast, the star. It opens outward
+000000r 2               ;
+000000r 2               ;       FONT_DOT -> VFX_REMOVE1 -> VFX_REMOVE2 -> VFX_REMOVE3 -> empty
+000000r 2               ;
+000000r 2               ; and the prism's blip-out runs the same tiles closed inward (PRISM_BLIP).
+000000r 2               VFX_REMOVE1         = 56
+000000r 2               VFX_REMOVE2         = 57
+000000r 2               VFX_REMOVE3         = 58
+000000r 2               VFX_BEAM_H          = 59        ; The bolt's row
+000000r 2               VFX_BEAM_V          = 60        ; The bolt's column
+000000r 2               VFX_BEAM_CROSS      = 61        ; Drawn once, at the bolt's own cell
+000000r 2               ARROW_UP            = 62        ; The title screen's controls (SPEC 13.1).
+000000r 2               ARROW_DOWN          = 63        ;   Up and down live in group 7, left and
+000000r 2               ARROW_LEFT          = 118       ;   right in group 14 — whichever white group
+000000r 2               ARROW_RIGHT         = 119       ;   had a slot spare. Nothing indexes them.
+000000r 2               
+000000r 2               ; Group 14 is the prism's. Slots +0..+3 are its idle rotation and +4..+5 its
+000000r 2               ; blip-out; there is no glow slot (SPEC A.3).
+000000r 2               PRISM_SPIN          = WILD_BASE ; Four frames, WILD_BASE + 0..3
+000000r 2               PRISM_SPIN_FRAMES   = 4
+000000r 2               PRISM_BLIP          = WILD_BASE + 4     ; Two frames, then VFX_REMOVE2,
+000000r 2                                                       ;   VFX_REMOVE1, FONT_DOT, empty
+000000r 2               
+000000r 2               ; Group 15 is the stone group: the petrified glyph set at the same offsets the
+000000r 2               ; potions use, so a cell petrifies into its own shape —
+000000r 2               ;
+000000r 2               ;       petrified = PETRIFY_BASE + (tile & GLYPH_MASK)     for glyphs 0-4
+000000r 2               ;
+000000r 2               ; — and then the two tiles the margins are built from.
+000000r 2               PETRIFY_BASE        = 120       ; +0 potion, +1 fireball, +2 bolt,
+000000r 2                                               ;   +3 bomb, +4 star
+000000r 2               TILE_RESERVED       = 125       ; Held for a sixth glyph, if one is ever added
+000000r 2               TILE_SHELF          = 126       ; The shelf the panel stands on
+000000r 2               TILE_BRICK          = 127       ; Brick — the margin fill
+000000r 2               FRAME_DIM           = 8         ; Group 1 is group 0 byte for byte, one colour
+000000r 2                                               ;   quieter, so frame_tile + FRAME_DIM is any
+000000r 2                                               ;   frame piece's dim twin (SPEC A.3)
+000000r 2               ART_BASE            = 128       ; Groups 16-31 — one hatch in sixteen colours,
+000000r 2                                               ;   the title screen's magic field (SPEC 13.1)
+000000r 2               ART_TILES           = 128
 000000r 2               
 000000r 2               ; --- Panel geometry (SPEC 12) ------------------------------------------------
 000000r 2               ;   One 22 x 24 panel, rendered identically on all three machines. PANEL_Y is
@@ -1377,9 +1402,9 @@ Current file: WizardsLab.asm
 00006Er 2               ; =============================================================================
 00006Er 2               
 00006Er 2               ; -----------------------------------------------------------------------------
-00006Er 2               ;   StateTitle — logo, blinking prompt, auto-cycling help pages
-00006Er 2               ;   SPEC 13.1. The help pages are the only place the rules are taught, so the
-00006Er 2               ;   reagent legend gets the most room of the four.
+00006Er 2               ;   StateTitle — blinking prompt over the drawn screen, and the magic field
+00006Er 2               ;   SPEC 13.1. There are no help pages: the controls are part of the screen
+00006Er 2               ;   image, so the only things moving here are the prompt and the field.
 00006Er 2               ; -----------------------------------------------------------------------------
 00006Er 2               StateTitle:
 00006Er 2  AD rr rr       lda NeedsRedraw
@@ -1389,7 +1414,9 @@ Current file: WizardsLab.asm
 000078r 2  20 rr rr       jsr DrawTitleScreen
 00007Br 2               
 00007Br 2               @Live:
-00007Br 2                 ; TODO: blink the prompt every 30 frames, cycle help pages every 240.
+00007Br 2                 ; TODO: blink the prompt every 30 frames, and shimmer the magic field —
+00007Br 2                 ; one NextRandom for a cell in the 14 x 2 block, one for a tile in
+00007Br 2                 ; ART_BASE..ART_BASE+ART_TILES-1, one RenderMark.
 00007Br 2  AD rr rr       lda InputEdge
 00007Er 2  29 10          and #INPUT_FIRE
 000080r 2  F0 06          beq @Done
@@ -1437,8 +1464,8 @@ Current file: WizardsLab.asm
 0000BAr 2                 ; TODO: dispatch on PlayState —
 0000BAr 2                 ;   PLAY_FALLING   input, DAS, gravity, land detection
 0000BAr 2                 ;   PLAY_LOCKING   lock delay with up to LOCK_RESET_MAX moves
-0000BAr 2                 ;   PLAY_GLOW      matched cells showing glyph +6
-0000BAr 2                 ;   PLAY_SHATTER   matched cells showing the white shatter tile
+0000BAr 2                 ;   PLAY_GLOW      matched cells showing glyph +6, prisms excepted
+0000BAr 2                 ;   PLAY_SHATTER   the white removal ring; prisms blip out instead
 0000BAr 2                 ;   PLAY_GRAVITY   one row every FALL_FRAMES until settled
 0000BAr 2                 ;   PLAY_ARE       entry delay, then spawn or game over
 0000BAr 2  60             rts
@@ -1446,7 +1473,8 @@ Current file: WizardsLab.asm
 0000BBr 2               @ToPause:
 0000BBr 2  A9 02          lda #STATE_PAUSE
 0000BDr 2  8D rr rr       sta GameState
-0000C0r 2                 ; TODO: blank the well so a pause cannot be used to study the board (13.3)
+0000C0r 2                 ; TODO: wash the well with TILE_WASH so a pause cannot be used to study the
+0000C0r 2                 ; board (13.3). A wash, not a blank — a blanked well reads as crashed.
 0000C0r 2  60             rts
 0000C1r 2               
 0000C1r 2               ; -----------------------------------------------------------------------------
@@ -1467,8 +1495,10 @@ Current file: WizardsLab.asm
 0000D1r 2               ;   SPEC 13.4
 0000D1r 2               ; -----------------------------------------------------------------------------
 0000D1r 2               StateGameOver:
-0000D1r 2                 ; TODO: fill the well with TILE_PETRIFIED from the bottom up, 2 frames a row,
-0000D1r 2                 ; then the banner and a 10 second timeout.
+0000D1r 2                 ; TODO: petrify the well from the bottom up, 2 frames a row, then the banner
+0000D1r 2                 ; and a 10 second timeout. Each cell keeps its own shape —
+0000D1r 2                 ;   PETRIFY_BASE + (tile & GLYPH_MASK)
+0000D1r 2                 ; — and empty cells stay empty (13.4).
 0000D1r 2  AD rr rr       lda InputEdge
 0000D4r 2  29 10          and #INPUT_FIRE
 0000D6r 2  F0 0A          beq @Done
@@ -1487,9 +1517,8 @@ Current file: WizardsLab.asm
 0000E3r 2               ;   name-table image per platform. Code only ever draws over the top of it:
 0000E3r 2               ;   the well, the score and level digits, the preview, and the message band.
 0000E3r 2               ;
-0000E3r 2               ;   The AC6502 and VIC-20 images are real, exported from artwork/. The C64's
-0000E3r 2               ;   are derived from the same panel but its margins are still placeholder.
-0000E3r 2               ;   See data/README.md.
+0000E3r 2               ;   All six images are real. They come out of artwork/WizardsLab.tms9918 —
+0000E3r 2               ;   the master — by way of `make artwork`. See data/README.md.
 0000E3r 2               ; =============================================================================
 0000E3r 2               
 0000E3r 2               DrawTitleScreen:
@@ -2454,9 +2483,9 @@ Current file: WizardsLab.asm
 000020r 1  00 00 00 00  TitleScreen:  .incbin "../data/screen-title-ac6502.bin"
 000024r 1  00 00 00 00  
 000028r 1  00 00 00 00  
-000320r 1  78 78 78 78  PlayScreen:   .incbin "../data/screen-play-ac6502.bin"
-000324r 1  78 79 79 79  
-000328r 1  79 79 79 79  
+000320r 1  7F 7F 7F 7F  PlayScreen:   .incbin "../data/screen-play-ac6502.bin"
+000324r 1  7F 7E 7E 7E  
+000328r 1  7E 7E 7E 7E  
 000620r 1               TitleColor    = TitleScreen      ; No colour RAM on this machine
 000620r 1               PlayColor     = PlayScreen
 000620r 1               

@@ -22,6 +22,13 @@ checkboxes and the "Current Status" section as work progresses.**
   in `src/` exists with the routines SPEC.md calls for and a `TODO` where the
   body goes. Work RAM is 526 bytes on every platform, against SPEC §17.1's
   530-byte budget. ROM use is 27% / 31% / 43% of 16 KB.
+- **Phase P9 is done, out of sequence.** All 256 tiles and both screens are
+  drawn in `artwork/WizardsLab.tms9918`; `make artwork` imports them into
+  `data/` and into the VIC-EDITOR project. SPEC Appendix A describes what is
+  there and is the authority on it. Drawing the art settled several things the
+  spec had left open, and the ones that reach code are listed under P9 below —
+  **read that table before starting P5, P6 or P7.** The only work left in P9 is
+  compression (S3), which nothing is blocked on.
 - P0 settled three things worth carrying forward. **The AC6502's VDP needs
   register 1's interrupt-enable bit set** even though the game polls, because
   the vblank status flag does not raise without it (D7). **The VIC-20 must set
@@ -58,10 +65,12 @@ P0 built the parts that are not the game:
   (`PANEL_X`, `PANEL_Y`, `SCR_COLS`/`SCR_ROWS`, `HAS_COLOR_RAM`) and seven
   routines (`HalInitVideo`, `HalWaitFrame`, `HalPlotCell`, `HalBlitScreen`,
   `HalReadInput`, `HalDetectRegion`, `HalSfx`).
-- **The artwork pipeline.** `.bin` files are editor exports pulled in with
-  `.incbin`; `.inc` files are hand-authored from SPEC.md. Editor projects live
-  in `artwork/`, pre-seeded with the placeholder tileset and the panel at each
-  machine's offset.
+- **The artwork pipeline.** `.bin` files are imported from the editor project
+  and pulled in with `.incbin`; `.inc` files are hand-authored from SPEC.md.
+  `artwork/WizardsLab.tms9918` is the master, and `make artwork`
+  (`tools/import-artwork.py`) is the one path from it to `data/` — it also
+  rewrites `artwork/WizardsLab.vic20` so the two projects cannot drift.
+  `make artwork-check` fails if `data/` is behind.
 - **`make smoke`**, which boots all three headless and fails if a cartridge
   hangs instead of reaching its main loop.
 - **`rng.asm`**, the one game module with a real body — a 16-bit Galois LFSR,
@@ -118,12 +127,14 @@ These are the numbers the game lives or dies on and they were chosen on paper.
 P2 exists partly to play with them. Whatever comes out, update SPEC §11.3 and
 §14 to match — the tables are the authority, not the code.
 
-### S3 — How well do the screen images compress? — *blocks P9*
+### S3 — How well do the screen images compress? — *blocks nothing yet*
 
-SPEC Appendix C and data/README.md both assume the margin artwork RLEs at
-roughly 4:1. The C64 carries 4000 bytes of screen images today; if the ratio is
-worse than about 2:1, either the title screen shares tiles with the play screen
-or the C64 margins get simpler. Measure on real artwork, not placeholder.
+SPEC §17.2 budgets 800 bytes for the six screen images RLE'd. The margin is two
+tiles (SPEC §12.5), so the images are almost entirely long runs and should beat
+that comfortably — the C64's 1000-cell images look like they should come in
+under 200 bytes each. Nobody has measured it, and nothing is waiting on it: at
+43% of 16 KB the C64 carries them raw. Take the measurement when ROM gets
+tight.
 
 ### S4 — Can the VIC-20 scan its keyboard without disturbing the joystick? — *blocks P2*
 
@@ -167,8 +178,15 @@ the implementation ones that SPEC.md does not cover.
 - **D8 — The VIC-20 sets its own `$9000`/`$9001`.** An autostart cartridge runs
   before the KERNAL centres the screen, so the game does it, per region.
 - **D9 — The whole static screen comes from the editors.** Panel frame, labels
-  and margin artwork are one name-table image per platform; code draws only the
-  well, the digits, the preview and the message band over the top.
+  and margin are one name-table image per platform; code draws only the well,
+  the digits, the preview and the message band over the top.
+- **D10 — The TMS9918 project is the only place art is drawn.** Everything
+  else is derived by `tools/import-artwork.py`: the tileset verbatim, the
+  AC6502 screens verbatim, the VIC-20's as the panel with row 23 clipped, and
+  the C64's as the master's 32 columns centred on 40 with its own edge column
+  carried out to the sides. Nothing in that script names a tile, so the margin
+  stays the artist's. Hand-editing `artwork/WizardsLab.vic20` or any `.bin` in
+  `data/` is overwritten by the next `make artwork`.
 
 ---
 
@@ -323,13 +341,18 @@ containing three stars scores ×8 and not more; SPEC §9.7 example B produces
 
 **Goal:** clears read as events rather than as the score jumping.
 
-- [ ] `PLAY_GLOW` — matched cells swap to glyph `+6` of their own colour
-- [ ] `PLAY_SHATTER` — matched cells swap to the shared white shatter tile
+- [ ] `PLAY_GLOW` — matched cells swap to glyph `+6` of their own colour.
+      **Marked prisms are skipped** — group 14 has no `+6`
+- [ ] `PLAY_SHATTER` — the removal ring, `VFX_REMOVE1..3`, two frames each.
+      One animation for the match, the bomb and the star
+- [ ] Marked prisms run `PRISM_BLIP` instead: the same ring closing inward
+- [ ] Prism idle rotation, `PRISM_SPIN + 0..3`, one frame every 8
 - [ ] Fireball flash: one VDP colour-table byte on the AC6502, colour RAM on
       the Commodores — same frame count, different mechanism
-- [ ] Bolt beam and bomb blast overlays
+- [ ] Bolt beam overlay (the bomb has no overlay of its own now)
 - [ ] Level-up and chain banners in the message band
-- [ ] Game-over petrify: `TILE_STONE` filling the well bottom-up
+- [ ] Game-over petrify: `PETRIFY_BASE + (tile & GLYPH_MASK)`, bottom-up, so
+      each cell sets as its own shape
 - [ ] Every duration from the SPEC §14 table, per region
 
 **Exit criteria:** a clear step takes the frames SPEC §14 says it does on both
@@ -342,10 +365,13 @@ is one byte on the AC6502; nothing in the animation path blocks the main loop.
 
 **Goal:** a complete arcade loop — title, play, pause, game over, title.
 
-- [ ] `StateTitle`: logo, blinking prompt, four auto-cycling help pages
-- [ ] The reagent legend page — the only place the rules are taught
+- [ ] `StateTitle`: blinking prompt over the drawn screen. **No help pages** —
+      the controls are on the page and the rest was cut (SPEC §13.1)
+- [ ] The magic field: a random tile from `ART_BASE`..`ART_BASE + 127` into a
+      random one of the block's 28 cells, every frame
 - [ ] RNG seeded from the frame counter at the fire press (SPEC §15)
-- [ ] `StatePause`: well blanked so it cannot be studied, timers frozen
+- [ ] `StatePause`: well washed with `TILE_WASH` so it cannot be studied,
+      timers frozen
 - [ ] `StateGameOver`: petrify, banner, high-score fanfare, 10-second timeout
 - [ ] Spawn-blocked detection promoted to an actual game over
 
@@ -370,22 +396,42 @@ machines; audio never delays a frame; a machine with no sound card still runs.
 
 ---
 
-### Phase P9 — Artwork
+### Phase P9 — Artwork — **done**
 
-**Goal:** real tiles, real margins, real logo. The last phase that can be cut
-down if ROM runs short.
+**Goal:** real tiles, real screens. Complete out of sequence, which is why the
+phases numbered below it are still open.
 
-- [ ] S3 measured on real artwork
-- [ ] Tileset drawn in TMS9918-EDITOR Graphics I per SPEC Appendix A.2
-- [ ] The four reagents distinguishable by silhouette in peripheral vision
-- [ ] Margin artwork: 272 cells on the AC6502, 530 on the C64
-- [ ] Title logo
-- [ ] C64 screen project laid out (panel at column 9, row 1)
-- [ ] RLE the screen images if S3 says it is needed
-- [ ] Screenshot into the README
+- [x] Tileset drawn in TMS9918-EDITOR Graphics I per SPEC Appendix A
+- [x] The four reagents distinguishable by silhouette in peripheral vision
+- [x] Both screens laid out on the 32 × 24 master
+- [x] The margin — two tiles, brick and shelf, the same on all three machines
+- [x] `tools/import-artwork.py` and `make artwork`: master → `data/` and →
+      the VIC-EDITOR project (D10)
+- [x] SPEC.md carrying the drawn tile map (§12.5, §13.1, §13.3, §13.4, §14,
+      Appendix A)
+- [ ] Screenshot into the README — `make smoke` writes one beside each
+      Commodore cartridge, but `*-screenshot.png` is gitignored, so a committed
+      one needs a different name
+- [ ] RLE the screen images — deferred to P10 with S3; nothing needs it yet
 
-**Exit criteria:** no hatched tile (128–255) remains unreplaced; every screen
-image is an editor export; all three cartridges still fit 16 KB with headroom.
+**Exit criteria met:** every `.bin` in `data/` comes from the master,
+`make artwork-check` is clean, and all three cartridges build and boot. The two
+open boxes above are follow-on work, not part of getting the art in.
+
+**What the tile map requires of code.** The constants are in
+[`src/constants.inc`](src/constants.inc); the behaviour belongs to the phases
+that own it, and each is easy to get wrong by assuming the obvious:
+
+| Requirement | Lands in |
+|---|---|
+| One removal ring (56–58) serves match, bomb and star. There is no separate blast or sparkle tile | P3, P5, P6 |
+| **`WILD_BASE + GLYPH_GLOW` is an arrow, not a glow.** A matched prism sits out the glow phase | P5, P6 |
+| A matched prism blips out — 116, 117, 57, 56, 52 — rather than shattering | P6 |
+| A prism at rest rotates through 112–115, one frame every 8 | P6 |
+| PAUSE washes the well with tile 7; it does not blank it | P7 |
+| Game over petrifies each cell into its own shape, `120 + (tile & 7)` | P7 |
+| The title screen's magic field: random tiles from 128–255 into a 14 × 2 block, one cell a frame | P7 |
+| The title screen has no help pages. The controls are part of the image | P7 |
 
 ---
 
@@ -412,9 +458,9 @@ both regions where the machine has both.
   late for finding out. Mitigate by getting one real machine running as early
   as P2 if hardware is to hand.
 - **The C64's ROM budget.** It carries 4000 bytes of screen images against the
-  VIC-20's 2024, because its screen is bigger. At 43% used with placeholder
-  art, real margins could be tight. S3 is the measurement; simplifying the C64
-  margins is the fallback, and it costs nothing mechanically.
+  VIC-20's 2024, because its screen is bigger. This has got better rather than
+  worse: the margin is two tiles now, so the images are long runs and should
+  RLE well past the 4:1 the budget assumed (S3). Nothing is tight at 43%.
 - **The effect queue on a pathological board.** Termination is proven — effects
   only remove tiles and each cell marks once — but the *frame cost* of a
   96-cell cascade is not measured. If it stalls, the queue drains across frames
@@ -431,8 +477,10 @@ both regions where the machine has both.
 
 Out of scope for the first release, recorded so they are not rediscovered.
 
-- **Two more reagents.** Slots `+5` and `+7` are free in every colour group, so
-  an hourglass and a skull need no tileset reflow (SPEC Appendix E).
+- **Two more reagents.** Slots `+5` and `+7` are free in all six potion
+  groups, and tile 125 is held for the `+5` petrified frame, so an hourglass
+  needs no tileset reflow. A `+7` would, because group 15 has no room for its
+  stone twin (SPEC Appendix A.3, Appendix E).
 - **Two-piece preview.** The panel has room only if the vignette goes.
 - **Difficulty select** on the title screen — start at level 1, 5 or 10.
 - **Persisted high score.** Possible on the AC6502 alone via the DS1511Y NVRAM,

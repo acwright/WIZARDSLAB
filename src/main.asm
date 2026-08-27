@@ -81,9 +81,9 @@ GameLoop:
 ; =============================================================================
 
 ; -----------------------------------------------------------------------------
-;   StateTitle — logo, blinking prompt, auto-cycling help pages
-;   SPEC 13.1. The help pages are the only place the rules are taught, so the
-;   reagent legend gets the most room of the four.
+;   StateTitle — blinking prompt over the drawn screen, and the magic field
+;   SPEC 13.1. There are no help pages: the controls are part of the screen
+;   image, so the only things moving here are the prompt and the field.
 ; -----------------------------------------------------------------------------
 StateTitle:
   lda NeedsRedraw
@@ -93,7 +93,9 @@ StateTitle:
   jsr DrawTitleScreen
 
 @Live:
-  ; TODO: blink the prompt every 30 frames, cycle help pages every 240.
+  ; TODO: blink the prompt every 30 frames, and shimmer the magic field —
+  ; one NextRandom for a cell in the 14 x 2 block, one for a tile in
+  ; ART_BASE..ART_BASE+ART_TILES-1, one RenderMark.
   lda InputEdge
   and #INPUT_FIRE
   beq @Done
@@ -141,8 +143,8 @@ StatePlay:
   ; TODO: dispatch on PlayState —
   ;   PLAY_FALLING   input, DAS, gravity, land detection
   ;   PLAY_LOCKING   lock delay with up to LOCK_RESET_MAX moves
-  ;   PLAY_GLOW      matched cells showing glyph +6
-  ;   PLAY_SHATTER   matched cells showing the white shatter tile
+  ;   PLAY_GLOW      matched cells showing glyph +6, prisms excepted
+  ;   PLAY_SHATTER   the white removal ring; prisms blip out instead
   ;   PLAY_GRAVITY   one row every FALL_FRAMES until settled
   ;   PLAY_ARE       entry delay, then spawn or game over
   rts
@@ -150,7 +152,8 @@ StatePlay:
 @ToPause:
   lda #STATE_PAUSE
   sta GameState
-  ; TODO: blank the well so a pause cannot be used to study the board (13.3)
+  ; TODO: wash the well with TILE_WASH so a pause cannot be used to study the
+  ; board (13.3). A wash, not a blank — a blanked well reads as crashed.
   rts
 
 ; -----------------------------------------------------------------------------
@@ -171,8 +174,10 @@ StatePause:
 ;   SPEC 13.4
 ; -----------------------------------------------------------------------------
 StateGameOver:
-  ; TODO: fill the well with TILE_PETRIFIED from the bottom up, 2 frames a row,
-  ; then the banner and a 10 second timeout.
+  ; TODO: petrify the well from the bottom up, 2 frames a row, then the banner
+  ; and a 10 second timeout. Each cell keeps its own shape —
+  ;   PETRIFY_BASE + (tile & GLYPH_MASK)
+  ; — and empty cells stay empty (13.4).
   lda InputEdge
   and #INPUT_FIRE
   beq @Done
@@ -191,9 +196,8 @@ StateGameOver:
 ;   name-table image per platform. Code only ever draws over the top of it:
 ;   the well, the score and level digits, the preview, and the message band.
 ;
-;   The AC6502 and VIC-20 images are real, exported from artwork/. The C64's
-;   are derived from the same panel but its margins are still placeholder.
-;   See data/README.md.
+;   All six images are real. They come out of artwork/WizardsLab.tms9918 —
+;   the master — by way of `make artwork`. See data/README.md.
 ; =============================================================================
 
 DrawTitleScreen:
