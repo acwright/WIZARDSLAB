@@ -344,6 +344,26 @@ RenderHigh:
   lda #LEVEL_DIGITS
   jmp TextBcd
 
+; -----------------------------------------------------------------------------
+;   RenderHighBlank — the dark half of the HIGH field's overtake flash
+;   In:  nothing        Out: nothing.  Modifies: A, X, Y, TextCol
+;   SPEC 9.8. The seven digits only; the level under them stays put, so the
+;   box never looks empty and the flash costs seven cells of the budget.
+; -----------------------------------------------------------------------------
+RenderHighBlank:
+  lda #HIGH_X
+  sta TextCol                   ; Not X: RenderMark clobbers it
+@Cell:
+  lda #TILE_BLANK
+  ldx TextCol
+  ldy #HIGH_Y
+  jsr RenderMark
+  inc TextCol
+  lda TextCol
+  cmp #(HIGH_X + SCORE_DIGITS)
+  bcc @Cell
+  rts
+
 RenderLevel:
   lda Level
   jmp TextLevel

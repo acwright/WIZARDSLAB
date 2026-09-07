@@ -74,8 +74,19 @@ HighMid:        .res 1
 HighHi:         .res 1
 HighTop:        .res 1
 HighLevel:      .res 1                  ; Level the high score was set on, BCD
+HighOwned:      .res 1                  ; Non-zero once THIS game has taken the
+                                        ;   high score. From the overtake on,
+                                        ;   score and high score are equal and
+                                        ;   every bank copies again, so without
+                                        ;   this the one-shot fanfare and flash
+                                        ;   would fire on every one (SPEC 9.8)
+HighFlash:      .res 1                  ; Half-blinks of the HIGH field left to
+                                        ;   run. Odd = dark, even = lit, and it
+                                        ;   ends at zero, so the field is always
+                                        ;   left readable
+HighTimer:      .res 1                  ; Frames until the next half-blink
 Level:          .res 1                  ; Binary, 1-99
-TilesCleared:   .res 1                  ; Toward the next level, wraps at 30
+TilesCleared:   .res 1                  ; Toward the next level, carries past 30
 
 ; --- Timers, all in frames (SPEC 14) -----------------------------------------
 GravityTimer:   .res 1

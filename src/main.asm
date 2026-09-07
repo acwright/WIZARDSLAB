@@ -8,10 +8,10 @@
 ;   BUILD STATUS
 ;   ------------
 ;   Pieces spawn, steer, rotate, fall and lock, runs of three or more clear,
-;   the pile falls into the holes and chains keep going until nothing matches
-;   (PLAN.md P2, P3). Nothing scores yet — CascadeSettle banks a total that is
-;   still zero — and the clear is instant: GLOW and SHATTER are P6's, and slot
-;   into CascadeEnter between the scan and the fall.
+;   the pile falls into the holes, chains keep going until nothing matches, and
+;   all of it scores and ramps the level (PLAN.md P2, P3, P4). The clear is
+;   still instant: GLOW and SHATTER are P6's, and slot into CascadeEnter
+;   between the scan and the fall.
 ; =============================================================================
 
 ; -----------------------------------------------------------------------------
@@ -164,6 +164,10 @@ GameStart:
 ;   blocking loop so animation stays on the frame clock.
 ; -----------------------------------------------------------------------------
 StatePlay:
+  jsr ScoreFlashTick            ; SPEC 9.8 — the HIGH field blinking after an
+                                ;   overtake. Play never stops for it, so it
+                                ;   ticks alongside whatever the sub-state is
+                                ;   doing rather than inside one.
   lda InputEdge
   and #INPUT_PAUSE
   bne @ToPause
@@ -234,9 +238,10 @@ PlayFalling:
   bne @Done
   jsr PieceStep
   bcs @Land
-  jsr PieceFallRate
-  sta GravityTimer
-  rts
+  jsr PieceFallRate             ; ...and C tells us whose rate the row that
+  sta GravityTimer              ;   just fell used. STA leaves it alone.
+  bcs @Done
+  jmp ScoreSoftDrop             ; SPEC 9.6 — one point, one row
 
 @Land:
   ldx Region
@@ -306,8 +311,8 @@ CascadeEnter:
   rts
 
 @Settle:
-  jsr CascadeSettle             ; P4 banks the points here; P6 raises the
-                                ;   chain banner
+  jsr CascadeSettle             ; The star multiplier and the bank (SPEC 8
+                                ;   SETTLE); P6 raises the chain banner
   ldx Region
   lda AreDelay,x
   sta AreTimer

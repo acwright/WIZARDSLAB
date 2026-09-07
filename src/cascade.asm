@@ -35,18 +35,39 @@ CascadeBegin:
 ;        C clear when nothing matched and the cascade has settled.
 ;        Modifies: A, X, Y, Scan*, CellCount, Marks, RunCount
 ;
-;   Steps 2 to 5 of SPEC 8 are not here yet: P4 scores the runs, P5 enqueues
-;   and resolves the reagents among them, and P6 puts the glow and the shatter
-;   between the scan and the removal. All three land between the two calls
-;   below without moving either of them, which is the reason the step is
-;   already split into a scan and a removal that a sub-state can sit between.
+;   Steps 3 to 5 of SPEC 8 are still to come: P5 enqueues and resolves the
+;   reagents among the marked cells, and P6 puts the glow and the shatter
+;   between the scan and the removal. Both land between the calls below
+;   without moving any of them, which is the reason the step is split into a
+;   scan and a removal that a sub-state can sit between.
+;
+;   Step 2's per-run half is in MatchEmit, which is the one moment a run's
+;   length and colour are both in hand; what is left of it here is the bonus
+;   for having found several at once, which nothing knows until all four
+;   passes have finished.
 ; -----------------------------------------------------------------------------
 CascadeStep:
   jsr MatchScan
   beq @Settled                  ; RunCount is zero — nothing left to clear
-  jsr CascadeRemove
-  sec
-  rts
+
+  ldx RunCount                  ; SPEC 8 step 2, last line, and SPEC 9.4
+  dex                           ; MultiBonus is indexed by runs - 1 ...
+  cpx #5
+  bcc @Multi
+  ldx #4                        ;   ... and flattens out at 5
+@Multi:
+  lda MultiBonusLo,x
+  pha
+  lda MultiBonusHi,x
+  tax
+  pla
+  jsr CascadeAdd
+
+  jsr CascadeRemove             ; SPEC 8 step 6
+  lda CellCount
+  jsr ScoreLevelCheck           ; SPEC 8 step 7 — match and effect removals
+  sec                           ;   both count, and by here they are the same
+  rts                           ;   cells
 @Settled:
   clc
   rts
@@ -63,7 +84,7 @@ CascadeStep:
 ;   does NOT need the cursor treatment BoardGravityStep gets: gravity moves
 ;   cells that were never marked, and can genuinely touch the whole well.
 ;
-;   P4 takes CellCount to ScoreLevelCheck — thirty cleared tiles is a level
+;   CellCount goes to ScoreLevelCheck — thirty cleared tiles is a level
 ;   (SPEC 10.1) — and P6 will have animated these cells before they go.
 ; -----------------------------------------------------------------------------
 CascadeRemove:
@@ -123,9 +144,21 @@ CascadeRemove:
 ;   points scored before the star cleared.
 ; -----------------------------------------------------------------------------
 CascadeSettle:
-  ; TODO: shift CascadeLo/Mid/Hi left by min(StarCount, STAR_SHIFT_CAP) in BCD
-  ; (a BCD doubling is one self-addition), then ScoreAdd.
-  rts
+  lda StarCount
+  cmp #STAR_SHIFT_CAP
+  bcc @Shift
+  lda #STAR_SHIFT_CAP           ; x8 and no further, however many were caught
+@Shift:
+  tax
+  beq @Bank
+@Double:
+  jsr CascadeDouble             ; A doubling in BCD is one self-addition
+  dex
+  bne @Double
+@Bank:
+  jmp ScoreAdd                  ; Its carry is not read: ScoreHighCheck has
+                                ;   already raised the fanfare and the flash
+                                ;   itself, and does so exactly once
 
 ; -----------------------------------------------------------------------------
 ;   The five reagents (SPEC 7.3). Each marks its targets, scores them at

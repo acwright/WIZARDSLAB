@@ -66,10 +66,21 @@ checkboxes and the "Current Status" section as work progresses.**
   Two things came out of it that outlive the phase: `make playtest` now steps by
   GAME frames rather than by cycles (§3), and `make crosscheck` plays the same
   game on all three machines and compares the wells.
-- Next: **P4 — scoring and levels.** Everything it needs is already in place and
-  commented where it goes: `MatchEmit` is the one moment a run's length and
-  colour are both in hand, `CascadeRemove` leaves the tile count in `CellCount`,
-  and `CascadeSettle` is called from the one place a cascade ends.
+- **Phase P4 is done.** The game scores. Every value in SPEC §9 is paid — per
+  tile by chain depth, per run by length, per step by how many runs landed at
+  once — the level ramps at thirty tiles with the surplus carrying, the score
+  clamps at 9999999 instead of wrapping, the soft drop pays its point a row,
+  and the high score is taken live and flashes when it changes hands. All of it
+  is checked against SPEC arithmetic done in Python, including §9.7's worked
+  example A, and the gravity table is read back off real falls at all sixteen
+  levels on both regions rather than out of the table it came from. Work RAM is
+  566 bytes against SPEC §17.1's ~560; ROM use is 44% / 49% / 61% of 16 KB.
+  `make crosscheck` now compares the SCORE and LEVEL boxes as well as the well.
+- Next: **P5 — reagents.** P4 leaves it the two halves it needs: `CascadeAdd` /
+  `CascadeAddTimes` for `EffectValue[chain]` and the trigger bonuses, and
+  `CascadeSettle` already applying `min(StarCount, 3)` doublings to the whole
+  cascade — nothing in P5 has to touch the accumulator's arithmetic, only feed
+  it. Read the P9 table below before starting.
 
 ---
 
@@ -175,6 +186,15 @@ Things a session working in this repository needs to know and cannot infer.
   needed a floor, and on the Commodores it *still* looked right, because
   uninitialised RAM happened to be non-zero where a sentinel belonged. Count up
   and end on a `cpx`.
+- **A stale emulator on the debug port silently hijacks the test.** If a headless
+  `6502` from an earlier run is still listening on 8770 or 8771, the one the
+  test starts dies with `EADDRINUSE` into `/dev/null` and every `mem.read`
+  below then reads *the other machine* — a different cartridge, sometimes
+  billions of cycles in. It does not look like a broken harness; it looks like
+  the game under test doing something impossible, and it burned a session
+  before `make crosscheck` was believed again. `playtest.py` and
+  `crosscheck.py` now refuse to start when something is already listening
+  (`require_free_port`), and say which port to go and look at.
 - **BSD `sed` has no `\b`.** Use Python for word-boundary rewrites in this repo.
 - **`vic20.inc` already defines `SCREEN_COLS` and `SCREEN_ROWS`.** The game's
   own screen constants are `SCR_COLS` / `SCR_ROWS` to avoid the collision.
@@ -380,6 +400,15 @@ the implementation ones that SPEC.md does not cover.
   pile must cross its top row. Finding that row costs about 45 cycles a row of
   empty air and takes a six-row pile from 448 cells scanned to 178. SPEC §6.2
   now says so, because it changes the procedure and not just the code.
+- **D18 — The awards SPEC §9.6 gives outside a cascade bypass the accumulator.**
+  The soft drop's point a row and the level advance's 1000 go straight into
+  `Score` through `ScoreAward`, not into `Cascade*` through `CascadeAdd`, so a
+  star cannot double them. SPEC §9.6 lists them in the same table as the star
+  multiplier and does not say; SPEC §8's `SETTLE` decides it, because its
+  pseudocode never adds either one to `cascade_pts`. It also settles what the
+  soft-drop point means: `PieceFallRate` now returns carry clear when the soft
+  drop was the rate actually used, so a row that fell at gravity's own speed
+  with DOWN held pays nothing — at level 16 there is no soft drop to reward.
 - **D9 — The whole static screen comes from the editors.** Panel frame, labels
   and margin are one name-table image per platform; code draws only the well,
   the digits, the preview and the message band over the top.
@@ -582,21 +611,47 @@ worth knowing before P4:
 | A cascade step is a whole frame's work on a deep pile, and the game's frame is one trip round `GameLoop` however long that takes | A test that advances by cycles reads state the game is halfway through writing. `make playtest` advances by `exec.runTo GameLoop` instead (§3) — and two P2 assertions that "broke" in P3 were this, not the game |
 | `StatePause` put the piece back on resume whatever the sub-state was, and from `PLAY_GLOW` upward `PieceA`-`C` are stale — the cascade may have taken those cells away entirely | Resume only re-marks the piece below `PLAY_GLOW`. Harmless before P3, because a locked piece still matched the board underneath it |
 
-### Phase P4 — Scoring and levels
+### Phase P4 — Scoring and levels — **done**
 
 **Goal:** the full scoring loop from SPEC §9 and the speed ramp from §10.
 
-- [ ] `score.asm`: `ScoreReset`, `CascadeAdd`, `CascadeAddTimes`, `ScoreAdd`
-- [ ] Four-byte BCD accumulate, clamped at 9999999, never wrapping
-- [ ] Per-run scoring: `TileValue[chain]`, `LengthBonus`, `MultiBonus`
-- [ ] `ScoreLevelCheck` — 30 tiles a level, one advance per step, surplus carries
-- [ ] `ScoreGravity` indexing `SpeedNTSC` / `SpeedPAL` by region
-- [ ] Live high score update, and the flash when it is overtaken
-- [ ] Panel fields updating on change
+- [x] `score.asm`: `ScoreReset`, `CascadeAdd`, `CascadeAddTimes`, `ScoreAdd`
+- [x] Four-byte BCD accumulate, clamped at 9999999, never wrapping
+- [x] Per-run scoring: `TileValue[chain]`, `LengthBonus`, `MultiBonus`
+- [x] `ScoreLevelCheck` — 30 tiles a level, one advance per step, surplus carries
+- [x] `ScoreGravity` indexing `SpeedNTSC` / `SpeedPAL` by region
+- [x] Live high score update, and the flash when it is overtaken
+- [x] Panel fields updating on change
 
-**Exit criteria:** the worked examples in SPEC §9.7 produce exactly the stated
-totals; the score clamps rather than wraps; levels advance at the right rate
-and never skip; gravity speeds match the SPEC §10.2 table on both regions.
+**Exit criteria met.** `make playtest` reads all of it out of RAM and off the
+VDP's name table, against SPEC arithmetic recomputed in Python rather than
+against constants the test made up: SPEC §9.7 example A pays exactly 60; runs
+of 3, 4, 5, 6 and 7 pay their tile value plus their length bonus; two runs
+sharing a corner pay both runs and `MultiBonus[2]`, with the shared cell
+scoring twice and clearing once; a second cascade step pays 50 a tile and not
+20; thirty tiles advances the level once with the surplus carrying and 72 in
+one step still advances it only once; 9999950 + 60 clamps to 9999999 and stays
+there; the soft drop pays a point a row and a row that fell at gravity's rate
+pays none; the panel shows what RAM holds, all seven digits, zero padded; the
+high score is taken the instant it is passed, carries the level it was set on
+in BCD, tracks the live level while the run holds it, and flashes once. Gravity
+is read back off real falls — poke the level, poke `GravityTimer` to 1, run one
+frame, read what `ScoreGravity` reloaded — and all sixteen levels on both
+regions match SPEC §10.2, including the cap holding at levels 17 and 99.
+`make crosscheck` agrees on the well, the SCORE box and the LEVEL box on all
+three machines.
+
+**What came out of it.**
+
+| What happened | What it changed |
+|---|---|
+| The one moment a run's length and colour are both in hand is `MatchEmit`, *before* its mark loop — which counts `ScanLen` down to zero on its way back along the line | Scoring is a call at the top of `MatchEmit`. `MatchScoreRun` is the only routine in the game that must run before a loop rather than after it, and the comment says so |
+| Once the score overtakes the high score the two are **equal**, and every subsequent bank copies again | `HighOwned`. Without it the one-shot fanfare and flash of SPEC §9.8 fire on every bank for the rest of the game. The copy itself is not one-shot and must not be — that is what keeps `HighLevel` tracking the live level (SPEC §9.8) |
+| SPEC §9.6 lists the soft drop and the level bonus in the same table as the star multiplier, and does not say whether a star doubles them | D18. SPEC §8's `SETTLE` decides it: its pseudocode never adds either to `cascade_pts`, so they go straight to `Score`. `PieceFallRate` returns carry to say whose rate a row actually fell at, so DOWN at level 16 earns nothing |
+| The tile-value multiply is `length × TileValue[chain]`, and a vertical run can be sixteen cells long | A loop of BCD additions with the count in Y, not a multiply routine. Three to sixteen adds is smaller and faster than anything worth writing, and SPEC §9 chose multiples of ten so that every add is one `ADC` |
+| Three bytes of cascade accumulator, doubled up to three times at settle | `CascadeClamp`. Not reachable by playing — a cascade can only ever remove the 96 cells the well holds, which caps it around 200,000 — but "never wraps" in SPEC §9 has to hold for every accumulator on the path, not just the one on the panel |
+| A headless `6502` left listening on the debug port from an earlier run hijacks the next test completely | `require_free_port` in both tools (§3). It cost a session: `make crosscheck` was reading a two-billion-cycle-old machine and reporting a game that could not exist |
+| The headless crosscheck game has no input, so every piece lands in the spawn column and whether it ever matches is down to the seed | The score and level are still compared on all three, and the run prints a note when the comparison came out three zeroes rather than pretending it proved something |
 
 ---
 
@@ -613,8 +668,10 @@ and never skip; gravity speeds match the SPEC §10.2 table on both regions.
 - [ ] `EffectStar` — `StarCount`, capped at `STAR_SHIFT_CAP`
 - [ ] `EffectPrism` — `BONUS_PRISM`, no removal
 - [ ] Reagents removed by other reagents' effects are enqueued and fire
-- [ ] `EffectValue[chain]` and the trigger bonuses
-- [ ] `CascadeSettle` applies the star multiplier to the whole cascade
+- [ ] `EffectValue[chain]` and the trigger bonuses — through `CascadeAddTimes`
+      and `CascadeAdd`, which P4 left with exactly this shape
+- [x] `CascadeSettle` applies the star multiplier to the whole cascade — done in
+      P4; `EffectStar` only has to count into `StarCount`
 
 **Exit criteria:** every row of SPEC §7.4's interaction table behaves as
 written; a fireball inside a run detonates once and prisms survive it; two

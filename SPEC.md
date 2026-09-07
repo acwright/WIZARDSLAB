@@ -699,7 +699,11 @@ one more step for another 400.**
   you have to get to beat it.
 - Updated live during play the instant `score` exceeds it, so the player
   watches themselves overtake it.
-- Beating it triggers a one-shot fanfare and a flash of the HIGH field.
+- Beating it triggers a one-shot fanfare and a flash of the HIGH field, at the
+  30 / 25 frame blink period of [§14](#14-animation--timing). One-shot needs a
+  flag of its own: from the overtake onward the score and the high score are
+  equal, so "the score reached it" is true on every subsequent award and cannot
+  be the trigger. The copy stays live; only the fanfare and the flash are once.
 
 ---
 
@@ -1302,14 +1306,14 @@ AC6502 and C64 share SID driver code almost verbatim (register base differs:
 | `DIRTY` | 192 | 64 entries × 3 bytes (screen col, screen row, tile) |
 | Piece state | 8 | column, row, A/B/C, rotation |
 | Next piece | 3 | |
-| Score / High | 9 | 4 bytes BCD each, + 1 for the high score's level |
+| Score / High | 12 | 4 bytes BCD each, + 1 for the high score's level, + 3 for whether this game has taken it and the blink it fires ([§9.8](#98-high-score)) |
 | Level, tiles cleared, chain, stars | 6 | |
 | Timers (gravity, lock, DAS, ARE, anim) | 10 | |
 | Input current/previous/edge | 3 | |
 | RNG seed, frame counter | 4 | |
 | State machine, flags | 8 | |
 | Audio state | 16 | |
-| **Total** | **~560 bytes** | 563 measured — 34 zero page, 529 BSS; plus row-pointer tables in ROM |
+| **Total** | **~560 bytes** | 566 measured — 34 zero page, 532 BSS; plus row-pointer tables in ROM |
 
 Fits the VIC-20's constrained RAM with room to spare, which is the whole point
 of designing to the tightest target first. In practice the whole of BSS lands

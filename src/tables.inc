@@ -39,6 +39,9 @@ DasRepeat:                              ; ...and every one after it
   .byte  4,  3
 SoftDropRate:                           ; Frames per row while DOWN is held.
   .byte  3,  2                          ;   Never used when gravity is faster.
+BlinkHalf:                              ; SPEC 14 — half of the 30 / 25 frame
+  .byte 15, 13                          ;   blink period, which is what a
+                                        ;   blinking field actually counts
 
 ; --- Per-tile value for MATCH removals (SPEC 9.1) ----------------------------
 ;   Indexed by (chain - 1), clamped to 7.   20 50 100 200 300 400 500 600

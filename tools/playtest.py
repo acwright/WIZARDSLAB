@@ -25,6 +25,7 @@ import base64
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import time
@@ -40,6 +41,30 @@ for line in open(DBGFILE):
     m = re.match(r'sym\s+id=\d+,name="([^"]+)".*?,val=(0x[0-9a-fA-F]+)', line)
     if m:
         syms[m.group(1)] = int(m.group(2), 16)
+
+def require_free_port(port):
+    """Fail loudly if something is already listening on the debug port.
+
+    A stale emulator left over from an earlier run keeps the port, the one
+    started here dies with EADDRINUSE into /dev/null, and every rpc call below
+    then talks to the OTHER machine — a different cartridge, hours of cycles
+    in. It looks exactly like the game under test behaving impossibly, and it
+    cost a whole debugging session once already.
+    """
+    s = socket.socket()
+    s.settimeout(0.5)
+    try:
+        s.connect(("127.0.0.1", port))
+    except OSError:
+        return                                  # nothing listening — good
+    finally:
+        s.close()
+    sys.exit(f"port {port} already has a listener — an emulator from an "
+             f"earlier run is still alive. Kill it (lsof -nP -iTCP:{port}) "
+             f"and try again.")
+
+
+require_free_port(PORT)
 
 proc = subprocess.Popen(
     ["6502", "run", "--headless", "--console", "video", "--pause",
@@ -241,7 +266,11 @@ def kick():
     poke("GravIdx", 0xFF)
     poke("GravMoved", 0)
     poke("AnimTimer", 1)
-    poke("PlayState", PLAY_GRAVITY)
+    poke("CascadeLo", 0)                        # CascadeBegin would have done
+    poke("CascadeMid", 0)                       #   these; entering at the
+    poke("CascadeHi", 0)                        #   gravity end skips it, and a
+    poke("StarCount", 0)                        #   stale accumulator would be
+    poke("PlayState", PLAY_GRAVITY)             #   banked by the next settle
 
 
 def redraw():
@@ -436,6 +465,242 @@ bd = board()
 check("floor sentinels intact", all(v == 255 for v in bd[128:160]), True)
 check("side sentinels intact",
       all(bd[r * 8 + 6] == 255 and bd[r * 8 + 7] == 255 for r in range(20)), True)
+
+# =============================================================================
+#   P4 — scoring, levels and speed
+# =============================================================================
+#   Every number below is read out of RAM or off the VDP's own name table and
+#   compared with SPEC 9 and SPEC 10 arithmetic done here in Python. Nothing
+#   is compared against a constant this file made up.
+
+FONT_DIGIT_0 = 16                               # constants.inc
+SCORE_X, SCORE_Y = 12, 5                        # Panel-relative (SPEC 12.2)
+HIGH_X, HIGH_Y = 12, 10
+HIGHLVL_X, HIGHLVL_Y = 15, 11
+SCORE_DIGITS = 7
+VRAM_NAMES, PANEL_X, PANEL_Y = 0x1400, 5, 0
+
+
+def read(name, length):
+    d = rpc("mem.read", {"space": "cpu", "address": syms[name],
+                         "length": length})["data"]
+    return base64.b64decode(d)
+
+
+def unbcd(raw):
+    """Packed BCD, low byte first, as an integer."""
+    v = 0
+    for byte in reversed(raw):
+        v = v * 100 + (byte >> 4) * 10 + (byte & 0x0F)
+    return v
+
+
+def score():
+    return unbcd(read("ScoreLo", 4))
+
+
+def high():
+    return unbcd(read("HighLo", 4))
+
+
+def set_score(v):
+    """Plant a score. The panel is not redrawn — the next bank does that."""
+    raw = bytearray(4)
+    for i in range(4):
+        raw[i] = ((v // 10) % 10) * 16 + (v % 10)
+        v //= 100
+    rpc("mem.write", {"space": "cpu", "address": syms["ScoreLo"],
+                      "data": base64.b64encode(bytes(raw)).decode()})
+
+
+def set_high(v):
+    raw = bytearray(4)
+    for i in range(4):
+        raw[i] = ((v // 10) % 10) * 16 + (v % 10)
+        v //= 100
+    rpc("mem.write", {"space": "cpu", "address": syms["HighLo"],
+                      "data": base64.b64encode(bytes(raw)).decode()})
+    poke("HighOwned", 0)
+    poke("HighFlash", 0)
+
+
+def panel(col, row, width):
+    """What the VDP's name table holds across a run of panel cells."""
+    vram = base64.b64decode(rpc("mem.read", {
+        "space": "vram",
+        "address": VRAM_NAMES + (PANEL_Y + row) * 32 + PANEL_X + col,
+        "length": width})["data"])
+    return list(vram)
+
+
+def digits(col, row, width):
+    """...read back as a number, or None if any cell is not a digit glyph."""
+    cells = panel(col, row, width)
+    if any(not (FONT_DIGIT_0 <= c < FONT_DIGIT_0 + 10) for c in cells):
+        return None
+    return int("".join(str(c - FONT_DIGIT_0) for c in cells))
+
+
+def scored(cells, level=1, cleared=0, start=0, limit=400):
+    """Run one cascade over a planted board and report what it paid."""
+    poke("Level", level)
+    poke("TilesCleared", cleared)
+    set_score(start)
+    left, runs, chain, used = cascade(cells, limit)
+    return score(), runs, chain, left
+
+
+# The high score is out of the way for the scoring tests: it is real and it
+# fires on every bank once the score reaches it, and it has its own section
+# below. 9999999 is the clamp, so nothing here can reach it.
+set_high(9999999)
+
+print("\nSPEC 9.7 example A — a plain three-in-a-row at chain 1")
+got, runs, chain, left = scored({(15, c): RED for c in range(3)})
+check("3 x TileValue[1] = 60, no bonuses", got, 60)
+check("one run", runs, 1)
+
+print("\nrun length bonus (SPEC 9.3): the run pays per tile AND per length")
+for length, want in ((3, 3 * 20 + 0),
+                     (4, 4 * 20 + 100),
+                     (5, 5 * 20 + 300),
+                     (6, 6 * 20 + 600)):
+    got, runs, chain, left = scored({(15, c): RED for c in range(length)})
+    check(f"a run of {length} pays {want}", got, want)
+
+print("\n...and a run longer than 6 is a vertical one (SPEC 9.3 caps at 7+)")
+got, runs, chain, left = scored({(r, 0): RED for r in range(9, 16)})
+check("seven down a column pays 7 x 20 + 1000", got, 7 * 20 + 1000)
+
+print("\nsimultaneous run bonus (SPEC 9.4) — the shared cell scores twice")
+got, runs, chain, left = scored(
+    {(15, 0): RED, (15, 1): RED, (15, 2): RED, (13, 0): RED, (14, 0): RED})
+check("two runs found", runs, 2)
+check("3x20 + 3x20 + MultiBonus[2] = 320", got, 3 * 20 + 3 * 20 + 200)
+
+print("\nchain depth (SPEC 9.1) — the second step is worth 50 a tile, not 20")
+got, runs, chain, left = scored(
+    {(15, 0): RED, (15, 1): RED, (15, 2): RED,
+     (14, 0): YELLOW, (13, 1): YELLOW, (14, 2): YELLOW})
+check("the board is clear", left, {})
+check("60 at chain 1 then 150 at chain 2", got, 3 * 20 + 3 * 50)
+
+print("\nlevels (SPEC 10.1) — 30 tiles, surplus carries, +1000 for the level")
+got, runs, chain, left = scored({(15, c): RED for c in range(3)}, cleared=29)
+check("the level advanced", peek("Level"), 2)
+check("the surplus carried over", peek("TilesCleared"), 2)
+check("60 for the run and BONUS_LEVELUP for the level", got, 60 + 1000)
+
+print("\n...at most one advance a step, however much goes at once")
+block = {}
+for r in range(4, 16):                          # 12 rows x 6 = 72 red tiles,
+    for c in range(6):                          #   every one of them in a run
+        block[(r, c)] = RED
+got, runs, chain, left = scored(block, cleared=0, limit=900)
+check("the board is clear", left, {})
+check("one level, not two", peek("Level"), 2)
+check("42 tiles of surplus carried", peek("TilesCleared"), 72 - 30)
+
+print("\nthe score clamps at 9999999 and does not wrap (SPEC 9)")
+got, runs, chain, left = scored({(15, c): RED for c in range(3)},
+                                start=9999950)
+check("9999950 + 60 clamps", got, 9999999)
+got, runs, chain, left = scored({(15, c): RED for c in range(3)},
+                                start=9999999)
+check("...and stays there", got, 9999999)
+
+print("\nsoft drop pays a point a row (SPEC 9.6)")
+set_board({})
+poke("Level", 1)
+poke("TilesCleared", 0)
+poke("PieceCol", 2)
+poke("PieceRow", 0)
+poke("GravityTimer", 48)
+poke("PlayState", PLAY_FALLING)
+set_score(0)
+frames(3)                                       # release, so DOWN is fresh
+r0 = peek("PieceRow")
+frames(12, ["down"])
+rows = peek("PieceRow") - r0
+check("four rows in 12 frames", rows, 4)
+check("one point each", score(), rows)
+frames(48)
+check("a row that fell at gravity's rate pays nothing", score(), rows)
+
+print("\nthe panel shows what RAM holds, all seven digits, zero padded")
+got, runs, chain, left = scored({(15, c): RED for c in range(3)})
+frames(4)                                       # let the flush catch up
+check("SCORE reads 0000060", panel(SCORE_X, SCORE_Y, SCORE_DIGITS),
+      [FONT_DIGIT_0 + int(d) for d in "0000060"])
+check("...and that is the number in RAM",
+      digits(SCORE_X, SCORE_Y, SCORE_DIGITS), got)
+got, runs, chain, left = scored({(15, c): RED for c in range(3)},
+                                level=8, cleared=29)     # ...which levels up
+frames(4)
+check("the LEVEL box followed the advance, tens over units",
+      panel(18, 17, 1) + panel(18, 18, 1),
+      [FONT_DIGIT_0 + 0, FONT_DIGIT_0 + 9])
+
+print("\nthe high score is taken live, the instant it is passed (SPEC 9.8)")
+set_high(10000)                                 # HIGH_INIT, and HighOwned = 0
+got, runs, chain, left = scored({(15, c): RED for c in range(3)},
+                                level=12, start=9990)
+check("the score passed it", got, 10050)
+check("the high score followed it up", high(), 10050)
+check("it carries the level it was set on, in BCD", peek("HighLevel"), 0x12)
+check("the game owns it now", peek("HighOwned"), 1)
+check("and the flash is running", peek("HighFlash"), 6)
+
+print("\n...and it keeps tracking while the run holds it")
+got, runs, chain, left = scored({(15, c): RED for c in range(3)},
+                                level=7, start=got)
+check("the high score moved with the score", high(), got)
+check("...and so did its level", peek("HighLevel"), 0x07)
+check("the fanfare and the flash were one-shot", peek("HighOwned"), 1)
+
+print("\n...but a score below it leaves it alone")
+before = high()
+got, runs, chain, left = scored({(15, c): RED for c in range(3)}, start=0)
+check("the high score stood", high(), before)
+
+print("\nthe HIGH field flashes on the overtake, and ends up readable")
+set_high(10000)
+scored({(15, c): RED for c in range(3)}, start=9990)
+frames(4)
+lit = panel(HIGH_X, HIGH_Y, SCORE_DIGITS)
+check("the digits are up", digits(HIGH_X, HIGH_Y, SCORE_DIGITS), 10050)
+frames(13)                                      # 15 frames is half a blink
+dark = panel(HIGH_X, HIGH_Y, SCORE_DIGITS)
+check("half a blink later the field is blank", dark, [0] * SCORE_DIGITS)
+for _ in range(120):                            # 6 half blinks of 15 frames
+    frames(1)
+    if peek("HighFlash") == 0:
+        break
+check("the flash ran itself out", peek("HighFlash"), 0)
+frames(4)
+check("and left the digits up", panel(HIGH_X, HIGH_Y, SCORE_DIGITS), lit)
+set_high(9999999)
+
+print("\ngravity (SPEC 10.2) — frames per row, read back off a real fall")
+SPEED = {0: [48, 43, 38, 34, 30, 26, 23, 20, 17, 15, 13, 11, 9, 8, 7, 6],
+         1: [40, 36, 32, 28, 25, 22, 19, 17, 14, 13, 11, 9, 8, 7, 6, 5]}
+was_region = peek("Region")
+set_board({})
+poke("PlayState", PLAY_FALLING)
+poke("PieceCol", 2)
+for region, name in ((0, "NTSC"), (1, "PAL")):
+    poke("Region", region)
+    got = []
+    for level in list(range(1, 17)) + [17, 99]:
+        poke("Level", level)
+        poke("PieceRow", 0)
+        poke("GravityTimer", 1)                 # the next frame steps a row
+        frames(1)                               #   and reloads the timer from
+        got.append(peek("GravityTimer"))        #   ScoreGravity
+    check(f"{name} levels 1-16", got[:16], SPEED[region])
+    check(f"{name} caps at level 16 for 17 and 99", got[16:],
+          [SPEED[region][15]] * 2)
+poke("Region", was_region)
 
 print()
 print(f"{len(fails)} FAILED: {fails}" if fails else "all checks passed")

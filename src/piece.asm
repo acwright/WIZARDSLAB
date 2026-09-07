@@ -297,9 +297,15 @@ PieceLock:
 
 ; -----------------------------------------------------------------------------
 ;   PieceFallRate — frames per row for this frame
-;   Out: A = frame count.  Modifies: A, X, Tmp0
+;   Out: A = frame count, C CLEAR if that rate is the soft drop's.
+;        Modifies: A, X, Tmp0
 ;   SPEC 5.5, 11.3 — soft drop substitutes its own rate and is ignored when
 ;   gravity is already the faster of the two (levels 14+ on NTSC).
+;
+;   The carry is what pays for the soft drop: SPEC 9.6 gives a point per row
+;   "descended under soft drop", and a row that fell at gravity's rate with
+;   DOWN held down was not one, so holding DOWN at level 16 earns nothing.
+;   Working it out here costs nothing — the comparison has already happened.
 ; -----------------------------------------------------------------------------
 PieceFallRate:
   jsr ScoreGravity              ; Speed[level] for this region
@@ -310,10 +316,13 @@ PieceFallRate:
   ldx Region
   lda SoftDropRate,x
   cmp Tmp0                      ; C clear = soft drop is the faster
-  bcc @Done
+  bcc @Soft
 @Gravity:
   lda Tmp0
-@Done:
+  sec
+  rts
+@Soft:
+  clc
   rts
 
 ; -----------------------------------------------------------------------------

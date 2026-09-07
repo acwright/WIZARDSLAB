@@ -168,6 +168,11 @@ BONUS_BOMB          = $0300
 BONUS_PRISM         = $0400
 BONUS_LEVELUP       = $1000
 STAR_SHIFT_CAP      = 3         ; Three doublings — x8
+HIGH_FLASH_BLINKS   = 6         ; Half-blinks of the HIGH field when the score
+                                ;   overtakes it (SPEC 9.8) — three dark, three
+                                ;   lit, ending lit. At SPEC 14's 30-frame
+                                ;   blink period that is about a second and a
+                                ;   half, and play never stops for it.
 SCORE_BYTES         = 4         ; 8 nibbles packed BCD; the top one stays 0,
                                 ;   so 7 digits show and the score wraps at
                                 ;   10,000,000.

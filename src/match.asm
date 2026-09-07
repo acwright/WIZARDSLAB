@@ -271,9 +271,10 @@ ScanLine:
 ;   vertical one at once, and it clears once while both runs score (SPEC 6.1).
 ;   The union is what the MARKS bitmap is for.
 ;
-;   P4 SCORES HERE. ScanLen and ScanColor still describe the run at the point
-;   RunCount is bumped, which is the only moment they do — the mark loop below
-;   counts ScanLen down to zero on its way back along the line.
+;   SCORING HAPPENS HERE, before the mark loop and for the same reason the
+;   comment above used to promise it would: ScanLen still describes the run at
+;   this point and nowhere else, because the mark loop counts it down to zero
+;   on its way back along the line. MatchScoreRun leaves it alone.
 ; -----------------------------------------------------------------------------
 MatchEmit:
   lda ScanLen
@@ -281,6 +282,7 @@ MatchEmit:
   bcc @Done                     ; Two in a row is not a run
 
   inc RunCount
+  jsr MatchScoreRun             ; SPEC 8 step 2, per run
   lda ScanIdx
   sec
   sbc ScanStep                  ; Back onto the run's last cell
@@ -296,6 +298,51 @@ MatchEmit:
   bne @Mark
 @Done:
   rts
+
+; -----------------------------------------------------------------------------
+;   MatchScoreRun — the two per-run awards of SPEC 8 step 2
+;   In:  ScanLen = run length, ChainStep = the cascade step this is
+;   Out: nothing.  Modifies: A, X, Y.  Leaves ScanLen and ScanColor alone.
+;
+;       cascade_pts += length * TileValue[chain]
+;       cascade_pts += LengthBonus[length]
+;
+;   A cell in a horizontal run AND a vertical one is scored by both, and
+;   removed once (SPEC 6.1) — which is why this is per run and not per marked
+;   cell, and why it runs before the union in MARKS has anything to say.
+;
+;   MultiBonus is NOT here: it is per step, not per run, and CascadeStep adds
+;   it once the four passes have finished counting.
+; -----------------------------------------------------------------------------
+MatchScoreRun:
+  ldx ChainStep
+  dex                           ; TileValue is indexed by chain - 1 ...
+  cpx #8
+  bcc @Chain
+  ldx #7                        ;   ... and flattens out at 8 (SPEC 9.1)
+@Chain:
+  ldy ScanLen                   ; The multiply is Y additions (score.asm)
+  lda TileValueLo,x
+  pha
+  lda TileValueHi,x
+  tax
+  pla
+  jsr CascadeAddTimes
+
+  ldx ScanLen
+  dex
+  dex
+  dex                           ; LengthBonus is indexed by length - 3 ...
+  cpx #5
+  bcc @Length
+  ldx #4                        ;   ... and flattens out at 7 (SPEC 9.3). A
+@Length:                        ;   vertical run can be all sixteen rows long
+  lda LengthBonusLo,x
+  pha
+  lda LengthBonusHi,x
+  tax
+  pla
+  jmp CascadeAdd
 
 ; -----------------------------------------------------------------------------
 ;   MarksClear / MarkSet / MarkTest — the 16-byte bitmap

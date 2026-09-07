@@ -20,12 +20,20 @@ are read off their screenshots with tools/read-screen.py, which is why the well
 is compared and not the board: a screenshot is all VICE gives us, and the well
 IS the board (SPEC 3.3 — the board byte is the tile index).
 
+The SCORE and LEVEL boxes are compared the same way, off the same screenshots,
+because SPEC 9 does every addition in decimal mode and three machines agreeing
+on seven digits is the only cross-platform check of that there is. It only says
+something when the game being played actually scores, which with no input
+depends on the seed dealing three of a colour into the spawn column — the same
+limitation the well has, and the run says so when it happens.
+
 Run it from the repository root. Exits non-zero if the three disagree.
 """
 import base64
 import json
 import os
 import subprocess
+import socket
 import sys
 import re
 import time
@@ -42,6 +50,9 @@ DBGFILE = os.environ.get("WL_DBGFILE", "/tmp/wl.dbg")
 
 BOARD_W, BOARD_H, STRIDE = 6, 16, 8
 WELL_X, WELL_Y = 1, 4                       # Panel-relative (SPEC 12.2)
+SCORE_X, SCORE_Y, SCORE_DIGITS = 12, 5, 7
+LEVEL_X, LEVEL_Y = 18, 17                   # Tens at LEVEL_Y, units below
+FONT_DIGIT_0 = 16                           # constants.inc
 PANEL_X = {"VIC20": 0, "C64": 9}            # SPEC 12.4
 
 # Long enough for five pieces to fall thirteen rows at level 1 and for the
@@ -52,6 +63,28 @@ COMMODORE_CYCLES = "90000000"
 AC6502_CYCLES = 90000000                    # The same game, the same length
 
 
+def require_free_port(port):
+    """Fail loudly if something is already listening on the debug port.
+
+    A stale emulator left over from an earlier run keeps the port, the one
+    started here dies with EADDRINUSE into /dev/null, and every rpc call below
+    then talks to the OTHER machine — a different cartridge, hours of cycles
+    in. It looks exactly like the game under test behaving impossibly, and it
+    cost a whole debugging session once already.
+    """
+    s = socket.socket()
+    s.settimeout(0.5)
+    try:
+        s.connect(("127.0.0.1", port))
+    except OSError:
+        return                                  # nothing listening — good
+    finally:
+        s.close()
+    sys.exit(f"port {port} already has a listener — an emulator from an "
+             f"earlier run is still alive. Kill it (lsof -nP -iTCP:{port}) "
+             f"and try again.")
+
+
 def ac6502_board():
     """Boot the AC6502 DEBUG cartridge, play to game over, return the board."""
     syms = {}
@@ -60,6 +93,7 @@ def ac6502_board():
         if m:
             syms[m.group(1)] = int(m.group(2), 16)
 
+    require_free_port(PORT)
     proc = subprocess.Popen(
         ["6502", "run", "--headless", "--console", "video", "--pause",
          "--cart", os.path.join(ROOT, "AC6502", "WizardsLab.crt"),
@@ -99,9 +133,30 @@ def ac6502_board():
                                  "length": 1})["data"]
         board = rpc("mem.read", {"space": "cpu", "address": syms["Board"],
                                  "length": 160})["data"]
-        return base64.b64decode(state)[0], base64.b64decode(board)
+        score = rpc("mem.read", {"space": "cpu", "address": syms["ScoreLo"],
+                                 "length": 4})["data"]
+        level = rpc("mem.read", {"space": "cpu", "address": syms["Level"],
+                                 "length": 1})["data"]
+        return (base64.b64decode(state)[0], base64.b64decode(board),
+                base64.b64decode(score), base64.b64decode(level)[0])
     finally:
         proc.terminate()
+
+
+def unbcd(raw):
+    """Packed BCD, low byte first, as an integer."""
+    v = 0
+    for byte in reversed(raw):
+        v = v * 100 + (byte >> 4) * 10 + (byte & 0x0F)
+    return v
+
+
+def read_digits(grid, x0, col, row, width):
+    """A run of digit glyphs off a screen, or None if any cell is not one."""
+    cells = [grid[row][x0 + col + i] for i in range(width)]
+    if any(not (FONT_DIGIT_0 <= c < FONT_DIGIT_0 + 10) for c in cells):
+        return None
+    return int("".join(str(c - FONT_DIGIT_0) for c in cells))
 
 
 def commodore_well(plat, target, shot):
@@ -118,7 +173,14 @@ def commodore_well(plat, target, shot):
         sys.exit(f"crosscheck: {plat} wrote no screenshot — it did not boot")
     _, grid, _ = read_screen(path)
     x0 = PANEL_X[plat] + WELL_X
-    return [row[x0:x0 + BOARD_W] for row in grid[WELL_Y:WELL_Y + BOARD_H]]
+    well = [row[x0:x0 + BOARD_W] for row in grid[WELL_Y:WELL_Y + BOARD_H]]
+    panel = PANEL_X[plat]
+    score = read_digits(grid, panel, SCORE_X, SCORE_Y, SCORE_DIGITS)
+    level = read_digits(grid, panel, LEVEL_X, LEVEL_Y, 1)
+    units = read_digits(grid, panel, LEVEL_X, LEVEL_Y + 1, 1)
+    if level is not None and units is not None:
+        level = level * 10 + units
+    return well, score, level
 
 
 def board_well(board):
@@ -133,13 +195,18 @@ def show(well):
 
 def main():
     os.chdir(ROOT)
-    state, board = ac6502_board()
+    state, board, score, level = ac6502_board()
     wells = {"AC6502": board_well(board)}
+    scores = {"AC6502": unbcd(score)}
+    levels = {"AC6502": level}
     print(f"AC6502: up to {AC6502_CYCLES} cycles, GameState {state}"
-          f" ({'GAMEOVER' if state == 3 else 'still playing'})")
+          f" ({'GAMEOVER' if state == 3 else 'still playing'}),"
+          f" score {scores['AC6502']}, level {level}")
     for plat, target in (("VIC20", "WizardsLab"), ("C64", "WizardsLab")):
-        wells[plat] = commodore_well(plat, target, "WizardsLab-crosscheck.png")
-        print(f"{plat}: {COMMODORE_CYCLES} cycles, well read off the screen")
+        wells[plat], scores[plat], levels[plat] = commodore_well(
+            plat, target, "WizardsLab-crosscheck.png")
+        print(f"{plat}: {COMMODORE_CYCLES} cycles, well read off the screen,"
+              f" score {scores[plat]}, level {levels[plat]}")
 
     print("\nthe well, as the AC6502 has it in RAM:")
     show(wells["AC6502"])
@@ -153,10 +220,22 @@ def main():
             fails.append(f"{plat}'s well differs from the AC6502's")
             print(f"\n{plat} has:")
             show(wells[plat])
+        if scores[plat] != scores["AC6502"]:
+            fails.append(f"{plat} scored {scores[plat]}, the AC6502 "
+                         f"{scores['AC6502']} — decimal mode disagrees")
+        if levels[plat] != levels["AC6502"]:
+            fails.append(f"{plat} is on level {levels[plat]}, the AC6502 "
+                         f"on {levels['AC6502']}")
 
     tiles = sum(1 for row in wells["AC6502"] for v in row if v)
     if tiles < 9:
         fails.append("fewer than three pieces landed; the run proves nothing")
+    if not scores["AC6502"]:
+        print("note: nothing matched in this game, so the score comparison is"
+              " three zeroes.\n      The pieces all land in the spawn column"
+              " with no input, and whether that\n      column ever holds three"
+              " of a colour is down to the seed. Same limit as\n      the well:"
+              " a CLEAR cannot be planted through VICE (PLAN.md P3).")
 
     print()
     if fails:
