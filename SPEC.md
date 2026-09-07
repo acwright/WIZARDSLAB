@@ -582,10 +582,22 @@ SETTLE:
   ARE delay, then spawn.
 ```
 
-`EFFECTQ` is a 96-entry ring of 2 bytes each (packed `glyph|row|col`) — 192
-bytes worst case, but a 32-entry (64-byte) queue is sufficient in practice
-because reagent density is bounded; on overflow, drop the effect and continue.
-**Recommend 48 entries (96 bytes)** with a documented drop-on-overflow.
+`EFFECTQ` is a ring of **48 entries of one byte each**: the board index of a
+pending detonation, and nothing else.
+
+An earlier draft of this section budgeted two bytes an entry for a packed
+`glyph|row|col`, which turned out to be a copy of something the game already
+has. Marked cells are not zeroed until step 6 and the queue is drained in step
+4, so a reagent is still sitting on the board when its entry pops and its glyph
+and its colour are one `LDA BOARD,X` away — the board byte *is* the tile
+([§3.3](#33-cell-values)). Half the RAM for nothing.
+
+Termination bounds the queue at 96 pushes over a whole step, and 48 entries
+is far more than reagent density ever reaches: at most one reagent a piece
+([§5.2](#52-generation)), a ring that is being drained as it is filled, and
+47 usable slots. On overflow the effect is **dropped** and the cascade carries
+on — the cell is still marked, still scored and still removed, it simply does
+not detonate.
 
 ---
 
@@ -675,11 +687,25 @@ fireball: TriggerBonus                   = 500
                                            1280
 ```
 
-**C. Same as B, but a star was caught in the blast and the cascade continues
-one more step for another 400.**
+**C. Same as B, but the run of four is closed by a prism, and a star was caught
+in the blast.**
 ```
-(1280 + 400) × 2 = 3360
+as B — the run is still four long, still red, and the
+fireball still finds the same eight               = 1280
+prism closing the run: TriggerBonus                =  400
+                                                    ————
+                                                     1680
+star caught in the blast: × 2                        3360
 ```
+
+*This example used to read "the cascade continues one more step for another
+400", which no board can do: a further step is at chain 3 or deeper, and the
+cheapest run there pays 3 × 100 = 300 while the next one up pays 4 × 100 +
+`LengthBonus[4]` = 500. There is no 400 among them. The one award of exactly
+400 available anywhere in a cascade is a prism's, so the example now uses one —
+same total, and it exercises the wildcard, the fireball and the star at once.
+The star still doubles points scored **before** it cleared, which is the thing
+the example exists to show.*
 
 **D. Two bolts and a bomb chained at depth 4.** Roughly 21 + 21 + 9 tiles at
 `EffectValue[4]` = 240 → ~12,240 plus 1100 in trigger bonuses. This is the
@@ -1302,7 +1328,7 @@ AC6502 and C64 share SID driver code almost verbatim (register base differs:
 |---|---|---|
 | `BOARD` | 160 | 20 rows × 8 stride, page-aligned |
 | `MARKS` | 16 | 1 byte per row, bits 0–5 |
-| `EFFECTQ` | 96 | 48 entries × 2 bytes |
+| `EFFECTQ` | 48 | 48 entries × 1 byte — a board index ([§8](#8-cascade-resolution)) |
 | `DIRTY` | 192 | 64 entries × 3 bytes (screen col, screen row, tile) |
 | Piece state | 8 | column, row, A/B/C, rotation |
 | Next piece | 3 | |
@@ -1313,7 +1339,7 @@ AC6502 and C64 share SID driver code almost verbatim (register base differs:
 | RNG seed, frame counter | 4 | |
 | State machine, flags | 8 | |
 | Audio state | 16 | |
-| **Total** | **~560 bytes** | 566 measured — 34 zero page, 532 BSS; plus row-pointer tables in ROM |
+| **Total** | **~560 bytes** | 522 measured — 38 zero page, 484 BSS; plus row-pointer tables in ROM |
 
 Fits the VIC-20's constrained RAM with room to spare, which is the whole point
 of designing to the tightest target first. In practice the whole of BSS lands

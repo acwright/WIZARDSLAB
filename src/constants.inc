@@ -212,8 +212,20 @@ PLAY_ARE            = 5
 
 ; --- Buffer sizes (SPEC 17.1) ------------------------------------------------
 MARKS_BYTES         = 16        ; One byte per row, bits 0-5
-EFFECTQ_ENTRIES     = 48        ; 2 bytes each; drop on overflow
-EFFECTQ_BYTES       = EFFECTQ_ENTRIES * 2
+EFFECTQ_ENTRIES     = 48        ; ONE byte each — the board index of a pending
+EFFECTQ_BYTES       = EFFECTQ_ENTRIES   ;   detonation, and nothing else.
+                                ;   SPEC 8 budgeted two bytes for a packed
+                                ;   glyph/row/column, which is a copy of what
+                                ;   the board already holds: cells are not
+                                ;   zeroed until step 6 and the queue is drained
+                                ;   in step 4, so the tile is still there when
+                                ;   the effect pops and its glyph and colour are
+                                ;   one `lda Board,x` away. Half the RAM for
+                                ;   nothing (SPEC 17.1).
+                                ;   A ring keeps one slot free, so 47 pending
+                                ;   detonations. On overflow an effect is
+                                ;   dropped rather than growing the buffer (D6);
+                                ;   at one reagent a piece it is not reachable.
 DIRTY_ENTRIES       = 64        ; 3 bytes each: offset lo, offset hi, tile
 DIRTY_BYTES         = DIRTY_ENTRIES * 3
 DIRTY_FLUSH_MAX     = 24        ; Cells pushed to the screen per frame.

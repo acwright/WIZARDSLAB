@@ -8,10 +8,10 @@
 ;   BUILD STATUS
 ;   ------------
 ;   Pieces spawn, steer, rotate, fall and lock, runs of three or more clear,
-;   the pile falls into the holes, chains keep going until nothing matches, and
-;   all of it scores and ramps the level (PLAN.md P2, P3, P4). The clear is
-;   still instant: GLOW and SHATTER are P6's, and slot into CascadeEnter
-;   between the scan and the fall.
+;   the pile falls into the holes, chains keep going until nothing matches, all
+;   of it scores and ramps the level, and the five reagents fire and set each
+;   other off (PLAN.md P2, P3, P4, P5). The clear is still instant: GLOW and
+;   SHATTER are P6's, and slot into CascadeEnter between the scan and the fall.
 ; =============================================================================
 
 ; -----------------------------------------------------------------------------

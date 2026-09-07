@@ -76,11 +76,31 @@ checkboxes and the "Current Status" section as work progresses.**
   levels on both regions rather than out of the table it came from. Work RAM is
   566 bytes against SPEC §17.1's ~560; ROM use is 44% / 49% / 61% of 16 KB.
   `make crosscheck` now compares the SCORE and LEVEL boxes as well as the well.
-- Next: **P5 — reagents.** P4 leaves it the two halves it needs: `CascadeAdd` /
-  `CascadeAddTimes` for `EffectValue[chain]` and the trigger bonuses, and
-  `CascadeSettle` already applying `min(StarCount, 3)` doublings to the whole
-  cascade — nothing in P5 has to touch the accumulator's arithmetic, only feed
-  it. Read the P9 table below before starting.
+- **Phase P5 is done.** The game has reagents. A fireball wipes its colour off
+  the board, a bolt cuts a row and a column, a bomb takes its 3 × 3, a star
+  doubles the whole cascade and a prism pays its bonus — and anything caught by
+  one of them fires in its turn, through an effect queue that always drains.
+  Every one of the twenty-four cells of SPEC §7.4's interaction table is
+  checked with a witness cell that only the caught reagent could have reached,
+  and **SPEC §9.7 examples B and C come out at exactly 1280 and 3360**. The
+  reagent roll itself is finally verified: 300 pieces across all five level
+  bands against a Python model of `PieceGenerateNext`, byte for byte. P4 was
+  right that nothing here had to touch the accumulator's arithmetic — only feed
+  it. Work RAM is **522 bytes** against SPEC §17.1's ~560, forty-four *fewer*
+  than P4 used, because an EFFECTQ entry turned out to be one byte and not two;
+  ROM use is 47% / 51% / 64% of 16 KB.
+- P5 broke one thing that had been true since P1 and fixed it: `CascadeRemove`
+  marking every removed cell on the spot only worked while a step removed one
+  run's worth. Five bolts in one run remove 71 cells and the dirty ring holds
+  64, so it now falls back to the whole-well redraw cursor rather than dropping
+  marks nothing would ever make again. See the P5 table.
+- Next: **P6 — animation.** P5 leaves the shape it needs: a cascade step is a
+  scan, then the reagents, then a removal, with nothing between the marking and
+  the zeroing — which is exactly where `PLAY_GLOW` and `PLAY_SHATTER` go. Read
+  the P9 table below before starting, and note two things P5 settled that P6
+  inherits: a marked prism must be told apart by its **colour** and not its
+  glyph, and `CascadeRemove` is already the routine that decides how a step's
+  cells reach the screen.
 
 ---
 
@@ -194,7 +214,10 @@ Things a session working in this repository needs to know and cannot infer.
   the game under test doing something impossible, and it burned a session
   before `make crosscheck` was believed again. `playtest.py` and
   `crosscheck.py` now refuse to start when something is already listening
-  (`require_free_port`), and say which port to go and look at.
+  (`require_free_port`), and say which port to go and look at. `playtest.py`
+  also terminates its emulator from an `atexit` hook, because a test that
+  *raises* used to leave one holding the port and take the next run down with
+  it — one broken assertion, two lost runs.
 - **BSD `sed` has no `\b`.** Use Python for word-boundary rewrites in this repo.
 - **`vic20.inc` already defines `SCREEN_COLS` and `SCREEN_ROWS`.** The game's
   own screen constants are `SCR_COLS` / `SCR_ROWS` to avoid the collision.
@@ -655,29 +678,72 @@ three machines.
 
 ---
 
-### Phase P5 — Reagents
+### Phase P5 — Reagents — **done**
 
 **Goal:** the five reagents and the chain reactions between them (SPEC §7).
 
-- [ ] `PieceGenerateNext` gains the reagent roll — one per piece, `PSpecial`
-      and `ReagentThresholds` by level band
-- [ ] `EffectQClear` / `EffectQPush` / `EffectQPop`, drop-on-overflow per D6
-- [ ] `EffectFireball` — colour-scoped, board wide, prisms immune
-- [ ] `EffectBolt` — row plus column
-- [ ] `EffectBomb` — 3 × 3, clipped at edges
-- [ ] `EffectStar` — `StarCount`, capped at `STAR_SHIFT_CAP`
-- [ ] `EffectPrism` — `BONUS_PRISM`, no removal
-- [ ] Reagents removed by other reagents' effects are enqueued and fire
-- [ ] `EffectValue[chain]` and the trigger bonuses — through `CascadeAddTimes`
+- [x] `PieceGenerateNext` gains the reagent roll — one per piece, `PSpecial`
+      and `ReagentThresholds` by level band. Written in P2, because the compare
+      chain is 20 bytes and leaving it out meant writing the same roll twice —
+      but never *checked* until now: P2's model check ran on a seed that dealt
+      no reagent at all
+- [x] `EffectQClear` / `EffectQPush` / `EffectQPop`, drop-on-overflow per D6
+- [x] `EffectFireball` — colour-scoped, board wide, prisms immune
+- [x] `EffectBolt` — row plus column
+- [x] `EffectBomb` — 3 × 3, clipped at edges
+- [x] `EffectStar` — `StarCount`; the cap is `CascadeSettle`'s, because SPEC
+      §9.6 doubles the whole cascade at the end and the count has to reach it
+- [x] `EffectPrism` — `BONUS_PRISM`, no removal
+- [x] Reagents removed by other reagents' effects are enqueued and fire
+- [x] `EffectValue[chain]` and the trigger bonuses — through `CascadeAddTimes`
       and `CascadeAdd`, which P4 left with exactly this shape
 - [x] `CascadeSettle` applies the star multiplier to the whole cascade — done in
       P4; `EffectStar` only has to count into `StarCount`
 
-**Exit criteria:** every row of SPEC §7.4's interaction table behaves as
-written; a fireball inside a run detonates once and prisms survive it; two
-bolts in one run cut two crosses; the effect queue always drains; a cascade
-containing three stars scores ×8 and not more; SPEC §9.7 example B produces
-1280 and example C produces 3360.
+**Exit criteria met**, and every number below is read out of RAM or off the
+VDP's own name table and compared with SPEC §7 and §9 arithmetic recomputed in
+Python, never with a constant the test made up.
+
+All twenty-four cells of SPEC §7.4's interaction table are exercised: a potion,
+a fireball, a bolt, a bomb, a star and a prism, each removed by a match, by a
+fireball, by a bolt and by a bomb, with a *witness* cell in every case that only
+the caught reagent's own effect can reach — so "it fired" is a tile that
+vanished and not a flag. **The prism survives a fireball and dies to a bolt and
+to a bomb.** A fireball inside a run detonates once; two of them in one run
+each pay 500 and the second finds nothing left. Two bolts in one run cut two
+crosses, and the tile in neither cross is still there afterwards. A bomb at the
+bottom-left corner takes four cells and not nine, and the sentinels are read
+back intact. One star doubles, two quadruple, three make ×8 and **four still
+make ×8**. The effect queue was empty at the end of all sixty-eight cascades
+the suite runs.
+
+**SPEC §9.7 example B pays exactly 1280 and example C exactly 3360**, both at
+chain 2 with the depth planted rather than played into.
+
+The reagent roll is checked against a Python model of `RngNext` / `RngRange` /
+`PieceGenerateNext`: **300 pieces across all five level bands, byte for byte,
+none differing** — dealt sixty at a time by re-entering `PLAY_ARE` on an empty
+board, one piece a frame. At most one reagent in any piece, all five types come
+out of the chain, a prism is always colour 6, and the observed rates track
+SPEC §5.3's table. `make crosscheck` compares the NEXT box across all three
+machines as well as the well, the SCORE and the LEVEL.
+
+Work RAM is **522 bytes** against SPEC §17.1's ~560 — *down* 44 from P4's 566,
+because the queue entry got smaller (below). ROM use is 47% / 51% / 64% of
+16 KB.
+
+**What came out of it.**
+
+| What happened | What it changed |
+|---|---|
+| SPEC §8 budgeted two bytes an EFFECTQ entry for a packed `glyph\|row\|col`. But marked cells are not zeroed until step 6 and the queue drains in step 4, so the reagent is **still on the board** when its entry pops | The entry is a board index and nothing else — one byte, and the glyph and colour are an `lda Board,x` away. 48 bytes back, and SPEC §8 and §17.1 now say so |
+| A prism is glyph 0 of colour 6, so by glyph alone it is a plain potion — and from P6 on, its four idle rotation frames read as a bolt or a bomb | `EffectEnqueue` tests the **colour before the glyph**. The same test is the fireball's immunity rule for free: a fireball's colour is never 6, so the compare that finds its targets skips prisms without a special case (SPEC §7.4) |
+| `CascadeRemove` marked every removed cell on the spot, with a comment saying it did not need the cursor treatment gravity gets — true when a step removed one run's worth. **Five bolts in one run remove 71 cells and the ring holds 64** | The comment was wrong the moment reagents existed. It now falls back to `RenderBoard`, the whole-well cursor `RenderFlush` already feeds (D12), rather than dropping marks that are never made again (D6). Measured: the screen is 3 frames behind when the cascade settles, and the ARE delay is 12 |
+| The effect queue's termination is not a limit, it is structural: an effect only ever *marks*, never adds, and `EffectHit` refuses a cell that is already marked | A cell is pushed at most once, so the drain is bounded by the 96 of the well. `EffectHit` is also the one place the wall test lives, which is what lets the walks run over the sentinel columns — a marked sentinel would be zeroed by `CascadeRemove` and the floor would grow a hole |
+| SPEC §9.7 example C read "one more step for another 400", and **no board can do that**: a further step is chain 3 or deeper, where the cheapest run pays 300 and the next 500 (§9.1, §9.3). There is no 400 among them | SPEC was wrong, so SPEC changed first (§9.7 C now closes example B's run of four with a prism, whose bonus is exactly 400). Same 3360, and it exercises the wildcard, the fireball and the star at once. The star still doubles points scored before it cleared, which is what the example is for |
+| A cascade step is now the scan **plus** the reagents. Measured on the worst board there is — a full well, a run of six, five bolts: scan 24,521 cycles, enqueue and resolve 22,145, against a 16,667-cycle frame | About three video frames for one step, which the game already tolerates: its frame is one trip round `GameLoop` however long that takes (P3). Not optimised, because it is the extreme and the common case is a handful of cells |
+| A `playtest.py` assertion that *raised* left the emulator holding the debug port, and the next run then refused to start | `atexit.register(proc.terminate)`. One broken assertion used to cost two runs (§3) |
+| The headless crosscheck game rolled no reagent at all, so comparing the three wells said nothing about SPEC §5.2 | The run now says which it was rather than looking like it proved something, and compares the NEXT box too. The glyph is part of every cell compared, so a divergence *would* show — there was none to see |
 
 ---
 

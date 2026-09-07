@@ -54,6 +54,18 @@ GravIdx:        .res 1      ; Cell the fall is walking up from, $FF when the
 GravMoved:      .res 1      ; Non-zero if this row of falling moved anything
 CellCount:      .res 1      ; Cells CascadeRemove has taken off the board
 
+; --- Reagent effects (SPEC 7.3, SPEC 8 step 4) -------------------------------
+;   EffectHit marks a cell, scores it and enqueues whatever it holds, so it
+;   clobbers A, X and Y — which means a walk that offers it cells cannot keep
+;   its cursor in a register either. Same reason GravIdx exists, and the same
+;   reason these are not Tmp0-Tmp3: those are dead across a JSR.
+EffectIdx:      .res 1      ; The cell the walk in progress is on
+EffectEnd:      .res 1      ; Where it stops. The bolt's row end, or the bomb's
+                            ;   last row
+EffectRow:      .res 1      ; First cell of the bomb's current row
+EffectArg:      .res 1      ; What the walk is looking for: the fireball's
+                            ;   colour key, or the bomb's last column
+
 ; --- Render and text scratch -------------------------------------------------
 ;   These ARE live across a JSR, unlike Tmp0-Tmp3, because text.asm calls
 ;   RenderMark once per cell and has to remember where it is. That is safe

@@ -21,6 +21,7 @@ other port and the game does not read it.
 
 Run it from the repository root. Exits non-zero if anything failed.
 """
+import atexit
 import base64
 import json
 import os
@@ -72,6 +73,12 @@ proc = subprocess.Popen(
      "--debug", "--debug-port", str(PORT), "--debug-token", TOKEN,
      "--timeout", "600s", "--quiet"],
     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+atexit.register(proc.terminate)         # A test that raises used to leave the
+                                        #   emulator holding the debug port,
+                                        #   and the NEXT run then refused to
+                                        #   start (require_free_port above).
+                                        #   One broken assertion cost two runs.
 
 def rpc(method, params=None):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method,
@@ -253,16 +260,22 @@ def tiles(bd):
     return {(i // 8, i % 8): bd[i] for i in range(128) if bd[i] not in (0, 0xFF)}
 
 
-def kick():
+def kick(chain=1):
     """Send the cascade into a scan with no piece involved.
 
     PLAY_GRAVITY with the row cursor spent and nothing moved is exactly the
     state PlayGravity settles out of, so the next frame runs cascade step 1
     against whatever the board holds — the same entry PieceLock uses, minus
     the piece.
+
+    `chain` is the depth the first step should run at. SPEC 9.1 and 9.2 pay by
+    chain depth, and reaching depth 2 by playing means a first step whose
+    gravity happens to make a second run — which is a whole extra board to get
+    right for every value being checked. Planting the counter tests the tables
+    and not the author's board design.
     """
     poke("PieceDirty", 0)
-    poke("ChainStep", 0)                        # PlayGravity increments it
+    poke("ChainStep", chain - 1)                 # PlayGravity increments it
     poke("GravIdx", 0xFF)
     poke("GravMoved", 0)
     poke("AnimTimer", 1)
@@ -288,15 +301,22 @@ def redraw():
     raise RuntimeError("the board redraw never finished")
 
 
-def cascade(cells, limit=400):
+queue_left = []                                 # See the drain check in P5
+
+
+def cascade(cells, limit=400, chain=1):
     """Run one whole cascade over `cells`; return what it left and what it did.
 
     RunCount is read every frame and the first non-zero one kept: it belongs
     to whichever step is running, and the last step of a cascade always finds
     nothing and leaves it at zero.
+
+    Every cascade run through here also records whether the effect queue was
+    left empty, because "the queue always drains" is a claim about all of them
+    and not about one test (SPEC 7.2).
     """
     set_board(cells)
-    kick()
+    kick(chain)
     runs, used = 0, 0
     while used < limit:
         frames(1)
@@ -305,6 +325,7 @@ def cascade(cells, limit=400):
             runs = peek("RunCount")
         if peek("PlayState") == PLAY_ARE:
             break
+    queue_left.append(peek("EffectQTail") - peek("EffectQHead"))
     return tiles(board()), runs, peek("ChainStep"), used
 
 
@@ -541,13 +562,13 @@ def digits(col, row, width):
     return int("".join(str(c - FONT_DIGIT_0) for c in cells))
 
 
-def scored(cells, level=1, cleared=0, start=0, limit=400):
+def scored(cells, level=1, cleared=0, start=0, limit=400, chain=1):
     """Run one cascade over a planted board and report what it paid."""
     poke("Level", level)
     poke("TilesCleared", cleared)
     set_score(start)
-    left, runs, chain, used = cascade(cells, limit)
-    return score(), runs, chain, left
+    left, runs, ended, used = cascade(cells, limit, chain)
+    return score(), runs, ended, left
 
 
 # The high score is out of the way for the scoring tests: it is real and it
@@ -701,6 +722,488 @@ for region, name in ((0, "NTSC"), (1, "PAL")):
     check(f"{name} caps at level 16 for 17 and 99", got[16:],
           [SPEED[region][15]] * 2)
 poke("Region", was_region)
+
+# =============================================================================
+#   P5 — reagents
+# =============================================================================
+#   SPEC 7. Every expectation below is built out of the SPEC tables copied
+#   here, so a test says "a run of three at chain one, plus what the fireball
+#   took, plus its trigger bonus" rather than a number somebody typed.
+#
+#   The board in each case is planted so that exactly ONE run exists — an
+#   accidental second one changes MultiBonus and every total after it — and so
+#   that whatever survives cannot match once gravity has dropped it. Both are
+#   checked, not assumed: `runs` and the leftover board are asserted every time.
+
+TILE_VALUE = [20, 50, 100, 200, 300, 400, 500, 600]     # SPEC 9.1, chain - 1
+EFFECT_VALUE = [30, 60, 120, 240, 350, 450, 550, 650]   # SPEC 9.2, chain - 1
+LENGTH_BONUS = {3: 0, 4: 100, 5: 300, 6: 600, 7: 1000}  # SPEC 9.3
+MULTI_BONUS = {1: 0, 2: 200, 3: 500, 4: 1000}           # SPEC 9.4
+TRIGGER = {"fireball": 500, "bolt": 300, "bomb": 300, "prism": 400}   # SPEC 9.5
+
+GLYPH_FIREBALL, GLYPH_BOLT, GLYPH_BOMB, GLYPH_STAR = 1, 2, 3, 4
+
+
+def match_pts(length, chain=1, runs=1):
+    """SPEC 8 step 2 for a single run."""
+    return length * TILE_VALUE[chain - 1] + LENGTH_BONUS[length] + MULTI_BONUS[runs]
+
+
+def effect_pts(cells, chain=1):
+    """SPEC 8 step 4 — per cell an effect took."""
+    return cells * EFFECT_VALUE[chain - 1]
+
+
+print("\nSPEC 7.3 — a fireball takes every remaining tile of its own colour")
+got, runs, chain, left = scored({
+    (15, 0): RED, (15, 1): RED, (15, 2): RED + GLYPH_FIREBALL,
+    (12, 4): RED, (10, 1): RED,                 # scattered, and no run of them
+    (13, 3): BLUE, (11, 5): GREEN})             # another colour is not its business
+check("one run", runs, 1)
+check("the reds went board-wide, the rest fell", left,
+      {(15, 3): BLUE, (15, 5): GREEN})
+check("run + 2 blasted reds + the trigger bonus", got,
+      match_pts(3) + effect_pts(2) + TRIGGER["fireball"])
+
+print("\n...and a prism is immune to it (SPEC 7.4)")
+got, runs, chain, left = scored({
+    (15, 0): RED, (15, 1): RED, (15, 2): RED + GLYPH_FIREBALL,
+    (12, 0): RED, (12, 4): WILD})
+check("the prism survived a red fireball", left, {(15, 4): WILD})
+check("nothing was paid for it", got,
+      match_pts(3) + effect_pts(1) + TRIGGER["fireball"])
+
+print("\n...two fireballs in one run each detonate, and the second finds nothing")
+got, runs, chain, left = scored({
+    (15, 0): RED + GLYPH_FIREBALL, (15, 1): RED + GLYPH_FIREBALL, (15, 2): RED,
+    (12, 0): RED, (10, 2): RED, (8, 4): RED})
+check("the board is clear", left, {})
+check("three reds blasted once, two trigger bonuses paid", got,
+      match_pts(3) + effect_pts(3) + 2 * TRIGGER["fireball"])
+
+print("\nSPEC 7.4, the FIREBALL column — what a red fireball catches also fires")
+FIRE_RUN = {(15, 0): RED, (15, 1): RED + GLYPH_FIREBALL, (15, 2): RED}
+BASE = match_pts(3) + TRIGGER["fireball"]
+
+got, runs, chain, left = scored({**FIRE_RUN, (12, 3): RED, (9, 4): CYAN})
+check("a potion just goes", got, BASE + effect_pts(1))
+check("...and the cell it could not reach fell", left, {(15, 4): CYAN})
+
+got, runs, chain, left = scored(
+    {**FIRE_RUN, (12, 3): RED + GLYPH_FIREBALL, (9, 4): CYAN})
+check("a fireball fires, finds its colour gone, and still pays", got,
+      BASE + effect_pts(1) + TRIGGER["fireball"])
+
+got, runs, chain, left = scored(
+    {**FIRE_RUN, (12, 3): RED + GLYPH_BOLT, (12, 5): GREEN, (9, 4): CYAN})
+check("a bolt fires: the green in its row went too", left, {(15, 4): CYAN})
+check("...and both effects were paid", got,
+      BASE + effect_pts(2) + TRIGGER["bolt"])
+
+got, runs, chain, left = scored(
+    {**FIRE_RUN, (12, 3): RED + GLYPH_BOMB,
+                      (11, 2): GREEN, (13, 4): BLUE, (9, 4): CYAN})
+check("a bomb fires: both corners of its block went", left, {(15, 4): CYAN})
+check("...and both effects were paid", got,
+      BASE + effect_pts(3) + TRIGGER["bomb"])
+
+got, runs, chain, left = scored(
+    {**FIRE_RUN, (12, 3): RED + GLYPH_STAR, (9, 4): CYAN})
+check("a star doubles the whole cascade, retroactively", got,
+      (BASE + effect_pts(1)) * 2)
+
+print("\nSPEC 7.3 — a bolt cuts its whole row and its whole column")
+got, runs, chain, left = scored({
+    (10, 2): RED, (10, 3): RED + GLYPH_BOLT, (10, 4): RED,
+    (10, 0): BLUE, (10, 1): GREEN, (10, 5): CYAN,       # the rest of the row
+    (12, 3): BLUE, (14, 3): GREEN, (15, 3): CYAN,       # the rest of the column
+    (13, 1): PURPLE})                                   # neither, so it lives
+check("one run", runs, 1)
+check("the cross is gone and nothing else is", left, {(15, 1): PURPLE})
+check("three tiles matched, six cut, one trigger bonus", got,
+      match_pts(3) + effect_pts(6) + TRIGGER["bolt"])
+
+print("\n...and two bolts in one run cut two crosses (SPEC 7.3)")
+got, runs, chain, left = scored({
+    (13, 2): RED + GLYPH_BOLT, (14, 2): RED, (15, 2): RED + GLYPH_BOLT,
+    (13, 0): BLUE, (13, 1): GREEN, (13, 3): CYAN, (13, 4): BLUE, (13, 5): GREEN,
+    (15, 0): CYAN, (15, 1): BLUE, (15, 3): GREEN, (15, 4): CYAN, (15, 5): BLUE,
+    (14, 5): PURPLE})
+check("one run", runs, 1)
+check("BOTH rows went, and the tile in neither did not", left,
+      {(15, 5): PURPLE})
+check("three matched, ten cut, two trigger bonuses", got,
+      match_pts(3) + effect_pts(10) + 2 * TRIGGER["bolt"])
+
+print("\nSPEC 7.4, the BOLT column — a bolt removes a prism, and everything fires")
+BOLT_RUN = {(15, 0): RED, (15, 1): RED + GLYPH_BOLT, (15, 2): RED}
+BASE = match_pts(3) + TRIGGER["bolt"]
+
+got, runs, chain, left = scored({**BOLT_RUN, (11, 1): BLUE, (8, 5): CYAN})
+check("a potion in the column goes", got, BASE + effect_pts(1))
+check("...and the tile out of reach fell", left, {(15, 5): CYAN})
+
+got, runs, chain, left = scored(
+    {**BOLT_RUN, (11, 1): BLUE + GLYPH_FIREBALL, (8, 4): BLUE, (8, 5): CYAN})
+check("a blue fireball fires and takes the far blue", left, {(15, 5): CYAN})
+check("...and pays for it", got,
+      BASE + effect_pts(2) + TRIGGER["fireball"])
+
+got, runs, chain, left = scored(
+    {**BOLT_RUN, (11, 1): BLUE + GLYPH_BOLT, (11, 4): GREEN, (8, 5): CYAN})
+check("a second bolt cuts its own row", left, {(15, 5): CYAN})
+check("...and pays for it", got, BASE + effect_pts(2) + TRIGGER["bolt"])
+
+got, runs, chain, left = scored(
+    {**BOLT_RUN, (11, 1): BLUE + GLYPH_BOMB, (10, 2): GREEN, (8, 5): CYAN})
+check("a bomb blows its own block", left, {(15, 5): CYAN})
+check("...and pays for it", got, BASE + effect_pts(2) + TRIGGER["bomb"])
+
+got, runs, chain, left = scored(
+    {**BOLT_RUN, (11, 1): BLUE + GLYPH_STAR, (8, 5): CYAN})
+check("a star caught by a bolt doubles the cascade", got,
+      (BASE + effect_pts(1)) * 2)
+
+got, runs, chain, left = scored({**BOLT_RUN, (11, 1): WILD, (8, 5): CYAN})
+check("a prism is NOT immune to a bolt", left, {(15, 5): CYAN})
+check("...and pays its flat bonus as well as its tile", got,
+      BASE + effect_pts(1) + TRIGGER["prism"])
+
+print("\nSPEC 7.3 — a bomb takes the 3 x 3 around it")
+got, runs, chain, left = scored({
+    (12, 2): RED, (13, 2): RED, (14, 2): RED + GLYPH_BOMB,
+    (13, 1): BLUE, (13, 3): GREEN,
+    (14, 1): GREEN, (14, 3): BLUE,
+    (15, 1): CYAN, (15, 2): BLUE, (15, 3): CYAN,
+    (12, 0): CYAN, (14, 5): PURPLE})            # outside the block
+check("one run", runs, 1)
+check("the block went and the two outside it fell", left,
+      {(15, 0): CYAN, (15, 5): PURPLE})
+check("three matched, seven blown", got,
+      match_pts(3) + effect_pts(7) + TRIGGER["bomb"])
+
+print("\n...clipped at the edges, and it does not reach past the wall")
+got, runs, chain, left = scored({
+    (0, 0): RED + GLYPH_BOMB, (0, 1): RED, (0, 2): RED,
+    (1, 0): BLUE, (1, 1): GREEN})
+check("the corner block went", left, {})
+check("three matched, two blown — not nine", got,
+      match_pts(3) + effect_pts(2) + TRIGGER["bomb"])
+bd = board()
+check("floor sentinels intact", all(v == 255 for v in bd[128:160]), True)
+check("side sentinels intact",
+      all(bd[r * 8 + 6] == 255 and bd[r * 8 + 7] == 255 for r in range(20)), True)
+
+print("\nSPEC 7.4, the BOMB column")
+BOMB_RUN = {(15, 0): RED, (15, 1): RED + GLYPH_BOMB, (15, 2): RED}
+BASE = match_pts(3) + TRIGGER["bomb"]
+
+got, runs, chain, left = scored({**BOMB_RUN, (14, 1): BLUE, (8, 5): CYAN})
+check("a potion in the block goes", got, BASE + effect_pts(1))
+check("...and the tile out of reach fell", left, {(15, 5): CYAN})
+
+got, runs, chain, left = scored(
+    {**BOMB_RUN, (14, 1): BLUE + GLYPH_FIREBALL, (8, 4): BLUE, (8, 5): CYAN})
+check("a fireball caught by a bomb fires", left, {(15, 5): CYAN})
+check("...and pays for it", got, BASE + effect_pts(2) + TRIGGER["fireball"])
+
+got, runs, chain, left = scored(
+    {**BOMB_RUN, (14, 1): BLUE + GLYPH_BOLT, (14, 5): GREEN, (8, 5): CYAN})
+check("a bolt caught by a bomb fires", left, {(15, 5): CYAN})
+check("...and pays for it", got, BASE + effect_pts(2) + TRIGGER["bolt"])
+
+got, runs, chain, left = scored(
+    {**BOMB_RUN, (14, 1): BLUE + GLYPH_BOMB, (13, 2): GREEN, (8, 5): CYAN})
+check("a bomb caught by a bomb fires", left, {(15, 5): CYAN})
+check("...and pays for it", got, BASE + effect_pts(2) + TRIGGER["bomb"])
+
+got, runs, chain, left = scored(
+    {**BOMB_RUN, (14, 1): BLUE + GLYPH_STAR, (8, 5): CYAN})
+check("a star caught by a bomb doubles the cascade", got,
+      (BASE + effect_pts(1)) * 2)
+
+got, runs, chain, left = scored({**BOMB_RUN, (14, 1): WILD, (8, 5): CYAN})
+check("a prism is not immune to a bomb either", left, {(15, 5): CYAN})
+check("...and pays its flat bonus", got,
+      BASE + effect_pts(1) + TRIGGER["prism"])
+
+print("\na reagent removed by another reagent's effect fires (SPEC 7.2)")
+got, runs, chain, left = scored({
+    (15, 0): RED + GLYPH_BOMB, (15, 1): RED, (15, 2): RED,
+    (14, 1): BLUE + GLYPH_BOLT,                 # in the bomb's block
+    (14, 0): GREEN, (14, 3): CYAN, (14, 4): PURPLE, (14, 5): GREEN,
+    (10, 1): YELLOW,                            # in the bolt's column
+    (12, 4): BLUE})                             # in neither
+check("the bomb's block and the bolt's cross both went", left, {(15, 4): BLUE})
+check("match, then two bomb cells, then four bolt cells, both bonuses", got,
+      match_pts(3) + effect_pts(2) + TRIGGER["bomb"]
+                   + effect_pts(4) + TRIGGER["bolt"])
+
+print("\nthe star multiplier, and its cap of x8 (SPEC 7.3, 9.6)")
+for stars, want in ((1, 2), (2, 4), (3, 8)):
+    cells = {(15, c): RED for c in range(3)}
+    for c in range(stars):
+        cells[(15, c)] = RED + GLYPH_STAR
+    got, runs, chain, left = scored(cells)
+    check(f"{stars} star(s) is x{want}", got, match_pts(3) * want)
+
+got, runs, chain, left = scored(
+    {(15, c): RED + GLYPH_STAR for c in range(4)})
+check("four stars is still x8, not x16", got, match_pts(4) * 8)
+
+print("\nthe prism's flat bonus, per prism cleared (SPEC 9.5)")
+got, runs, chain, left = scored({(15, 0): RED, (15, 1): RED, (15, 2): WILD})
+check("one prism closing a red run pays 400", got,
+      match_pts(3) + TRIGGER["prism"])
+got, runs, chain, left = scored({(15, c): WILD for c in range(3)})
+check("three prisms pay three times", got,
+      match_pts(3) + 3 * TRIGGER["prism"])
+
+print("\nSPEC 9.7 example B — a red fireball in a run of 4 at chain 2")
+#   Eight more reds, spread so that no three of them are contiguous in any of
+#   the four directions: rows 15, 13, 11 and 9 are two apart, so nothing is
+#   vertically or diagonally adjacent, and each row leaves a gap.
+EX_B = {(15, 0): RED, (15, 1): RED, (15, 2): RED + GLYPH_FIREBALL, (15, 3): RED,
+        (13, 0): RED, (13, 2): RED, (13, 4): RED,
+        (11, 1): RED, (11, 3): RED, (11, 5): RED,
+        (9, 0): RED, (9, 2): RED}
+got, runs, chain, left = scored(EX_B, chain=2)
+check("one run of four", runs, 1)
+check("the board is clear", left, {})
+check("200 + 100 + 0 + 480 + 500 = 1280", got,
+      match_pts(4, chain=2) + effect_pts(8, chain=2) + TRIGGER["fireball"])
+check("...which is the number SPEC 9.7 B prints", got, 1280)
+
+print("\nSPEC 9.7 example C — a prism closing the run, and a star in the blast")
+#   The run of four is closed by a prism, whose bonus is 400, and one of the
+#   eight reds the fireball finds is a star. That is SPEC 9.7 C as written —
+#   it used to say "one more step for another 400" and was changed here in P5,
+#   because no step at chain 3 or deeper can pay exactly 400 (the cheapest run
+#   there is 300 and the next is 500).
+EX_C = dict(EX_B)
+EX_C[(15, 3)] = WILD                            # the fourth cell of the run
+EX_C[(13, 0)] = RED + GLYPH_STAR                # caught by the fireball
+got, runs, chain, left = scored(EX_C, chain=2)
+check("one run of four", runs, 1)
+check("the board is clear", left, {})
+check("(1280 + 400) x 2 = 3360", got,
+      (match_pts(4, chain=2) + effect_pts(8, chain=2)
+       + TRIGGER["fireball"] + TRIGGER["prism"]) * 2)
+check("...which is the number SPEC 9.7 C prints", got, 3360)
+
+print("\n...and the doubling reaches points scored BEFORE the star cleared")
+EX_STAR = dict(EX_B)
+EX_STAR[(13, 0)] = RED + GLYPH_STAR
+got, runs, chain, left = scored(EX_STAR, chain=2)
+check("example B, doubled whole", got, 1280 * 2)
+
+print("\na reagent nobody removes does nothing (SPEC 7.2)")
+got, runs, chain, left = scored({
+    (15, 0): BLUE, (15, 1): GREEN, (15, 2): CYAN + GLYPH_FIREBALL,
+    (15, 3): PURPLE})
+check("no run, so nothing fired", runs, 0)
+check("the board is untouched", left,
+      {(15, 0): BLUE, (15, 1): GREEN, (15, 2): CYAN + GLYPH_FIREBALL,
+       (15, 3): PURPLE})
+check("and nothing scored", got, 0)
+
+print("\nthe reagent roll, against a model of SPEC 5.2 and 5.3")
+#   P2 checked the piece sequence against a model of the LFSR and found the
+#   colours right — but the seed it checked dealt no reagent at all, so the
+#   half of PieceGenerateNext that matters to P5 has never been read back
+#   against the tables it is supposed to be using. This deals pieces in bulk
+#   and compares every byte.
+#
+#   Pieces are dealt one a frame by re-entering PLAY_ARE: PlayAre spawns the
+#   preview, rolls a new one and draws it (main.asm), and with the board empty
+#   the spawn can never be blocked. Nothing is allowed to fall, so the well
+#   stays empty and the loop can run as long as it likes.
+
+LEVEL_BAND = [0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4]   # tables.inc
+P_SPECIAL = [38, 56, 69, 82, 92]                                # SPEC 5.3
+REAGENT_THRESHOLDS = [[77, 138, 195, 236], [77, 141, 192, 238],
+                      [82, 146, 197, 238], [79, 141, 195, 238],
+                      [79, 143, 199, 240]]
+COLOR_BASE, NUM_COLORS = 0x40, 6
+COLOR_MASK, GLYPH_MASK = 0xF8, 0x07
+
+
+class Lfsr:
+    """rng.asm: a 16-bit Galois LFSR with the $B400 taps, eight shifts a byte."""
+
+    def __init__(self, lo, hi):
+        self.lo, self.hi = lo, hi
+
+    def byte(self):
+        for _ in range(8):
+            carry = self.lo & 1
+            self.lo = ((self.lo >> 1) | ((self.hi & 1) << 7)) & 0xFF
+            self.hi >>= 1
+            if carry:
+                self.hi ^= 0xB4
+        return self.lo
+
+    def below(self, limit):
+        """RngRange: the HIGH byte of (random * limit), not a modulo."""
+        return (self.byte() * limit) >> 8
+
+
+def model_piece(rng, level):
+    """SPEC 5.2 — three colours, then one roll for the whole piece."""
+    cells = [COLOR_BASE + (rng.below(NUM_COLORS) << 3) for _ in range(3)]
+    roll = rng.byte()
+    band = LEVEL_BAND[min(level, 16) - 1]
+    if roll >= P_SPECIAL[band]:
+        return cells                            # No reagent this piece
+    which = rng.below(3)
+    kind = rng.byte()
+    edge = REAGENT_THRESHOLDS[band]
+    if kind < edge[0]:
+        cells[which] |= GLYPH_FIREBALL
+    elif kind < edge[1]:
+        cells[which] |= GLYPH_BOLT
+    elif kind < edge[2]:
+        cells[which] |= GLYPH_BOMB
+    elif kind < edge[3]:
+        cells[which] |= GLYPH_STAR
+    else:
+        cells[which] = WILD                     # A prism discards its colour
+    return cells
+
+
+def deal(level, count):
+    """Roll `count` pieces at `level`, and what the model says they should be."""
+    set_board({})
+    poke("Level", level)
+    poke("PieceDirty", 0)
+    rng = Lfsr(peek("RngLo"), peek("RngHi"))
+    got, want = [], []
+    for _ in range(count):
+        poke("PlayState", PLAY_ARE)
+        poke("AreTimer", 1)
+        frames(1)
+        got.append(list(read("NextA", 3)))
+        want.append(model_piece(rng, level))
+    return got, want
+
+
+for level in (1, 5, 8, 11, 16):
+    got, want = deal(level, 60)
+    band = LEVEL_BAND[min(level, 16) - 1]
+    carrying = [p for p in got if any(c & GLYPH_MASK or c == WILD for c in p)]
+    check(f"level {level} (band {band}): 60 pieces, none of them differing "
+          f"from the model",
+          [i for i, (g, w) in enumerate(zip(got, want)) if g != w], [])
+    check(f"...and at most one reagent in any of them (SPEC 5.2)",
+          max(sum(1 for c in p if c & GLYPH_MASK or c == WILD) for p in got), 1)
+    print(f"       ({len(carrying)} of 60 carried one; SPEC 5.3 says "
+          f"{P_SPECIAL[band]}/256 = {100 * P_SPECIAL[band] // 256}%)")
+
+print("\n...and every reagent the model and the machine agreed on was legal")
+seen = set()
+for level in (1, 5, 8, 11, 16):
+    got, _ = deal(level, 120)
+    for piece in got:
+        for cell in piece:
+            if cell == WILD:
+                seen.add("prism")
+            elif cell & GLYPH_MASK:
+                seen.add({1: "fireball", 2: "bolt", 3: "bomb",
+                          4: "star"}.get(cell & GLYPH_MASK, cell & GLYPH_MASK))
+check("all five reagents came out of the roll", sorted(seen),
+      ["bolt", "bomb", "fireball", "prism", "star"])
+check("a prism is colour 6 and nothing else (SPEC 5.2)",
+      all(c == WILD or (c & COLOR_MASK) != WILD
+          for level in (1,) for p in deal(level, 30)[0] for c in p), True)
+
+print("\na step BIGGER than the dirty ring still reaches the screen")
+#   The reagents are what made this reachable. Before P5 a step removed the
+#   cells one run had matched — a handful — and CascadeRemove marked each one
+#   on the spot. Five bolts in one run take 71, the ring holds 64, and a mark
+#   dropped by a full ring is never made again (D6): the tile would stay on
+#   the screen with nothing behind it on the board. CascadeRemove falls back to
+#   RenderBoard, and this is the test that says the fallback works — the VDP's
+#   own name table, read back and compared with the board cell by cell.
+AreDelay = [12, 10]                             # tables.inc, by region
+
+big = {}
+palette = [RED, YELLOW, GREEN, CYAN, BLUE, PURPLE]
+for r in range(2, 16):
+    for c in range(6):
+        big[(r, c)] = palette[(r + 2 * c) % 6]  # No run anywhere in it
+for c in range(6):
+    big[(15, c)] = RED                          # ...except this one
+for c in range(5):
+    big[(15, c)] |= GLYPH_BOLT                  # five of which cut a column
+
+poke("Level", 1)
+poke("TilesCleared", 0)
+set_score(0)
+set_board(big)
+redraw()                                        # The plant is only in RAM
+kick()
+biggest, used = 0, 0
+while used < 400:
+    frames(1)
+    used += 1
+    biggest = max(biggest, peek("CellCount"))
+    if peek("PlayState") == PLAY_ARE:
+        break
+#   The fallback is a CURSOR, so the screen is a few frames behind the board
+#   when the cascade settles rather than level with it — which is fine and is
+#   the point: the next piece does not arrive until the ARE delay is up
+#   (SPEC 5.6), and the redraw has to have landed by then. Waiting for it here
+#   and counting the frames is what says so.
+catchup = 0
+while catchup < 30 and not (peek("RedrawIdx") == 0xFF and peek("DirtyCount") == 0):
+    frames(1)
+    catchup += 1
+
+bd = board()
+vram = base64.b64decode(rpc("mem.read", {"space": "vram", "address": VRAM_NAMES,
+                                         "length": 32 * 24})["data"])
+screen = {}
+for r in range(16):
+    for c in range(6):
+        v = vram[(PANEL_Y + WELL_Y + r) * 32 + PANEL_X + WELL_X + c]
+        if v:
+            screen[(r, c)] = v
+print(f"  ({used} frames; the biggest single step removed {biggest} cells, "
+      f"and the screen caught up {catchup} frames later)")
+check("the cascade terminated", used < 400, True)
+check("one step removed more than the ring holds", biggest > 64, True)
+check("the screen caught up inside the ARE delay",
+      catchup <= AreDelay[peek("Region")], True)
+check("nothing floats", resting(tiles(bd)), True)
+check("no cell of the well differs between the board and the screen",
+      sorted(set(screen.items()) ^ set(tiles(bd).items())), [])
+
+print("\nwhat steps 3 and 4 cost, on the worst board above (measured)")
+#   MEASURED, not estimated, the same way P3's scan was: run to the routine,
+#   read the cycle counter, run to the next one, read it again. SPEC 8's steps
+#   3 and 4 are the reagents' whole share of a frame.
+def cycles():
+    return rpc("session.info")["cycles"]
+
+set_board(big)
+kick()
+rpc("exec.runTo", {"address": syms["MatchScan"], "timeout": "5s"})
+c0 = cycles()
+rpc("exec.runTo", {"address": syms["EffectEnqueueMarked"], "timeout": "5s"})
+c1 = cycles()
+rpc("exec.runTo", {"address": syms["CascadeRemove"], "timeout": "5s"})
+c2 = cycles()
+print(f"  (scan {c1 - c0} cycles, then enqueue + resolve {c2 - c1}, "
+      f"against a 16667-cycle frame)")
+check("the reagents cost less than the scan they follow", c2 - c1 < c1 - c0, True)
+frames(1)                                       # Back to the top of the loop
+while peek("PlayState") != PLAY_ARE and used < 800:
+    frames(1)
+    used += 1
+
+print("\nthe effect queue drained after every cascade in this run (SPEC 7.2)")
+check(f"{len(queue_left)} cascades, all of them empty at the end",
+      sorted(set(queue_left)), [0])
 
 print()
 print(f"{len(fails)} FAILED: {fails}" if fails else "all checks passed")

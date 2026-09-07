@@ -20,7 +20,11 @@ Board:          .res BOARD_BYTES
 
 ; --- Match / cascade state (SPEC 6.2, 8) -------------------------------------
 Marks:          .res MARKS_BYTES        ; One byte per row, bits 0-5 = columns
-EffectQ:        .res EFFECTQ_BYTES      ; Ring of pending reagent detonations
+EffectQ:        .res EFFECTQ_BYTES      ; Ring of pending reagent detonations —
+                                        ;   the board INDEX of each, one byte,
+                                        ;   because the tile is still on the
+                                        ;   board when the entry pops
+                                        ;   (constants.inc, SPEC 8)
 EffectQHead:    .res 1
 EffectQTail:    .res 1
 RunCount:       .res 1                  ; Runs resolved in the current step

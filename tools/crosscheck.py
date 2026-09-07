@@ -52,8 +52,12 @@ BOARD_W, BOARD_H, STRIDE = 6, 16, 8
 WELL_X, WELL_Y = 1, 4                       # Panel-relative (SPEC 12.2)
 SCORE_X, SCORE_Y, SCORE_DIGITS = 12, 5, 7
 LEVEL_X, LEVEL_Y = 18, 17                   # Tens at LEVEL_Y, units below
+NEXT_X, NEXT_Y = 11, 16                     # Cells A, B, C at NEXT_Y, +1, +2
 FONT_DIGIT_0 = 16                           # constants.inc
-PANEL_X = {"VIC20": 0, "C64": 9}            # SPEC 12.4
+COLOR_MASK, GLYPH_MASK = 0xF8, 0x07         # constants.inc
+WILD_BASE = 0x70
+PANEL_X = {"VIC20": 0, "C64": 9, "AC6502": 5}   # SPEC 12.4
+VRAM_NAMES = 0x1400                         # The TMS9918 name table (SPEC C.1)
 
 # Long enough for five pieces to fall thirteen rows at level 1 and for the
 # sixth spawn to be blocked. After that the game is frozen on the game-over
@@ -137,8 +141,18 @@ def ac6502_board():
                                  "length": 4})["data"]
         level = rpc("mem.read", {"space": "cpu", "address": syms["Level"],
                                  "length": 1})["data"]
+        # The NEXT box comes off the VDP and not out of NextA/B/C, so that it
+        # is the same three cells the Commodores can be read for. They are not
+        # the same thing at game over: a blocked spawn promotes the preview and
+        # never rolls another, so RAM holds the piece that killed the player
+        # while the box still shows the one before it.
+        nxt = [base64.b64decode(rpc("mem.read", {
+                   "space": "vram",
+                   "address": VRAM_NAMES + (NEXT_Y + i) * 32
+                              + PANEL_X["AC6502"] + NEXT_X,
+                   "length": 1})["data"])[0] for i in range(3)]
         return (base64.b64decode(state)[0], base64.b64decode(board),
-                base64.b64decode(score), base64.b64decode(level)[0])
+                base64.b64decode(score), base64.b64decode(level)[0], nxt)
     finally:
         proc.terminate()
 
@@ -180,7 +194,8 @@ def commodore_well(plat, target, shot):
     units = read_digits(grid, panel, LEVEL_X, LEVEL_Y + 1, 1)
     if level is not None and units is not None:
         level = level * 10 + units
-    return well, score, level
+    nxt = [grid[NEXT_Y + i][panel + NEXT_X] for i in range(3)]
+    return well, score, level, nxt
 
 
 def board_well(board):
@@ -195,15 +210,16 @@ def show(well):
 
 def main():
     os.chdir(ROOT)
-    state, board, score, level = ac6502_board()
+    state, board, score, level, nxt = ac6502_board()
     wells = {"AC6502": board_well(board)}
     scores = {"AC6502": unbcd(score)}
     levels = {"AC6502": level}
+    nexts = {"AC6502": nxt}
     print(f"AC6502: up to {AC6502_CYCLES} cycles, GameState {state}"
           f" ({'GAMEOVER' if state == 3 else 'still playing'}),"
           f" score {scores['AC6502']}, level {level}")
     for plat, target in (("VIC20", "WizardsLab"), ("C64", "WizardsLab")):
-        wells[plat], scores[plat], levels[plat] = commodore_well(
+        wells[plat], scores[plat], levels[plat], nexts[plat] = commodore_well(
             plat, target, "WizardsLab-crosscheck.png")
         print(f"{plat}: {COMMODORE_CYCLES} cycles, well read off the screen,"
               f" score {scores[plat]}, level {levels[plat]}")
@@ -226,10 +242,29 @@ def main():
         if levels[plat] != levels["AC6502"]:
             fails.append(f"{plat} is on level {levels[plat]}, the AC6502 "
                          f"on {levels['AC6502']}")
+        if nexts[plat] != nexts["AC6502"]:
+            fails.append(f"{plat}'s NEXT box holds {nexts[plat]}, the AC6502's "
+                         f"{nexts['AC6502']} — the piece roll disagrees")
 
     tiles = sum(1 for row in wells["AC6502"] for v in row if v)
     if tiles < 9:
         fails.append("fewer than three pieces landed; the run proves nothing")
+
+    # SPEC 5.2 rolls the reagent per piece, so whether this game contains one
+    # at all is down to the seed — say which it was rather than leave the run
+    # looking like it proved the reagent roll when it did not.
+    cells = [v for row in wells["AC6502"] for v in row if v] + nexts["AC6502"]
+    reagents = [v for v in cells
+                if (v & COLOR_MASK) == WILD_BASE or (v & GLYPH_MASK)]
+    print(f"the NEXT box: {nexts['AC6502']}")
+    if reagents:
+        print(f"note: {len(reagents)} reagent(s) in the compared cells"
+              f" ({reagents}), so the SPEC 5.2 roll is compared too.")
+    else:
+        print("note: this game rolled no reagent (SPEC 5.2 is a per-piece"
+              " 15% at level 1), so\n      the comparison says nothing about"
+              " the reagent roll. The glyph is part of\n      every cell"
+              " compared, so a divergence WOULD show — there was none to see.")
     if not scores["AC6502"]:
         print("note: nothing matched in this game, so the score comparison is"
               " three zeroes.\n      The pieces all land in the spawn column"
