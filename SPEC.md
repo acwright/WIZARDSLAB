@@ -264,7 +264,10 @@ For each new piece:
 cell both enforces the cap and is cheaper.
 
 If the chosen reagent is a **Prism**, the cell's color is overwritten with
-color 6 (wild), discarding its rolled color.
+color 6 (wild), discarding its rolled color. It is generated as glyph +0; once
+it is on the board its glyph becomes the frame number of its idle rotation
+([§14](#14-animation--timing), [Appendix A.3](#appendix-a--master-tile-map)),
+which is why nothing anywhere reads a wild cell's glyph.
 
 ### 5.3 Reagent probability by level band
 
@@ -560,8 +563,11 @@ STEP:
                     cascade_pts += TriggerBonus[glyph]
                   (Terminates: cells are only ever added to MARKS, max 96.)
 
-  5. ANIMATE      Glow phase, then removal phase. Marked prisms sit out the
-                  glow and blip out instead of shattering. See §14.
+  5. ANIMATE      Glow window, then shatter window, on the frame clock — the
+                  board is NOT touched until step 6, so every frame of this
+                  draws over cells that still hold their own tiles. Marked
+                  prisms sit out the glow and blip out instead of shattering.
+                  See §14.
 
   6. REMOVE       Zero every marked cell. tiles_cleared += popcount(MARKS)
                   Clear MARKS.
@@ -1219,7 +1225,10 @@ wait for vblank
    per row (32 frames total). Each cell keeps its own shape —
    `PETRIFY_BASE + (tile & GLYPH_MASK)`, one `AND` and one `ORA`
    ([Appendix A](#appendix-a--master-tile-map)) — so a bomb sets as a stone
-   bomb. Empty cells stay empty; the pile petrifies, not the well.
+   bomb. Empty cells stay empty; the pile petrifies, not the well. **A prism
+   sets as `PETRIFY_BASE` itself**: group 15 has no wildcard, and the color has
+   to be tested before the glyph or a prism caught mid-rotation
+   ([§14](#14-animation--timing)) petrifies into a stone bomb.
 3. "GAME OVER" in the message band; final score stays in the SCORE field.
 4. If a new high score was set, HIGH flashes and a fanfare plays.
 5. FIRE or a 10-second timeout returns to TITLE.
@@ -1234,11 +1243,11 @@ difference matters; where it doesn't, the same count is used on both.
 | Event | NTSC | PAL | Detail |
 |---|---|---|---|
 | Match glow | 6 | 5 | Matched cells swap to glyph +6 (glow) of their own color. **Prisms are exempt** — see below |
-| Removal | 6 | 5 | The white ring opening outward, 3 tiles at 2 frames each |
-| Prism blip-out | 10 | 8 | The prism's own 5 frames, the same ring closing inward |
+| Removal | 6 | 6 | The white ring opening outward, 3 tiles at 2 frames each. Same on both regions — see below |
+| Prism blip-out | 10 | 10 | The prism's own 5 frames, the same ring closing inward |
 | Fireball flash | 8 | 7 | Every tile of the target color turns white, then removes |
 | Bolt beam | 6 | 5 | White beam tiles drawn along the row and column |
-| Bomb blast | 6 | 5 | The removal ring over the 3 × 3, all nine cells in step |
+| Bomb blast | 6 | 6 | The removal ring over the 3 × 3, all nine cells in step |
 | Gravity fall | 2/row | 2/row | Tiles descend one row every 2 frames. A row that changes more cells than the dirty ring holds takes an extra frame or two while the flush catches up ([§12.6](#126-rendering-strategy)); on a normal clear it never does |
 | Lock delay | 16 | 14 | Resets on horizontal move, max 4 resets |
 | Entry delay (ARE) | 12 | 10 | After a cascade fully settles |
@@ -1249,8 +1258,30 @@ difference matters; where it doesn't, the same count is used on both.
 | Blink period | 30 | 25 | "PRESS FIRE", high-score flash |
 
 A single clear step therefore costs **12 frames of animation plus gravity**
-(0–32 frames). A deep chain reads as a satisfying half-second per link rather
-than an instant score jump.
+(0–32 frames), 11 on PAL. A deep chain reads as a satisfying half-second per
+link rather than an instant score jump.
+
+**The three counts that are the same on both regions are the three that are a
+tile count, not a duration.** The removal ring, the bomb blast and the prism's
+blip-out are 3, 3 and 5 tiles at **2 frames each**, and two frames does not
+round to 1.67 — the same reason the gravity fall above them is 2/row on both
+machines. Everything else in this table is a single frame held for a while and
+scales properly. The cost is that a PAL clear step is 11 frames against NTSC's
+12, about 17 ms of wall clock, which nobody has ever been able to see.
+
+**A step animates in two windows, and a window is as long as the longest thing
+in it.** The GLOW window carries the match glow, the bolt's beams and the
+fireball's flash; the SHATTER window carries the removal ring and, beside it,
+a marked prism's blip-out. So a step with a fireball in it glows for 8 frames
+rather than 6, and a step that clears a prism shatters for 10 rather than 6.
+One timer per window rather than one per effect is what makes every count in
+this table hold without the game tracking six animations at once.
+
+**Only one color can flash at a time.** Two fireballs of *different* colors in
+one step leave the last one's color white; the other's cells still glow and
+still shatter, they simply do not go white on the way. The flash is one byte of
+VDP color table on the AC6502 (below) and one byte of state on the Commodores,
+and one byte names one color group.
 
 **One removal animation, two directions.** The match shatter, the bomb blast
 and the star all play the same three white tiles (56, 57, 58) opening outward —
@@ -1270,9 +1301,12 @@ anything else is happening. It is the only tile that moves at rest, and at
 roughly one prism per 90 pieces it costs nothing worth measuring.
 
 **Fireball flash implementation note:** on the AC6502 this is one byte written
-to the VDP color table (set the target group's foreground nibble to 15, then
-restore it). On the Commodores, walk the dirty list poking `$01` into color
-RAM. Same visual, different mechanism, identical frame count.
+to the VDP color table (set the target group's foreground nibble to 15, keeping
+its background nibble, then restore it). On the Commodores color is per cell,
+so the flashing color is held in one byte of state and the cell writer
+substitutes white for any tile of that color as it draws it — which works out
+the same, because every tile the fireball is about to take is already being
+redrawn by the glow. Same visual, different mechanism, identical frame count.
 
 ---
 
@@ -1335,15 +1369,16 @@ AC6502 and C64 share SID driver code almost verbatim (register base differs:
 | Score / High | 12 | 4 bytes BCD each, + 1 for the high score's level, + 3 for whether this game has taken it and the blink it fires ([§9.8](#98-high-score)) |
 | Level, tiles cleared, chain, stars | 6 | |
 | Timers (gravity, lock, DAS, ARE, anim) | 10 | |
+| Animation | 11 | The two windows' step and length, the flashing color, the prism's rotation frame and clock, the petrify cursor, and five bytes of walk cursors ([§14](#14-animation--timing)) |
 | Input current/previous/edge | 3 | |
 | RNG seed, frame counter | 4 | |
 | State machine, flags | 8 | |
 | Audio state | 16 | |
-| **Total** | **~560 bytes** | 522 measured — 38 zero page, 484 BSS; plus row-pointer tables in ROM |
+| **Total** | **~570 bytes** | 533 measured — 43 zero page, 490 BSS; plus row-pointer tables in ROM |
 
 Fits the VIC-20's constrained RAM with room to spare, which is the whole point
 of designing to the tightest target first. In practice the whole of BSS lands
-in the 1 KB at `$1000`–`$13FF` ([C.2](#c2-vic-20)) with 496 bytes still free,
+in the 1 KB at `$1000`–`$13FF` ([C.2](#c2-vic-20)) with 534 bytes still free,
 so the `$1C00`–`$1DFF` block that table earmarks for `DIRTY` is untouched and
 is spare capacity rather than a plan.
 
@@ -1424,10 +1459,12 @@ Within any color group `G` (base = `64 + G×8` for the six potion colors):
 | +7 | *reserved* |
 
 This is the layout of the **six potion groups**. Group 14, the prism's, does
-not follow it: [§5.2](#52-generation) guarantees a wild tile is always glyph
-+0, so no board cell can land on 113–119 and those seven slots hold other
-things. Group 15 borrows the first five offsets for the petrified set. See
-A.3.
+not follow it: [§5.2](#52-generation) generates a wild tile as glyph +0, and
+the only thing that ever changes it is the prism's own idle rotation, which
+walks it through 113–115 ([§14](#14-animation--timing)). So a board cell can
+never hold 116–119, and the three it can hold are not glyphs at all — nothing
+reads a wild cell's glyph. Group 15 borrows the first five offsets for the
+petrified set. See A.3.
 
 ### A.2 Art direction
 
@@ -1550,9 +1587,13 @@ VDP color table on the AC6502, a walk of the dirty list on the Commodores
 
 #### Group 14, tiles 112–119 — the prism
 
-[§5.2](#52-generation) guarantees a wild tile is **always** glyph +0, so no
-board cell can ever hold 113–119. That is seven free slots in the one spare
-*white* group, and the prism spends six of them on itself.
+[§5.2](#52-generation) generates a wild tile as glyph +0 and nothing scores,
+matches or removes it by its glyph, so the low three bits of a wild cell are
+free for the game to use as a **frame number**. That is what the idle rotation
+below does: a prism on the board holds 112–115 and never anything else. Slots
+116–119 are the blip-out and two arrows, and no board cell ever holds one of
+those — they are drawn *over* a cell, not stored in it. Seven free slots in the
+one spare *white* group, and the prism spends six of them on itself.
 
 | Tile | Role |
 |---|---|
@@ -1576,10 +1617,15 @@ The removal ring, closing inward. A prism *contracts to a point and winks
 out*; everything else *bursts apart*. Same tiles, opposite direction, and the
 one wildcard on the board is the one thing that disappears differently.
 
-> **Two constraints this rests on.** Nothing may construct a wild tile with a
-> non-zero glyph, and nothing may add `GLYPH_GLOW` to `WILD_BASE`. Both are
-> `WILD_BASE + n` arithmetic that looks harmless and is not: it lands on an
-> arrow or a blip frame, in the middle of the board.
+> **Two constraints this rests on.** Nothing may add `GLYPH_GLOW` to
+> `WILD_BASE` — that is `WILD_BASE + n` arithmetic that looks harmless and is
+> not, and it lands on an arrow in the middle of the board. And **nothing may
+> read a wild cell's glyph**, because the idle rotation puts a frame number
+> there: every test of a wild cell is a test of its *color*, and a test that
+> asks the glyph first sees a bolt or a bomb. That second one is not
+> hypothetical — the fireball's immunity rule, the effect queue and the
+> game-over petrify all sit on it ([§7.4](#74-interaction-summary),
+> [§13.4](#134-gameover)).
 
 #### Group 15, tiles 120–127 — stone
 
@@ -1710,11 +1756,14 @@ ARE_DELAY        = 12 / 10
 DAS_INITIAL      = 12 / 10
 DAS_REPEAT       =  4 /  3
 SOFTDROP_RATE    =  3 /  2
-GLOW_FRAMES      =  6 /  5
-REMOVE_FRAMES    =  6 /  5      ; 3 tiles x 2 frames
-BLIP_FRAMES      = 10 /  8      ; the prism, 5 x 2
-SPIN_FRAMES      =  8 /  7      ; per prism rotation frame, at rest
+GLOW_FRAMES      =  6 /  5      ; ...and the bolt's beam, in the same window
+FLASH_FRAMES     =  8 /  7      ; the fireball's, which LENGTHENS that window
+VFX_FRAMES       =  2 /  2      ; frames per tile of a removal ring
+REMOVE_FRAMES    =  6 /  6      ; 3 tiles x 2 frames — a tile count, so the
+BLIP_FRAMES      = 10 / 10      ;   same on both regions (14). The prism, 5 x 2
+SPIN_FRAMES      =  8 /  8      ; per prism rotation frame, at rest
 FALL_FRAMES      =  2 /  2
+PETRIFY_FRAMES   =  2 /  2      ; per row of the game-over petrify (13.4)
 BANNER_FRAMES    = 45 / 38
 
 ; ---- Scoring (all BCD) ----

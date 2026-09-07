@@ -29,25 +29,30 @@ CascadeBegin:
   jmp EffectQClear
 
 ; -----------------------------------------------------------------------------
-;   CascadeStep — run one step's scan and take what it found off the board
+;   CascadeScan — steps 1 to 4: find the runs, score them, fire the reagents
 ;   In:  nothing
-;   Out: C set if anything matched, and the caller should let the pile fall.
+;   Out: C set if anything is marked and the step has something to animate.
 ;        C clear when nothing matched and the cascade has settled.
-;        Modifies: A, X, Y, Scan*, CellCount, Marks, RunCount
+;        Modifies: A, X, Y, Scan*, Marks, RunCount, Cascade*, StarCount
 ;
 ;   Steps 3 and 4 are the reagents, and they run between the scan and the
 ;   removal because everything they do is add cells to Marks: by the time
 ;   CascadeRemove walks the bitmap it cannot tell a cell the scan found from
-;   a cell a fireball took, and does not need to. Step 5 is still to come —
-;   P6 puts the glow and the shatter here, which is the reason the step is
-;   split into a scan and a removal that a sub-state can sit between.
+;   a cell a fireball took, and does not need to.
+;
+;   NOTHING HAS LEFT THE BOARD WHEN THIS RETURNS. Step 5 — the glow and the
+;   shatter (anim.asm) — happens between here and CascadeFinish below, over
+;   several frames, and it can only draw a cell's own colour and its own
+;   reagent because the cell is still sitting there saying what it is. That
+;   split is what the whole of P6 rests on, and it is the same property that
+;   let P5 make an effect queue entry one byte.
 ;
 ;   Step 2's per-run half is in MatchEmit, which is the one moment a run's
 ;   length and colour are both in hand; what is left of it here is the bonus
 ;   for having found several at once, which nothing knows until all four
 ;   passes have finished.
 ; -----------------------------------------------------------------------------
-CascadeStep:
+CascadeScan:
   jsr MatchScan
   beq @Settled                  ; RunCount is zero — nothing left to clear
 
@@ -66,15 +71,23 @@ CascadeStep:
 
   jsr EffectEnqueueMarked       ; SPEC 8 step 3
   jsr EffectResolve             ; SPEC 8 step 4
-
-  jsr CascadeRemove             ; SPEC 8 step 6
-  lda CellCount
-  jsr ScoreLevelCheck           ; SPEC 8 step 7 — match and effect removals
-  sec                           ;   both count, and by here they are the same
-  rts                           ;   cells
+  sec
+  rts
 @Settled:
   clc
   rts
+
+; -----------------------------------------------------------------------------
+;   CascadeFinish — steps 6 and 7, once the animation has finished with them
+;   In:  Marks, as CascadeScan left it
+;   Out: nothing.  Modifies: A, X, Y, CellCount, Board, Level
+; -----------------------------------------------------------------------------
+CascadeFinish:
+  jsr CascadeRemove             ; SPEC 8 step 6
+  lda CellCount
+  jmp ScoreLevelCheck           ; SPEC 8 step 7 — match and effect removals
+                                ;   both count, and by here they are the same
+                                ;   cells
 
 ; -----------------------------------------------------------------------------
 ;   CascadeRemove — empty every marked cell and queue it for redraw
@@ -93,7 +106,8 @@ CascadeStep:
 ;   three-in-a-row never comes near the cap.
 ;
 ;   CellCount goes to ScoreLevelCheck — thirty cleared tiles is a level
-;   (SPEC 10.1) — and P6 will have animated these cells before they go.
+;   (SPEC 10.1). By the time this runs the cells have already glowed and
+;   shattered (anim.asm); what it draws over them is the empty well behind.
 ; -----------------------------------------------------------------------------
 CascadeRemove:
   lda #0
@@ -395,6 +409,12 @@ EffectResolve:
   sta SfxRequest
   lda Board,x
   and #COLOR_MASK               ; Its own colour, which can never be wild
+  pha
+  jsr HalColorFlash             ; SPEC 4.6, 14 — every tile of that colour goes
+  pla                           ;   white for the glow window, which is one VDP
+                                ;   colour byte here and one compare a cell on
+                                ;   the Commodores. AnimGlowBegin reads
+                                ;   TintColor to find out that it happened
   jsr EffectFireball
   jmp @Bonus
 

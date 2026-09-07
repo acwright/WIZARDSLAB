@@ -9,9 +9,10 @@
 ;   ------------
 ;   Pieces spawn, steer, rotate, fall and lock, runs of three or more clear,
 ;   the pile falls into the holes, chains keep going until nothing matches, all
-;   of it scores and ramps the level, and the five reagents fire and set each
-;   other off (PLAN.md P2, P3, P4, P5). The clear is still instant: GLOW and
-;   SHATTER are P6's, and slot into CascadeEnter between the scan and the fall.
+;   of it scores and ramps the level, the five reagents fire and set each other
+;   off, and a clear now glows and shatters on the frame clock instead of
+;   happening between two frames (PLAN.md P2 to P6). What is left is the
+;   screens either side of play (P7) and the sound (P8).
 ; =============================================================================
 
 ; -----------------------------------------------------------------------------
@@ -39,6 +40,15 @@ GameInit:
   sta InputPrev
   sta InputEdge
   sta TitlePage
+  lda #1
+  sta PrismTimer                ; A zero here would DEC to 255 and stall the
+                                ;   prism's rotation for four seconds
+  lda #TINT_NONE                ; BSS is not cleared on all three machines, and
+  sta TintColor                 ;   a garbage colour key here would draw the
+                                ;   title screen's tiles of that colour white
+                                ;   on the Commodores. Set before anything
+                                ;   plots a cell, not in HalColorFlash, which
+                                ;   reads it to undo the last flash (hal.inc).
 
   jsr ScoreHighInit             ; Once a session, before the first ScoreReset
   jsr ScoreReset
@@ -139,6 +149,13 @@ GameStart:
   sta DasDir                    ; No direction is held into a new game
   sta DasTimer
   sta PieceDirty
+  sta BannerTimer               ; Nothing from the last game is still up
+  sta PrismFrame
+  lda #1
+  sta PrismTimer
+  lda #TINT_NONE                ; ...and no colour is still flashing white, on
+  jsr HalColorFlash             ;   a machine where that is a VDP register and
+                                ;   not a byte of RAM (SPEC 4.6)
 
   jsr DrawPlayScreen            ; The whole screen at once, behind the
   jsr RenderDirtyReset          ;   renderer's back — so drop anything queued
@@ -173,6 +190,9 @@ StatePlay:
                                 ;   overtake. Play never stops for it, so it
                                 ;   ticks alongside whatever the sub-state is
                                 ;   doing rather than inside one.
+  jsr AnimBannerTick            ; ...and neither does it for a banner (SPEC 14)
+  jsr AnimPrismTick             ; ...nor for the one tile that moves at rest
+
   lda InputEdge
   and #INPUT_PAUSE
   bne @ToPause
@@ -182,17 +202,27 @@ StatePlay:
   beq @Falling
   cmp #PLAY_LOCKING
   beq @Locking
+  cmp #PLAY_GLOW
+  beq @Glow
+  cmp #PLAY_SHATTER
+  beq @Shatter
   cmp #PLAY_GRAVITY
   beq @Gravity
   cmp #PLAY_ARE
   beq @Are
-  jmp @Draw                     ; GLOW and SHATTER are P6's
+  jmp @Draw                     ; Not a state anything sets
 
 @Falling:
   jsr PlayFalling
   jmp @Draw
 @Locking:
   jsr PlayLocking
+  jmp @Draw
+@Glow:
+  jsr PlayGlow
+  jmp @Draw
+@Shatter:
+  jsr PlayShatter
   jmp @Draw
 @Gravity:
   jsr PlayGravity
@@ -306,28 +336,73 @@ PlayLocking:
 ;   In:  ChainStep set        Out: PlayState set.  Modifies: A, X, Y
 ;   SPEC 8, D4. Called from the lock, and again from the bottom of every fall.
 ;
-;   A step that clears something hands over to PLAY_GRAVITY; a step that finds
-;   nothing is where the cascade settles and the next piece is queued. P6
-;   inserts PLAY_GLOW and PLAY_SHATTER ahead of the fall without changing
-;   either branch.
+;   A step that marks something hands over to PLAY_GLOW, and the removal and
+;   the fall follow it twelve frames later; a step that finds nothing is where
+;   the cascade settles and the next piece is queued.
+;
+;   Nothing has come off the board when CascadeScan returns — that is the whole
+;   point of the split (cascade.asm). CascadeFinish does the taking, at the far
+;   end of PLAY_SHATTER.
 ; -----------------------------------------------------------------------------
 CascadeEnter:
-  jsr CascadeStep
+  jsr CascadeScan
   bcc @Settle
-
-  jsr BoardGravityBegin         ; Something went; let what was above it fall
-  lda #PLAY_GRAVITY
-  sta PlayState
-  rts
+  jmp AnimGlowBegin             ; SPEC 8 step 5
 
 @Settle:
   jsr CascadeSettle             ; The star multiplier and the bank (SPEC 8
-                                ;   SETTLE); P6 raises the chain banner
+                                ;   SETTLE)
+  lda ChainStep                 ; SPEC 8 SETTLE, SPEC 14 — a chain of two links
+  sec                           ;   or more is worth saying out loud. ChainStep
+  sbc #1                        ;   counts the step that found nothing as well,
+  cmp #2                        ;   so the links are one fewer
+  bcc @Are
+  jsr AnimBannerChain
+
+@Are:
   ldx Region
   lda AreDelay,x
   sta AreTimer
   lda #PLAY_ARE
   sta PlayState
+  rts
+
+; -----------------------------------------------------------------------------
+;   PlayGlow — hold the glow, the beams and the fireball's flash (SPEC 14)
+;   The window is one timer however many things are showing inside it: they all
+;   start together and the longest decides how long it lasts (anim.asm).
+; -----------------------------------------------------------------------------
+PlayGlow:
+  dec AnimTimer
+  bne @Done
+  jmp AnimGlowEnd               ; ...which starts the shatter
+@Done:
+  rts
+
+; -----------------------------------------------------------------------------
+;   PlayShatter — the removal ring, VFX_FRAMES a tile (SPEC 14)
+;   The board is finally emptied at the end of this, not at the start of it:
+;   every frame up to here has been drawing over cells that still hold their
+;   own tiles (cascade.asm).
+; -----------------------------------------------------------------------------
+PlayShatter:
+  dec AnimTimer
+  bne @Done
+  inc AnimStep
+  lda AnimStep
+  cmp AnimSteps
+  bcs @Over
+  lda #VFX_FRAMES
+  sta AnimTimer
+  lda #ANIM_SHATTER
+  jmp AnimMarked
+
+@Over:
+  jsr CascadeFinish             ; SPEC 8 steps 6 and 7
+  jsr BoardGravityBegin         ; ...and let what was above it fall
+  lda #PLAY_GRAVITY
+  sta PlayState
+@Done:
   rts
 
 ; -----------------------------------------------------------------------------
@@ -379,8 +454,11 @@ PlayAre:
   rts
 
 @Over:
-  lda #STATE_GAMEOVER           ; P7 owns the petrify animation; for now the
-  sta GameState                 ;   game simply stops
+  lda #SFX_GAMEOVER
+  sta SfxRequest
+  jsr AnimPetrifyBegin          ; The well turns to stone from the floor up
+  lda #STATE_GAMEOVER           ;   while StateGameOver holds the input off
+  sta GameState
   rts
 
 ; -----------------------------------------------------------------------------
@@ -407,10 +485,13 @@ StatePause:
 ;   SPEC 13.4
 ; -----------------------------------------------------------------------------
 StateGameOver:
-  ; TODO: petrify the well from the bottom up, 2 frames a row, then the banner
-  ; and a 10 second timeout. Each cell keeps its own shape —
-  ;   PETRIFY_BASE + (tile & GLYPH_MASK)
-  ; — and empty cells stay empty (13.4).
+  jsr AnimPetrifyTick           ; SPEC 13.4 step 2, a row every PETRIFY_FRAMES
+  bcs @Done                     ; Still setting. A press during the petrify is
+                                ;   ignored rather than queued: the animation
+                                ;   is the game telling the player it is over
+                                ;   and skipping it reads as a dropped input.
+  ; TODO (P7): the GAME OVER banner, the high-score fanfare, and the ten
+  ; second timeout back to the title (13.4 steps 3 to 5).
   lda InputEdge
   and #(INPUT_FIRE | INPUT_UP)  ; Fire, or SPACE (D15)
   beq @Done

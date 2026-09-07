@@ -54,6 +54,7 @@ SCORE_X, SCORE_Y, SCORE_DIGITS = 12, 5, 7
 LEVEL_X, LEVEL_Y = 18, 17                   # Tens at LEVEL_Y, units below
 NEXT_X, NEXT_Y = 11, 16                     # Cells A, B, C at NEXT_Y, +1, +2
 FONT_DIGIT_0 = 16                           # constants.inc
+PETRIFY_BASE = 120                              # constants.inc, SPEC A.3
 COLOR_MASK, GLYPH_MASK = 0xF8, 0x07         # constants.inc
 WILD_BASE = 0x70
 PANEL_X = {"VIC20": 0, "C64": 9, "AC6502": 5}   # SPEC 12.4
@@ -254,9 +255,20 @@ def main():
     # at all is down to the seed — say which it was rather than leave the run
     # looking like it proved the reagent roll when it did not.
     cells = [v for row in wells["AC6502"] for v in row if v] + nexts["AC6502"]
-    reagents = [v for v in cells
-                if (v & COLOR_MASK) == WILD_BASE or (v & GLYPH_MASK)]
+    #   Only tiles that are still POTIONS can carry a reagent. Group 15's
+    #   petrified set sits at the same five glyph offsets (SPEC A.3), so a
+    #   stone bomb would otherwise be counted as a bomb.
+    reagents = [v for v in cells if v < PETRIFY_BASE
+                and ((v & COLOR_MASK) == WILD_BASE or (v & GLYPH_MASK))]
+    stone = [v for v in cells if v >= PETRIFY_BASE]
     print(f"the NEXT box: {nexts['AC6502']}")
+    if stone:
+        print(f"note: the game ended and the well is STONE — {len(stone)} of"
+              f" the compared cells\n      are group 15, at the same glyph"
+              f" offsets they held as potions (SPEC 13.4).\n      All three"
+              f" machines petrified the same cells into the same shapes, which"
+              f"\n      is the game-over animation compared across platforms"
+              f" and not just the well.")
     if reagents:
         print(f"note: {len(reagents)} reagent(s) in the compared cells"
               f" ({reagents}), so the SPEC 5.2 roll is compared too.")

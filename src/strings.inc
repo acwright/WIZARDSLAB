@@ -58,3 +58,10 @@ MsgPaused:
 
 MsgLevelUp:
   TileStr "~~ LEVEL UP ~~"               ; 14 cells, centres at panel column 4
+
+; The chain banner carries a number, and TextDraw copies bytes rather than
+; formatting them, so the digit is a placeholder that CascadeSettle overwrites
+; with one RenderMark at CHAIN_DIGIT_X (constants.inc). Keeping the length at
+; MSG_CHAIN_LEN is what makes that column a constant instead of a measurement.
+MsgChain:
+  TileStr "~~ CHAIN x0 ~~"               ; 14 cells; the `0` is panel column 14

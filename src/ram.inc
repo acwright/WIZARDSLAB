@@ -34,6 +34,24 @@ CascadeLo:      .res 1                  ; Cascade point accumulator, packed BCD
 CascadeMid:     .res 1
 CascadeHi:      .res 1
 
+; --- Animation (SPEC 14) -----------------------------------------------------
+AnimStep:       .res 1                  ; Ring frame the shatter is showing,
+                                        ;   0 .. AnimSteps - 1
+AnimSteps:      .res 1                  ; SHATTER_STEPS, or BLIP_STEPS when a
+                                        ;   marked prism is blipping out along
+                                        ;   with the rest (constants.inc)
+TintColor:      .res 1                  ; Colour key currently drawn WHITE — the
+                                        ;   fireball flash (SPEC 4.6) — or
+                                        ;   TINT_NONE. Read by HalPlotCell on
+                                        ;   the Commodores and written to the
+                                        ;   VDP colour table on the AC6502;
+                                        ;   HalColorFlash is the only thing that
+                                        ;   sets it (hal.inc)
+PrismFrame:     .res 1                  ; Idle rotation frame, 0-3
+PrismTimer:     .res 1                  ; Frames until the next one
+PetrifyRow:     .res 1                  ; Board row the game-over petrify is
+                                        ;   working up from, $FF when it is done
+
 ; --- Render (SPEC 12.6) ------------------------------------------------------
 ;   A ring of DIRTY_ENTRIES cells waiting to be pushed to the screen, three
 ;   bytes each: SCREEN column, SCREEN row, tile. Not a 16-bit screen offset —

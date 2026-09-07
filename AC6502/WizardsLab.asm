@@ -61,6 +61,7 @@ CartReset:
 .include "../src/piece.asm"
 .include "../src/match.asm"
 .include "../src/cascade.asm"
+.include "../src/anim.asm"
 .include "../src/score.asm"
 .include "../src/render.asm"
 .include "../src/text.asm"
@@ -435,6 +436,67 @@ KeyBit:
 ; -----------------------------------------------------------------------------
 HalDetectRegion:
   lda #0                        ; NTSC
+  rts
+
+; -----------------------------------------------------------------------------
+;   HalColorFlash — the fireball's detonation (SPEC 4.6, 14)
+;   In:  A = colour key ($40..$68), or TINT_NONE.  Modifies: A, X, Y, TintColor
+;
+;   ONE BYTE. A tile's colour on this machine belongs to its 8-pattern group
+;   and not to the cell, so turning every red tile on the board white is a
+;   single write to the VDP colour table — and its undo is another. SPEC 4.6
+;   calls this the fireball's free trick and it is not an exaggeration: the
+;   Commodores' equivalent costs a compare on every cell they draw for as long
+;   as the flash lasts, and this costs nothing at all once it is lit.
+;
+;   The group index is the colour key >> 3, because both the tile map and the
+;   colour table are eight patterns to a group (SPEC Appendix A).
+;
+;   The old colour goes back BEFORE the new one is lit, so two fireballs of
+;   different colours in one step leave exactly one group flashing rather than
+;   one group flashing and another stuck white for the rest of the game.
+; -----------------------------------------------------------------------------
+HalColorFlash:
+  pha
+  ldy TintColor
+  cpy #TINT_NONE
+  beq @Light                    ; Nothing lit — nothing to put back
+  tya
+  lsr a
+  lsr a
+  lsr a
+  tay
+  lda TileColorTMS,y            ; Its own colour, straight out of the table the
+  jsr VdpPutColor               ;   init loaded from
+
+@Light:
+  pla
+  sta TintColor
+  cmp #TINT_NONE
+  beq @Done
+  lsr a
+  lsr a
+  lsr a
+  tay
+  lda TileColorTMS,y
+  and #$0F                      ; Keep the background nibble — black (SPEC 4.3)
+  ora #$F0                      ; ...and make the foreground white
+  jsr VdpPutColor
+@Done:
+  rts
+
+; -----------------------------------------------------------------------------
+;   VdpPutColor — In: A = colour byte, Y = group 0-31.  Modifies: A, X, Y
+; -----------------------------------------------------------------------------
+VdpPutColor:
+  pha
+  tya
+  clc
+  adc #<VRAM_COLORS             ; 32 bytes, one per group; the low byte of the
+  ldx #>VRAM_COLORS             ;   table's address is zero so this cannot carry
+  jsr VdpSetWrite
+  pla
+  sta VC_DATA
   rts
 
 ; -----------------------------------------------------------------------------

@@ -237,8 +237,10 @@ check("every occupied cell is a legal tile",
 
 RED, YELLOW, GREEN, CYAN, BLUE, PURPLE = 0x40, 0x48, 0x50, 0x58, 0x60, 0x68
 WILD = 0x70                                     # The prism, colour group 6
+COLOR_MASK, GLYPH_MASK = 0xF8, 0x07             # SPEC 4.2
 
 PLAY_FALLING, PLAY_LOCKING, PLAY_GRAVITY, PLAY_ARE = 0, 1, 4, 5
+PLAY_GLOW, PLAY_SHATTER = 2, 3
 WELL_X, WELL_Y = 1, 4                           # Panel-relative (SPEC 12.2)
 
 
@@ -291,13 +293,16 @@ def redraw():
 
     A board written straight into RAM is not on the screen: nothing marked it.
     RedrawIdx is the cursor RenderBoard sets, and it feeds the dirty ring at
-    whatever rate the flush drains it (D12), so wait for it to run out.
+    whatever rate the flush drains it (D12), so wait for the cursor to run out
+    AND for the ring behind it to empty. The cursor finishes a frame early —
+    the last 24 cells it queued are still waiting — and a test that starts
+    reading the screen there sees the well one frame before it is drawn.
     """
     poke("RedrawIdx", 0)
     for _ in range(30):
         frames(1)
-        if peek("RedrawIdx") == 0xFF:
-            return
+        if peek("RedrawIdx") == 0xFF and peek("DirtyCount") == 0:
+            return                              # Cursor spent AND ring drained
     raise RuntimeError("the board redraw never finished")
 
 
@@ -766,10 +771,18 @@ check("run + 2 blasted reds + the trigger bonus", got,
       match_pts(3) + effect_pts(2) + TRIGGER["fireball"])
 
 print("\n...and a prism is immune to it (SPEC 7.4)")
+#   Compared by COLOUR and not by tile, because from P6 on a prism sitting in
+#   the well rotates and its board byte is WILD_BASE + 0..3 (SPEC 14). That is
+#   not a weaker check: it is the same check the GAME makes, and getting it
+#   wrong is exactly the bug P5 predicted — a rotating prism's low three bits
+#   read as a bolt or a bomb, and the immunity is a colour test.
 got, runs, chain, left = scored({
     (15, 0): RED, (15, 1): RED, (15, 2): RED + GLYPH_FIREBALL,
     (12, 0): RED, (12, 4): WILD})
-check("the prism survived a red fireball", left, {(15, 4): WILD})
+check("the prism survived a red fireball, and it is the only cell left",
+      list(left), [(15, 4)])
+check("...and it is still a prism, whichever way it is facing",
+      left.get((15, 4), 0) & COLOR_MASK, WILD)
 check("nothing was paid for it", got,
       match_pts(3) + effect_pts(1) + TRIGGER["fireball"])
 
@@ -1025,7 +1038,6 @@ REAGENT_THRESHOLDS = [[77, 138, 195, 236], [77, 141, 192, 238],
                       [82, 146, 197, 238], [79, 141, 195, 238],
                       [79, 143, 199, 240]]
 COLOR_BASE, NUM_COLORS = 0x40, 6
-COLOR_MASK, GLYPH_MASK = 0xF8, 0x07
 
 
 class Lfsr:
@@ -1116,6 +1128,363 @@ check("a prism is colour 6 and nothing else (SPEC 5.2)",
       all(c == WILD or (c & COLOR_MASK) != WILD
           for level in (1,) for p in deal(level, 30)[0] for c in p), True)
 
+# =============================================================================
+#   P6 — animation (SPEC 14, SPEC 8 step 5)
+# =============================================================================
+#   Every check below reads the VDP's own name table frame by frame, so what is
+#   asserted is the tile a player would have been looking at on that frame and
+#   not a flag the game set. A mark made by the logic on frame N reaches the
+#   screen on frame N + 1 — the one frame of lag everything in the game has
+#   (SPEC 12.6) — so the tracks below start with one frame of the board as it
+#   was before the step.
+
+GLOW_FRAMES = [6, 5]                            # tables.inc, by region
+FLASH_FRAMES = [8, 7]
+BANNER_FRAMES = [45, 38]
+VFX_FRAMES, SHATTER_STEPS, BLIP_STEPS = 2, 3, 5
+VFX_REMOVE1, VFX_REMOVE2, VFX_REMOVE3 = 56, 57, 58
+VFX_BEAM_H, VFX_BEAM_V, VFX_BEAM_CROSS = 59, 60, 61
+PRISM_BLIP, PRISM_SPIN_RATE, PRISM_SPIN_FRAMES = 0x74, 8, 4
+FONT_DOT, FONT_TILDE, FONT_TIMES, FONT_LETTER_A = 52, 55, 53, 26
+GLYPH_GLOW, PETRIFY_BASE, TINT_NONE = 6, 120, 0x01
+VRAM_COLORS = 0x2000                            # SPEC Appendix C.1
+
+
+def well():
+    """The whole 6 x 16 well, as the VDP's name table has it."""
+    vram = base64.b64decode(rpc("mem.read", {
+        "space": "vram", "address": VRAM_NAMES, "length": 32 * 24})["data"])
+    return {(r, c): vram[(PANEL_Y + WELL_Y + r) * 32 + PANEL_X + WELL_X + c]
+            for r in range(16) for c in range(6)}
+
+
+def quiet():
+    """Park the machine so a plant can be painted without the game touching it.
+
+    PLAY_ARE with a long timer is the one sub-state that does nothing at all —
+    no piece falls, no cascade runs, the well is left alone — and painting a
+    board takes redraw() several frames. Without this, a cascade a previous
+    test left half-finished carries straight on over the board the next one has
+    just planted, and the screen read back is some way into an animation nobody
+    asked for. It cost the first run of the prism blip-out test exactly that.
+    """
+    poke("PlayState", PLAY_ARE)
+    poke("AreTimer", 200)
+    poke("PieceDirty", 0)
+
+
+def anim_run(cells, chain=1, limit=400, region=0):
+    """Run one cascade over `cells`, recording the sub-state and the whole well
+    after every frame.
+
+    The prism's idle rotation is parked for the duration: it is on its own
+    clock and would otherwise change a cell in the middle of a track for
+    reasons that have nothing to do with the step being measured. It has its
+    own test below.
+    """
+    poke("Region", region)
+    quiet()
+    set_board(cells)
+    redraw()                                    # The plant is only in RAM
+    kick(chain)
+    poke("PrismTimer", 200)
+    log = []
+    for _ in range(limit):
+        frames(1)
+        log.append((peek("PlayState"), well()))
+        if log[-1][0] == PLAY_ARE:
+            break
+    poke("Region", 0)
+    return log
+
+
+def track(log, cell):
+    """The tiles one well cell showed, in order, as (tile, frames) pairs."""
+    out = []
+    for _, w in log:
+        if out and out[-1][0] == w[cell]:
+            out[-1][1] += 1
+        else:
+            out.append([w[cell], 1])
+    return [tuple(e) for e in out]
+
+
+def held(log, state):
+    return [w for s, w in log if s == state]
+
+
+print("\nSPEC 14 — a clear GLOWS and then SHATTERS, for the frames SPEC 14 says")
+RUN3 = {(15, 0): RED, (15, 1): RED, (15, 2): RED}
+for region, name in ((0, "NTSC"), (1, "PAL")):
+    states = [s for s, _ in anim_run(RUN3, region=region)]
+    check(f"{name}: the glow window is {GLOW_FRAMES[region]} frames",
+          states.count(PLAY_GLOW), GLOW_FRAMES[region])
+    check(f"{name}: the shatter is {SHATTER_STEPS * VFX_FRAMES} frames",
+          states.count(PLAY_SHATTER), SHATTER_STEPS * VFX_FRAMES)
+    check(f"{name}: no frame of the step is spent anywhere else",
+          sorted(set(states)), [PLAY_GLOW, PLAY_SHATTER, PLAY_GRAVITY,
+                                PLAY_ARE])
+
+print("\n...and this is what the cell actually showed, tile by tile")
+#   One assertion for the whole animation: the glow glyph of the cell's own
+#   colour for the glow window, then the removal ring opening outward at
+#   VFX_FRAMES a tile, then nothing. If any duration in SPEC 14 is wrong, or
+#   the ring runs backwards, or a tile is skipped, this is what says so.
+log = anim_run(RUN3)
+tr = track(log, (15, 0))
+check("board, then glow, then ring 1, 2, 3 (SPEC 14, Appendix A.3)", tr[:5],
+      [(RED, 1), (RED + GLYPH_GLOW, GLOW_FRAMES[0]),
+       (VFX_REMOVE1, VFX_FRAMES), (VFX_REMOVE2, VFX_FRAMES),
+       (VFX_REMOVE3, VFX_FRAMES)])
+check("...and then the cell is empty", tr[5][0], 0)
+check("all three cells of the run animate together",
+      all(track(log, (15, c))[:5] == tr[:5] for c in (1, 2)), True)
+
+print("\nthe board is NOT touched until the shatter is over (SPEC 8 steps 5, 6)")
+#   The whole phase rests on this: every frame above drew a glow, a beam or a
+#   ring frame over a cell that still held its own tile, which is the only
+#   reason the glow can be "of its own colour" at all.
+quiet()
+set_board(RUN3)
+redraw()
+kick()
+poke("PrismTimer", 200)
+still_there = []
+for _ in range(40):
+    frames(1)
+    if peek("PlayState") in (PLAY_GLOW, PLAY_SHATTER):
+        still_there.append(tiles(board()))
+    elif still_there:
+        break                                   # quiet() below parks the rest
+check("the run is on the board for every frame of both windows",
+      all(b == {(15, c): RED for c in range(3)} for b in still_there), True)
+check("...which is all twelve of them", len(still_there),
+      GLOW_FRAMES[0] + SHATTER_STEPS * VFX_FRAMES)
+
+print("\nSPEC 14 — a marked prism sits the glow out and blips INWARD")
+log = anim_run({(15, 0): RED, (15, 1): RED, (15, 2): WILD})
+pri = track(log, (15, 2))
+pot = track(log, (15, 0))
+check("it holds its rotation frame through the whole glow window",
+      pri[0], (WILD, 1 + GLOW_FRAMES[0]))
+check("then the same ring, closing inward (SPEC A.3)", pri[1:6],
+      [(PRISM_BLIP, VFX_FRAMES), (PRISM_BLIP + 1, VFX_FRAMES),
+       (VFX_REMOVE2, VFX_FRAMES), (VFX_REMOVE1, VFX_FRAMES),
+       (FONT_DOT, VFX_FRAMES)])
+check("WILD_BASE + GLYPH_GLOW is never drawn — that tile is an arrow",
+      any(w[(15, 2)] == WILD + GLYPH_GLOW for _, w in log), False)
+check("the shatter window is the prism's, not the potions'",
+      [s for s, _ in log].count(PLAY_SHATTER), BLIP_STEPS * VFX_FRAMES)
+check("the potions beside it shatter as usual", pot[1:5],
+      [(RED + GLYPH_GLOW, GLOW_FRAMES[0]), (VFX_REMOVE1, VFX_FRAMES),
+       (VFX_REMOVE2, VFX_FRAMES), (VFX_REMOVE3, VFX_FRAMES)])
+check("...and then wait, blank, while the prism finishes", pot[5][0], 0)
+
+print("\nSPEC 14 — the bolt lays a beam down its whole row and column")
+#   Checked on the LAST frame of the glow window rather than the first. A bolt
+#   marks 21 cells and draws 22 more, which is more than one frame's flush
+#   budget (SPEC 12.6), so the beam takes two frames to finish arriving — and
+#   what matters is that it is whole while the window is up.
+log = anim_run({(15, 0): RED, (15, 1): RED + GLYPH_BOLT, (15, 2): RED})
+lit = held(log, PLAY_GLOW)[-1]
+check("the bolt's own cell is the cross, drawn over its glow",
+      lit[(15, 1)], VFX_BEAM_CROSS)
+check("beam-H along every cell of the row, empty ones included",
+      [lit[(15, c)] for c in range(6) if c != 1], [VFX_BEAM_H] * 5)
+check("beam-V down every cell of the column",
+      [lit[(r, 1)] for r in range(15)], [VFX_BEAM_V] * 15)
+out = held(log, PLAY_SHATTER)[-1]
+check("the cells the beam covered but nothing removed are put back",
+      [out[(8, 1)], out[(15, 5)], out[(0, 1)]], [0, 0, 0])
+check("...and the cells it did remove are on the ring, not on a beam",
+      out[(15, 0)], VFX_REMOVE3)
+
+print("\nSPEC 4.6 — the fireball's flash is ONE BYTE on this machine")
+#   The colour of a tile here belongs to its 8-pattern group, not to the cell,
+#   so every red tile on the board turns white with a single write to the VDP
+#   colour table. Read back off the VDP, and compared with the value the table
+#   held BEFORE the flash rather than with a constant this file made up.
+base = base64.b64decode(rpc("mem.read", {
+    "space": "vram", "address": VRAM_COLORS + (RED >> 3), "length": 1})["data"])[0]
+quiet()
+set_board({(15, 0): RED, (15, 1): RED, (15, 2): RED + GLYPH_FIREBALL,
+           (10, 4): RED})
+redraw()
+kick()
+poke("PrismTimer", 200)
+tints, colors, glow_frames = [], [], 0
+for _ in range(400):
+    frames(1)
+    st = peek("PlayState")
+    if st == PLAY_GLOW:
+        glow_frames += 1
+        tints.append(peek("TintColor"))
+        colors.append(base64.b64decode(rpc("mem.read", {
+            "space": "vram", "address": VRAM_COLORS + (RED >> 3),
+            "length": 1})["data"])[0])
+    if st == PLAY_ARE:
+        break
+check("the flashing colour is the fireball's own", sorted(set(tints)), [RED])
+check("the group's foreground nibble is white (15) for the whole window",
+      sorted(set(colors)), [(base & 0x0F) | 0xF0])
+check("...and its background nibble is left alone",
+      sorted(set(colors))[0] & 0x0F, base & 0x0F)
+check("the window is the flash's length, not the glow's (SPEC 14)",
+      glow_frames, FLASH_FRAMES[0])
+check("the colour table is put back afterwards", base64.b64decode(rpc(
+    "mem.read", {"space": "vram", "address": VRAM_COLORS + (RED >> 3),
+                 "length": 1})["data"])[0], base)
+check("...and so is TintColor", peek("TintColor"), TINT_NONE)
+
+print("\nSPEC 14 — a prism at rest is the only tile on the board that moves")
+quiet()
+set_board({(15, 0): WILD})
+redraw()
+poke("PlayState", PLAY_ARE)                     # Nothing else happening at all
+poke("AreTimer", 200)
+poke("PieceDirty", 0)
+poke("PrismFrame", 0)
+poke("PrismTimer", 1)
+spin = []
+for _ in range(4 * PRISM_SPIN_RATE):
+    frames(1)
+    t = board()[15 * 8]
+    if spin and spin[-1][0] == t:
+        spin[-1][1] += 1
+    else:
+        spin.append([t, 1])
+check("it turns through its four frames, in order", [t for t, _ in spin],
+      [WILD + 1, WILD + 2, WILD + 3, WILD])
+check(f"one frame every {PRISM_SPIN_RATE}", sorted({n for _, n in spin}),
+      [PRISM_SPIN_RATE])
+facing = board()[15 * 8]                        # Read BEFORE the extra frame:
+frames(1)                                       #   one more and it has turned
+check("and the screen is showing it", well()[(15, 0)], facing)
+
+print("\nSPEC 13.4 — the well petrifies from the floor up, into its own shapes")
+stone = {(15, 0): RED, (15, 1): RED + GLYPH_BOMB, (14, 0): BLUE + GLYPH_STAR,
+         (13, 0): WILD, (12, 3): GREEN + GLYPH_BOLT}
+quiet()
+set_board(stone)
+redraw()
+poke("GameState", 3)                            # STATE_GAMEOVER
+poke("PetrifyRow", 15)                          # ...as AnimPetrifyBegin leaves
+poke("AnimTimer", 2)                            #    it
+rows = []
+for _ in range(48):
+    frames(1)
+    rows.append(peek("PetrifyRow"))
+    if rows[-1] == 0xFF:
+        break
+check("sixteen rows at 2 frames a row is 32 frames (SPEC 14)", len(rows), 32)
+check("it works upward from the floor", rows[:5], [15, 14, 14, 13, 13])
+left = tiles(board())
+check("each cell sets as its own shape (SPEC A.3)", left,
+      {(15, 0): PETRIFY_BASE + 0, (15, 1): PETRIFY_BASE + GLYPH_BOMB,
+       (14, 0): PETRIFY_BASE + GLYPH_STAR, (13, 0): PETRIFY_BASE + 0,
+       (12, 3): PETRIFY_BASE + GLYPH_BOLT})
+frames(2)
+check("...and the screen agrees, cell for cell",
+      {k: v for k, v in well().items() if v}, left)
+poke("GameState", 1)                            # Back to STATE_PLAY
+poke("PieceDirty", 0)
+
+print("\nSPEC 14 — the message band says what just happened")
+BAND_Y = 22                                     # MSG_Y (SPEC 12.2)
+
+
+def tile_str(text):
+    """ASCII to tile numbers, the way strings.inc's TileStr macro does it."""
+    out = []
+    for ch in text:
+        if ch == " ":
+            out.append(0)
+        elif ch.isdigit():
+            out.append(FONT_DIGIT_0 + int(ch))
+        elif "A" <= ch <= "Z":
+            out.append(FONT_LETTER_A + ord(ch) - ord("A"))
+        elif ch == "~":
+            out.append(FONT_TILDE)
+        elif ch == "x":
+            out.append(FONT_TIMES)
+        else:
+            raise ValueError(ch)
+    return out
+
+
+def band(text):
+    """The band's cells where a banner of this length would be centred."""
+    return panel((22 - len(text)) // 2, BAND_Y, len(text))
+
+
+poke("Level", 1)
+poke("TilesCleared", 30 - 3)                    # LEVEL_TILES; this clear buys it
+quiet()
+set_board(RUN3)
+redraw()
+kick()
+poke("PrismTimer", 200)
+banner_at = None
+for n in range(1, 400):
+    frames(1)
+    if banner_at is None and band("~~ LEVEL UP ~~") == tile_str("~~ LEVEL UP ~~"):
+        banner_at = n
+    if peek("PlayState") == PLAY_ARE:
+        break
+check("thirty tiles raises LEVEL UP in the band (SPEC 10.1, 14)",
+      banner_at is not None, True)
+check("...and the level went up with it", peek("Level"), 2)
+gone = None
+for n in range(1, BANNER_FRAMES[0] + 8):
+    frames(1)
+    if gone is None and band("~~ LEVEL UP ~~") != tile_str("~~ LEVEL UP ~~"):
+        gone = n
+check(f"it comes down BannerFrames later, not before",
+      gone is not None and gone >= BANNER_FRAMES[0] - banner_at, True)
+check("the band is blank again", band(" " * 18), [0] * 18)
+
+print("\n...and a chain of two links says so (SPEC 8 SETTLE)")
+#   Played, not planted: the reds clear, the blues fall into row 15 and only
+#   THEN make a run. ChainStep counts the step that found nothing as well, so a
+#   two-link chain ends at 3.
+poke("TilesCleared", 0)
+chained = {(15, 0): RED, (15, 1): RED, (15, 2): RED,
+           (14, 0): BLUE, (14, 1): BLUE, (13, 2): BLUE}
+quiet()
+set_board(chained)
+redraw()
+kick()
+poke("PrismTimer", 200)
+for _ in range(400):
+    frames(1)
+    if peek("PlayState") == PLAY_ARE:
+        break
+check("two steps cleared, and the second was the fall's doing",
+      peek("ChainStep"), 3)
+frames(1)                                       # The settle queued it; this is
+                                                #   the flush that draws it
+check("the band reads CHAIN x2", band("~~ CHAIN x2 ~~"),
+      tile_str("~~ CHAIN x2 ~~"))
+check("the board is empty", tiles(board()), {})
+
+print("\n...and a single clear does not raise one (SPEC 8 SETTLE — chain >= 2)")
+frames(BANNER_FRAMES[0] + 2)                    # Let the chain banner run out
+poke("PlayState", PLAY_ARE)                     #   first — a piece spawns and
+poke("AreTimer", 200)                           #   falls in those 47 frames,
+poke("PieceDirty", 0)                           #   and the redraw below paints
+check("the chain banner came down on its own", band(" " * 18), [0] * 18)
+quiet()
+set_board(RUN3)
+redraw()                                        #   the well back over it
+kick()
+poke("PrismTimer", 200)
+for _ in range(400):
+    frames(1)
+    if peek("PlayState") == PLAY_ARE:
+        break
+frames(1)
+check("no banner for a one-step cascade", band(" " * 18), [0] * 18)
+
 print("\na step BIGGER than the dirty ring still reaches the screen")
 #   The reagents are what made this reachable. Before P5 a step removed the
 #   cells one run had matched — a handful — and CascadeRemove marked each one
@@ -1191,15 +1560,52 @@ rpc("exec.runTo", {"address": syms["MatchScan"], "timeout": "5s"})
 c0 = cycles()
 rpc("exec.runTo", {"address": syms["EffectEnqueueMarked"], "timeout": "5s"})
 c1 = cycles()
-rpc("exec.runTo", {"address": syms["CascadeRemove"], "timeout": "5s"})
+rpc("exec.runTo", {"address": syms["AnimGlowBegin"], "timeout": "5s"})
 c2 = cycles()
+rpc("exec.runTo", {"address": syms["GameLoop"], "timeout": "5s"})
+c3 = cycles()                                   # ...and the rest of that frame
+rpc("exec.runTo", {"address": syms["AnimShatterBegin"], "timeout": "5s"})
+c4 = cycles()
+rpc("exec.runTo", {"address": syms["GameLoop"], "timeout": "5s"})
+c5 = cycles()
 print(f"  (scan {c1 - c0} cycles, then enqueue + resolve {c2 - c1}, "
       f"against a 16667-cycle frame)")
+print(f"  (the glow that follows them costs {c3 - c2}, and the heaviest frame "
+      f"of the animation — the beams coming down and the ring going up — "
+      f"{c5 - c4})")
 check("the reagents cost less than the scan they follow", c2 - c1 < c1 - c0, True)
+#   Nothing is asserted about those two animation numbers, because on THIS
+#   board they are worse than the scan and saying otherwise would be a test
+#   written to pass. It is the extreme — a full well, a run of six, five bolts,
+#   110 beam cells against a 64-entry dirty ring — and what the game does about
+#   it is drop what does not fit and repaint the well (D6, D12, anim.asm). The
+#   frame it costs is measured, printed, and lived with, exactly as P5 lived
+#   with the 22,145 above it. The number that matters for play is the one
+#   below, on a board a player will actually see.
 frames(1)                                       # Back to the top of the loop
 while peek("PlayState") != PLAY_ARE and used < 800:
     frames(1)
     used += 1
+
+print("\n...and on an ORDINARY clear, which is what the frame budget is for")
+quiet()
+set_board(RUN3)
+redraw()
+kick()
+rpc("exec.runTo", {"address": syms["AnimGlowBegin"], "timeout": "5s"})
+g0 = cycles()
+rpc("exec.runTo", {"address": syms["GameLoop"], "timeout": "5s"})
+g1 = cycles()
+rpc("exec.runTo", {"address": syms["AnimShatterBegin"], "timeout": "5s"})
+g2 = cycles()
+rpc("exec.runTo", {"address": syms["GameLoop"], "timeout": "5s"})
+g3 = cycles()
+print(f"  (three in a row: the glow frame {g1 - g0} cycles, the frame the "
+      f"shatter starts {g3 - g2})")
+check("the glow goes up inside one frame", g1 - g0 < 16667, True)
+check("...and so does the shatter", g3 - g2 < 16667, True)
+while peek("PlayState") != PLAY_ARE:
+    frames(1)
 
 print("\nthe effect queue drained after every cascade in this run (SPEC 7.2)")
 check(f"{len(queue_left)} cascades, all of them empty at the end",

@@ -94,13 +94,28 @@ checkboxes and the "Current Status" section as work progresses.**
   run's worth. Five bolts in one run remove 71 cells and the dirty ring holds
   64, so it now falls back to the whole-well redraw cursor rather than dropping
   marks nothing would ever make again. See the P5 table.
-- Next: **P6 — animation.** P5 leaves the shape it needs: a cascade step is a
-  scan, then the reagents, then a removal, with nothing between the marking and
-  the zeroing — which is exactly where `PLAY_GLOW` and `PLAY_SHATTER` go. Read
-  the P9 table below before starting, and note two things P5 settled that P6
-  inherits: a marked prism must be told apart by its **colour** and not its
-  glyph, and `CascadeRemove` is already the routine that decides how a step's
-  cells reach the screen.
+- **Phase P6 is done.** A clear is an event now. Matched cells glow in their
+  own colour, a bolt lays beams down its row and column, a fireball turns its
+  colour white board-wide, and then the whole lot shatters through one white
+  ring — while a marked prism sits the glow out and blips inward instead. A
+  prism at rest turns. The band says `LEVEL UP` and `CHAIN x3`. The well
+  petrifies from the floor up at game over, each cell into its own stone shape.
+  Every duration is read back off the VDP's own name table frame by frame on
+  both regions, and the whole twelve-frame sequence for one cell is a single
+  assertion: `[(potion, 1), (glow, 6), (ring1, 2), (ring2, 2), (ring3, 2)]`.
+  Work RAM is **533 bytes** against SPEC §17.1's ~570; ROM use is
+  52% / 56% / 68% of 16 KB.
+- P6 changed SPEC twice, both times because the code met a number that could
+  not be right. **SPEC §14's PAL removal was 5 frames for 3 tiles at 2 frames
+  each**, which does not divide, so the removal, the bomb blast and the prism's
+  blip-out are now the same on both regions for the reason `FALL_FRAMES`
+  already was. And **Appendix A said no board cell can hold 113–115**, which
+  stopped being true the moment a prism rotated: the constraint is not that
+  nothing may write a wild cell's glyph, it is that nothing may *read* one.
+- Next: **P7 — screen states.** P6 leaves it the two pieces it needs: the
+  petrify is written and wired, so P7 adds the banner, the fanfare and the
+  timeout around it, and `AnimBannerShow` is the message band's one entry
+  point. Read the P9 table below before starting.
 
 ---
 
@@ -357,7 +372,7 @@ the implementation ones that SPEC.md does not cover.
 
 - **D1 — One translation unit.** `src/` modules are `.include`d, not linked
   separately. Revisit only if the assembler gets slow enough to matter.
-- **D2 — The HAL is seven routines.** Growing it is fine; branching inside
+- **D2 — The HAL is eight routines.** Growing it is fine; branching inside
   `src/` on the platform is not.
 - **D3 — `.bin` is generated, `.inc` is written.** Editor exports are binaries
   pulled in with `.incbin`; anything derived from SPEC.md is hand-authored
@@ -432,6 +447,34 @@ the implementation ones that SPEC.md does not cover.
   soft-drop point means: `PieceFallRate` now returns carry clear when the soft
   drop was the rate actually used, so a row that fell at gravity's own speed
   with DOWN held pays nothing — at level 16 there is no soft drop to reward.
+- **D19 — Animation is two windows, not six timers.** SPEC §14 gives every
+  effect its own duration and they do not agree — a glow is 6 frames, a
+  fireball's flash 8, a prism's blip 10. Rather than a timer per effect, a step
+  animates in `PLAY_GLOW` and `PLAY_SHATTER`, and **a window lasts as long as
+  the longest thing in it**: the glow window is `GlowFrames` or `FlashFrames`
+  when a fireball fired, the shatter is `SHATTER_STEPS` ring frames or
+  `BLIP_STEPS` when a marked prism is winking out beside them. Every count in
+  SPEC §14 holds and the game tracks two numbers. It also fixes what "the
+  fireball flash is 8 frames" means when the cells flashing are the same cells
+  glowing.
+- **D20 — The fireball's flash is one shared byte, read by the platform.** The
+  AC6502's colour belongs to an 8-pattern group and the Commodores' to a cell,
+  so the same effect is one VDP write on one machine and a per-cell decision on
+  the others — and a Commodore flush during the flash would undo any colour RAM
+  poked ahead of it. `HalColorFlash` therefore sets `TintColor` and does
+  whatever the platform needs; the Commodores' `HalPlotCell` substitutes white
+  for any tile of that colour as it draws it, which stays consistent through
+  every redraw for one `CMP` a cell. `TINT_NONE` is `$01`, not `$00`, because no
+  masked tile can equal `$01` — so the test needs no separate "is anything
+  flashing" branch, and `TILE_BLANK` is not accidentally in the tinted group.
+- **D21 — A prism's glyph bits are a frame number, so nothing may read them.**
+  The idle rotation writes `WILD_BASE + 0..3` into the board, whose low three
+  bits read as a potion, a fireball, a bolt or a bomb. Every test of a wild cell
+  is therefore a test of its **colour**, and the colour is tested *first*: the
+  fireball's immunity, the effect queue, the beam pass and the game-over
+  petrify all sit on this. P5 wrote the rule into `EffectEnqueue` a phase before
+  the reason for it existed; SPEC §5.2 and Appendix A now say so as well, having
+  previously claimed no board cell could hold 113-115.
 - **D9 — The whole static screen comes from the editors.** Panel frame, labels
   and margin are one name-table image per platform; code draws only the well,
   the digits, the preview and the message band over the top.
@@ -747,27 +790,102 @@ because the queue entry got smaller (below). ROM use is 47% / 51% / 64% of
 
 ---
 
-### Phase P6 — Animation
+### Phase P6 — Animation — **done**
 
 **Goal:** clears read as events rather than as the score jumping.
 
-- [ ] `PLAY_GLOW` — matched cells swap to glyph `+6` of their own colour.
+- [x] `PLAY_GLOW` — matched cells swap to glyph `+6` of their own colour.
       **Marked prisms are skipped** — group 14 has no `+6`
-- [ ] `PLAY_SHATTER` — the removal ring, `VFX_REMOVE1..3`, two frames each.
+- [x] `PLAY_SHATTER` — the removal ring, `VFX_REMOVE1..3`, two frames each.
       One animation for the match, the bomb and the star
-- [ ] Marked prisms run `PRISM_BLIP` instead: the same ring closing inward
-- [ ] Prism idle rotation, `PRISM_SPIN + 0..3`, one frame every 8
-- [ ] Fireball flash: one VDP colour-table byte on the AC6502, colour RAM on
-      the Commodores — same frame count, different mechanism
-- [ ] Bolt beam overlay (the bomb has no overlay of its own now)
-- [ ] Level-up and chain banners in the message band
-- [ ] Game-over petrify: `PETRIFY_BASE + (tile & GLYPH_MASK)`, bottom-up, so
+- [x] Marked prisms run `PRISM_BLIP` instead: the same ring closing inward
+- [x] Prism idle rotation, `PRISM_SPIN + 0..3`, one frame every 8
+- [x] Fireball flash: one VDP colour-table byte on the AC6502, one byte of
+      state that `HalPlotCell` reads on the Commodores — same frame count,
+      different mechanism. `HalColorFlash` is the eighth HAL routine (D2)
+- [x] Bolt beam overlay (the bomb has no overlay of its own now)
+- [x] Level-up and chain banners in the message band
+- [x] Game-over petrify: `PETRIFY_BASE + (tile & GLYPH_MASK)`, bottom-up, so
       each cell sets as its own shape
-- [ ] Every duration from the SPEC §14 table, per region
+- [x] Every duration from the SPEC §14 table, per region
 
-**Exit criteria:** a clear step takes the frames SPEC §14 says it does on both
-regions; a deep chain reads as roughly half a second a link; the fireball flash
-is one byte on the AC6502; nothing in the animation path blocks the main loop.
+**Exit criteria met** — 52 new checks, 240 in the suite — and every duration
+below is counted off the VDP's own name table one frame at a time, never off a
+timer the game happens to hold.
+
+**A clear step takes the frames SPEC §14 says on both regions.** Six of glow
+and six of shatter on NTSC, five and six on PAL, and no frame of a step spent
+anywhere else. The whole visible life of a matched cell comes back as
+`[(potion, 1), (glow, 6), (ring1, 2), (ring2, 2), (ring3, 2)]` and then empty
+— one assertion covering the window lengths, the order of the ring and the two
+frames a tile. **A marked prism holds its rotation frame for all six frames of
+the glow**, then runs `116, 117, 57, 56, 52` inward at two frames each while
+the potions beside it shatter and wait; the shatter window is the prism's ten,
+not the potions' six. `WILD_BASE + GLYPH_GLOW` is never drawn — checked, on
+every frame of that cascade.
+
+**The board is untouched for all twelve of those frames**, which is the whole
+of the phase: the glow is "of the cell's own colour" only because the cell is
+still there saying what it is. Read back off RAM, frame by frame, for both
+windows.
+
+**The bolt's beam is whole.** Beam-H across all six cells of its row, beam-V
+down all sixteen of its column, the cross on its own cell drawn over its own
+glow — and the empty cells it covered for continuity are put back afterwards,
+because nothing else would ever draw them again.
+
+**The fireball flash is one byte on the AC6502**, read back out of the VDP's
+colour table and compared with the value that table held *before* the flash:
+the foreground nibble is 15 for the whole window, the background nibble is
+untouched, and the original byte is back afterwards. The window is the flash's
+eight frames and not the glow's six.
+
+**A prism at rest turns** through `113, 114, 115, 112`, exactly eight frames
+each, on the board and on the screen. **The well petrifies** in sixteen rows
+of two frames — thirty-two, as SPEC §14 says — from the floor upward, each
+cell into its own stone shape, and a prism into `PETRIFY_BASE` rather than into
+a stone bomb. `make crosscheck` now plays all three machines to game over and
+finds the same fifteen stone cells on each, so the petrify is compared across
+platforms and not merely the well.
+
+**The banners work and play never stops for one.** Thirty tiles raises
+`LEVEL UP` and the level goes up with it; a played two-link chain — the reds
+clear, the blues fall and only *then* make a run — raises `CHAIN x2`; a
+one-step cascade raises nothing; and both come down on their own after
+`BannerFrames`.
+
+**Nothing in the animation path blocks the main loop**, and on an ordinary
+clear nothing comes near a frame either: the glow goes up in **2,607 cycles**
+and the shatter starts in **1,529**, against 16,667. The extreme board is a
+different story and is in the table below.
+
+Work RAM is **533 bytes** against SPEC §17.1's ~570 — eleven more than P5, five
+of them zero-page walk cursors. ROM use is 52% / 56% / 68% of 16 KB.
+
+**What came out of it.**
+
+| What happened | What it changed |
+|---|---|
+| SPEC §14 gave the removal 6 frames NTSC and **5 PAL**, for "3 tiles at 2 frames each". Three twos are six, and 5/3 is not a frame count | SPEC was wrong, so SPEC changed first. The removal, the bomb blast and the prism's blip-out are **the same on both regions**, for the reason `FALL_FRAMES` already was: they are a tile count times `VFX_FRAMES`, not a duration. A PAL step is 11 frames against NTSC's 12 — 17 ms, which nobody can see |
+| Appendix A said **"no board cell can ever hold 113–119"**, and the idle rotation makes that false on the first prism | The rule was never about writing, it was about reading: a wild cell's low three bits are a *frame number* and nothing may ask them what glyph they are. SPEC §5.2, A.1 and A.3 now say so. P5 had already made `EffectEnqueue` test the colour first for exactly this reason, one phase before the reason existed; `AnimCellBolt` and the petrify do the same |
+| Every effect has its own duration in SPEC §14 and they do not agree — a glow is 6, a fireball's flash 8, a prism's blip 10 | One timer per **window**, not per effect, and a window lasts as long as the longest thing inside it. The glow window is `GlowFrames`, or `FlashFrames` when a fireball fired; the shatter is `SHATTER_STEPS`, or `BLIP_STEPS` when a marked prism is winking out beside it. Every count in the table holds and the game tracks two numbers instead of six |
+| A beam laid over an **empty** cell has nothing behind it that anything will ever draw again, and D6 drops marks silently when the ring is full. Five bolts in one run put 110 beam cells through a 64-entry ring | The one mark in the animation that cannot be dropped. It takes `CascadeRemove`'s way out — the whole-well redraw cursor (D12). Every other animation mark is made again within a few frames: a lost glow is covered by the shatter, a lost ring frame by `CascadeRemove`. Worth writing down, because the asymmetry is not obvious and the failure is a white beam sitting in the well for the rest of the game |
+| The AC6502's colour is per **group** and the Commodores' is per **cell**, so "turn every red tile white" is one VDP byte on one machine and 96 colour-RAM writes on the others — and any flush during the flash would undo those writes | `HalColorFlash` sets one shared byte, `TintColor`, and the Commodores' `HalPlotCell` substitutes white for any tile of that colour as it draws it. Consistent through every redraw for free, and it costs one `CMP` a cell. `TINT_NONE` is **$01** rather than $00 because no masked tile can equal $01, so there is no separate "is anything flashing" test |
+| On the worst board there is, the frame that starts the glow costs **39,361 cycles** — worse than the scan before it | Measured, printed and lived with, exactly as P5 lived with its 22,145. It is a full well, a run of six and five bolts: 110 beam cells and 71 glow cells against a 64-entry ring, so most of it is dropped and the well is repainted. `make playtest` asserts nothing about that number and asserts the ordinary clear's 2,607 instead, because a test written to pass on the extreme would say nothing about either |
+| `redraw()` in `playtest.py` waited for the redraw **cursor** to run out and not for the ring behind it, so a screen read on the next frame was one frame early | It waits for both now. Under P5 nothing noticed, because no test read the well the frame after a plant; the first P6 track came back starting with a blank cell. The same run turned up a second one: a cascade left half-finished by one test carried straight on over the board the next had just planted, which is what `quiet()` is for |
+| The two expensive halves of a step — the scan and the removal — used to share one frame (P3's risk list, and P5 measured them at 46,000 cycles together) | They are twelve frames apart now, which is what D4 always implied and what P6 finally cashes in. Neither is competing with an animation for the same 16,667 cycles |
+
+**One thing is not tested and should be said so.** The *tinted* half of the
+Commodores' `HalPlotCell` — the white substitution — is exercised by nothing,
+because a clear cannot be planted through VICE and the headless crosscheck game
+rolls whatever the seed gives it (the same limit P3 recorded). What *is*
+covered is everything around it: the AC6502's whole flash is read back out of
+the VDP's colour table, and the untinted path on both Commodores runs on every
+cell they ever draw — `tools/read-screen.py` tells the potion groups apart by
+their **colour**, so `make crosscheck` reading the right well off a VIC-20
+screen is also the evidence that `TintColor` is `TINT_NONE` and the ordinary
+lookup is intact. Six instructions on each machine remain unproven; a real
+machine and a fireball is the cheapest way to close it, in P10.
 
 ---
 
@@ -781,9 +899,16 @@ is one byte on the AC6502; nothing in the animation path blocks the main loop.
       random one of the block's 28 cells, every frame
 - [ ] RNG seeded from the frame counter at the fire press (SPEC §15)
 - [ ] `StatePause`: well washed with `TILE_WASH` so it cannot be studied,
-      timers frozen
-- [ ] `StateGameOver`: petrify, banner, high-score fanfare, 10-second timeout
-- [ ] Spawn-blocked detection promoted to an actual game over
+      timers frozen. **Resuming inside a GLOW window loses the glow**: the
+      resume is `RenderBoard`, which paints the board's own tiles back over
+      it, and the glow is drawn once at the window's start rather than every
+      frame. Cosmetic, six frames wide, and left for whoever rewrites this
+      path — the shatter recovers on its own because it re-marks every
+      `VFX_FRAMES`, and the board is authoritative throughout either way
+- [ ] `StateGameOver`: the banner, the high-score fanfare and the 10-second
+      timeout. **The petrify is done** — P6 wrote `AnimPetrifyBegin` /
+      `AnimPetrifyTick` and `PlayAre` already starts it on a blocked spawn, and
+      `StateGameOver` holds the input off until it finishes
 
 **Exit criteria:** the loop runs indefinitely without leaking state between
 games; two consecutive games from a cold boot deal different pieces; pausing
@@ -834,10 +959,10 @@ that own it, and each is easy to get wrong by assuming the obvious:
 
 | Requirement | Lands in |
 |---|---|
-| One removal ring (56–58) serves match, bomb and star. There is no separate blast or sparkle tile | P3, P5, P6 |
-| **`WILD_BASE + GLYPH_GLOW` is an arrow, not a glow.** A matched prism sits out the glow phase | P5, P6 |
-| A matched prism blips out — 116, 117, 57, 56, 52 — rather than shattering | P6 |
-| A prism at rest rotates through 112–115, one frame every 8 | P6 |
+| One removal ring (56–58) serves match, bomb and star. There is no separate blast or sparkle tile | P3, P5, P6 — done |
+| **`WILD_BASE + GLYPH_GLOW` is an arrow, not a glow.** A matched prism sits out the glow phase | P5, P6 — done |
+| A matched prism blips out — 116, 117, 57, 56, 52 — rather than shattering | P6 — done |
+| A prism at rest rotates through 112–115, one frame every 8 | P6 — done, and it turned "no board cell can hold 113-115" into D21 |
 | PAUSE washes the well with tile 7; it does not blank it | P7 |
 | Game over petrifies each cell into its own shape, `120 + (tile & 7)` | P7 |
 | The title screen's magic field: random tiles from 128–255 into a 14 × 2 block, one cell a frame | P7 |
@@ -852,6 +977,10 @@ that own it, and each is easy to get wrong by assuming the obvious:
 - [ ] S5 measured on a real 6560 and 6561
 - [ ] AC6502 on real hardware: joystick and keyboard. **Not write spacing** —
       S1 settled that, and the margin is two orders of magnitude
+- [ ] Set a fireball off on each Commodore and look at it. The tinted half of
+      their `HalPlotCell` is the one thing P6 left unproven — VICE cannot be
+      handed a planted clear — and it is six instructions that either turn a
+      colour white or do not
 - [ ] VIC-20 on real hardware, NTSC and PAL
 - [ ] C64 on real hardware, NTSC and PAL
 - [ ] Burn instructions in the README confirmed against an actual programmer
@@ -874,18 +1003,21 @@ both regions where the machine has both.
   VIC-20's 2024, because its screen is bigger. This has got better rather than
   worse: the margin is two tiles now, so the images are long runs and should
   RLE well past the 4:1 the budget assumed (S3). Nothing is tight at 43%.
-- **The frame cost of a cascade step.** Half measured now. The scan and the
-  removal come to **12,894 cycles** on a six-row pile against a 16,667-cycle
-  frame at 1 MHz, so a step fits — but only just, and a pile twice as deep does
-  not: the cost is roughly linear in the pile's height and a nearly-full board
-  is nearer two frames. Overrunning is not corruption, it is one dropped frame
-  at the moment a piece locks, and P6 is about to put twelve frames of
-  animation in the same place. P5's effects add to the same frame, and the
-  natural fix if it matters is the one D4 already implies: the scan and the
-  removal are separated by `PLAY_GLOW` in P6 anyway, so they stop sharing a
-  frame. **Termination** was never in doubt — effects only remove tiles and each
-  cell marks once — and is now also observed: every cascade in `make playtest`
-  settles, including one on a full board.
+- **The frame cost of a cascade step.** Measured, and the fix D4 implied has
+  landed. The scan and the removal used to share one frame; `PLAY_GLOW` and
+  `PLAY_SHATTER` now sit between them, twelve frames apart, so neither is
+  competing with an animation for the same 16,667 cycles. On an ordinary clear
+  nothing is close: the glow goes up in 2,607 cycles and the shatter starts in
+  1,529. On the **extreme** board — a full well, a run of six, five bolts — the
+  step is still several video frames wide (scan 24,478, reagents 22,161, the
+  glow that follows them 39,361) and that is accepted rather than optimised,
+  for the reason P5 accepted its half: overrunning is not corruption, it is one
+  slow moment at the instant a piece locks, and the common case is a handful of
+  cells. If it ever does matter, the glow is a *pass over marked cells* and
+  splitting it across two frames is a cursor like every other one in the game
+  (D12, D16). **Termination** was never in doubt — effects only remove tiles and
+  each cell marks once — and is now also observed: every cascade in
+  `make playtest` settles, including one on a full board.
 - **Reagent probability is guesswork.** SPEC §5.3's tables were chosen on
   paper. They are the most likely thing to need rebalancing after P5, and they
   are also the easiest — five rows of a table.
@@ -906,6 +1038,6 @@ Out of scope for the first release, recorded so they are not rediscovered.
 - **Difficulty select** on the title screen — start at level 1, 5 or 10.
 - **Persisted high score.** Possible on the AC6502 alone via the DS1511Y NVRAM,
   which argues for leaving it out everywhere for parity.
-- **A fourth platform.** The HAL is seven routines; the tile format is shared
+- **A fourth platform.** The HAL is eight routines; the tile format is shared
   by anything with 8 × 8 1bpp characters. The work would be a linker config, a
   cartridge header, and one new `WizardsLab.asm`.

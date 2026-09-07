@@ -66,6 +66,18 @@ EffectRow:      .res 1      ; First cell of the bomb's current row
 EffectArg:      .res 1      ; What the walk is looking for: the fireball's
                             ;   colour key, or the bomb's last column
 
+; --- Animation walks (SPEC 14) -----------------------------------------------
+;   The glow, the beams and the shatter all walk MARKS and mark what they find,
+;   so their cursors cannot live in registers either — RenderMark clobbers A
+;   and X. There are two of them because the beam pass NESTS: the outer walk is
+;   over the marked cells, looking for bolts, and the inner one is over the
+;   cross each bolt draws.
+AnimMode:       .res 1      ; Which of the four the walk is doing
+AnimIdx:        .res 1      ; Outer cursor — the marked cell being animated
+AnimCur:        .res 1      ; Inner cursor — the beam cell being drawn
+AnimEnd:        .res 1      ; Where the inner walk stops
+AnimArg:        .res 1      ; What it is drawing, or the bolt's own column
+
 ; --- Render and text scratch -------------------------------------------------
 ;   These ARE live across a JSR, unlike Tmp0-Tmp3, because text.asm calls
 ;   RenderMark once per cell and has to remember where it is. That is safe

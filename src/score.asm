@@ -354,6 +354,8 @@ ScoreLevelCheck:
   bcs @No                       ; The box is two digits wide (SPEC 10.1), and
   inc Level                     ;   nothing about level 100 is reachable in a
   jsr RenderLevel               ;   session anyway
+  jsr AnimBannerLevel           ; SPEC 14 — and play carries straight on; the
+                                ;   band clears itself BannerFrames later
   lda #SFX_LEVELUP
   sta SfxRequest
   lda #<BONUS_LEVELUP           ; SPEC 9.6 — an award, not a cascade point, so

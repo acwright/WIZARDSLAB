@@ -25,6 +25,7 @@ SCR_CELLS        = 506           ; 22 x 23
 PANEL_X             = 0             ; The screen IS the panel
 PANEL_Y             = 0
 HAS_COLOR_RAM       = 1
+COLOR_WHITE         = 1             ; The fireball flash (SPEC 4.6)
 
 CHARSET_RAM         = $1400         ; 2 K, $1400-$1BFF
 
@@ -65,6 +66,7 @@ ColdStart:
 .include "../src/piece.asm"
 .include "../src/match.asm"
 .include "../src/cascade.asm"
+.include "../src/anim.asm"
 .include "../src/score.asm"
 .include "../src/render.asm"
 .include "../src/text.asm"
@@ -176,8 +178,15 @@ HalPlotCell:
   tay                           ; Y = column
   pla                           ; A = tile
   sta (ScreenPtr),y
-  tax                           ; The tile is its own colour lookup index
-  lda TileColorVIC,x
+  tax                           ; The tile is its own colour lookup index...
+  and #COLOR_MASK               ; ...unless its colour is the one a fireball is
+  cmp TintColor                 ;   flashing white (SPEC 4.6). TintColor is
+  beq @White                    ;   TINT_NONE when nothing is, and no masked
+  lda TileColorVIC,x                ;   tile can equal that, so the test needs no
+  jmp @Put                      ;   separate "is anything lit at all" branch —
+@White:                         ;   one CMP a cell, and only while it is lit
+  lda #COLOR_WHITE              ;   does a cell come out any different
+@Put:
   sta (ColorPtr),y
   rts
 
@@ -425,6 +434,25 @@ HalDetectRegion:
   rts
 @Ntsc:
   lda #0
+  rts
+
+; -----------------------------------------------------------------------------
+;   HalColorFlash — the fireball's detonation (SPEC 4.6, 14)
+;   In:  A = colour key ($40..$68), or TINT_NONE.  Modifies: A, TintColor
+;
+;   Colour here is per CELL, so there is no single byte to poke: the flash is
+;   HalPlotCell substituting white for any tile of TintColor as it draws it,
+;   and the animation re-marking every cell that has to change. Storing the
+;   colour is therefore the whole routine, and the transition HalColorFlash
+;   promises to handle costs nothing — the previous colour stops being
+;   substituted the moment this byte changes, and its cells are re-marked by
+;   the same pass that marks the new one (anim.asm, hal.inc).
+;
+;   The AC6502 does it in one VDP write instead. Same frame count, same look,
+;   completely different mechanism — which is exactly what SPEC 4.6 predicted.
+; -----------------------------------------------------------------------------
+HalColorFlash:
+  sta TintColor
   rts
 
 ; -----------------------------------------------------------------------------

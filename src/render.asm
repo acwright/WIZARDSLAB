@@ -211,6 +211,22 @@ RenderBoardStep:
 ;   at a time.
 ; -----------------------------------------------------------------------------
 RenderCell:
+  lda Board,x                   ; The board byte IS the tile (SPEC 3.3)
+  ; falls through
+
+; -----------------------------------------------------------------------------
+;   RenderCellAs — queue one board cell showing something else entirely
+;   In:  X = board index, A = tile
+;   Out: nothing.  Modifies: A, X, Y
+;
+;   The animation frames are the only tiles in the game that are NOT what the
+;   board holds: a glow glyph, a beam, a ring frame and a blip frame are all
+;   drawn over a cell whose board byte still says what it really is, right up
+;   until CascadeRemove zeroes it (anim.asm, SPEC 8 step 5). Everything else
+;   goes through RenderCell above and never has to think about it.
+; -----------------------------------------------------------------------------
+RenderCellAs:
+  pha
   txa
   and #(BOARD_STRIDE - 1)
   clc
@@ -223,7 +239,7 @@ RenderCell:
   clc
   adc #WELL_ORIGIN_Y
   tay
-  lda Board,x
+  pla
   ldx RedrawCol
   jmp RenderMark
 

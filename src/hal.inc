@@ -3,7 +3,7 @@
 ; =============================================================================
 ;   Everything in src/ is shared, unmodified, by all three machines. The only
 ;   things that differ are collected here: each platform's WizardsLab.asm must
-;   define these constants and implement these seven routines, and nothing
+;   define these constants and implement these eight routines, and nothing
 ;   else in src/ may touch hardware directly.
 ;
 ;   This file declares nothing. It is the documentation for the boundary, kept
@@ -32,7 +32,8 @@
 ;                       In:  nothing        Out: nothing
 ;
 ;     HalPlotCell       Write one cell, colour included where the platform has
-;                       per-cell colour.
+;                       per-cell colour — white instead, for any tile whose
+;                       colour key is TintColor (see HalColorFlash).
 ;                       In:  A = tile, X = screen column, Y = screen row
 ;                       Out: nothing.  Modifies: A, X, Y, Ptr1, Ptr2
 ;
@@ -48,6 +49,23 @@
 ;
 ;     HalDetectRegion   Decide NTSC or PAL so the timing tables can be picked.
 ;                       In:  nothing        Out: A = 0 NTSC, 1 PAL
+;
+;     HalColorFlash     Draw every tile of one colour white, or stop doing so.
+;                       The fireball's detonation (SPEC 4.6, 14).
+;                       In:  A = colour key ($40..$68), or TINT_NONE for none
+;                       Out: nothing.  Modifies: A, X, Y, and TintColor, which
+;                            it OWNS: nothing else may write that byte.
+;                       The platform must handle the transition, not just the
+;                       new value — a second call with a different colour puts
+;                       the first one back before lighting the second.
+;                       On the AC6502 this is ONE byte in the VDP colour table,
+;                       because a tile's colour there belongs to its 8-pattern
+;                       group and not to the cell. On the Commodores colour is
+;                       per cell, so HalPlotCell reads TintColor instead and
+;                       substitutes white for any tile of that colour as it
+;                       draws it — which also means every tinted cell has to be
+;                       re-marked, and the animation is already marking all of
+;                       them (anim.asm).
 ;
 ;     HalSfx            Start a sound effect. May be a bare RTS until audio
 ;                       exists.

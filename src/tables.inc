@@ -42,6 +42,34 @@ SoftDropRate:                           ; Frames per row while DOWN is held.
 BlinkHalf:                              ; SPEC 14 — half of the 30 / 25 frame
   .byte 15, 13                          ;   blink period, which is what a
                                         ;   blinking field actually counts
+GlowFrames:                             ; SPEC 14 — the GLOW window: the match
+  .byte  6,  5                          ;   glow and the bolt's beams
+FlashFrames:                            ; ...and what the window grows to when
+  .byte  8,  7                          ;   a fireball fired, because its flash
+                                        ;   is the longer of the two and both
+                                        ;   are showing at once (constants.inc)
+BannerFrames:                           ; SPEC 14 — how long LEVEL UP and
+  .byte 45, 38                          ;   CHAIN xN stay in the message band
+
+; --- The two removal animations (SPEC 14, Appendix A.3) ----------------------
+;   One ring, run in both directions. Indexed by AnimStep, which advances every
+;   VFX_FRAMES frames.
+;
+;   Potions, reagents, the bomb blast and the star all open OUTWARD and are
+;   gone in SHATTER_STEPS frames; the fourth entry only ever comes up when a
+;   marked prism is blipping out beside them and holding the window open, and
+;   it blanks the cell rather than leaving the last ring frame sitting there
+;   for four more frames.
+
+VfxShatter:
+  .byte VFX_REMOVE1, VFX_REMOVE2, VFX_REMOVE3, TILE_EMPTY
+
+;   The prism closes INWARD, and does not pass through the glow (SPEC A.3 —
+;   group 14 has no glyph +6). Five frames, so a step that clears one runs
+;   BLIP_STEPS rather than SHATTER_STEPS.
+
+VfxBlip:
+  .byte PRISM_BLIP, PRISM_BLIP + 1, VFX_REMOVE2, VFX_REMOVE1, FONT_DOT
 
 ; --- Per-tile value for MATCH removals (SPEC 9.1) ----------------------------
 ;   Indexed by (chain - 1), clamped to 7.   20 50 100 200 300 400 500 600

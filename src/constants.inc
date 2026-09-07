@@ -139,6 +139,16 @@ MSG_Y               = 22        ;   image and code never touches them; the
                                 ;   which lands in the same place for an
                                 ;   even-length string (SPEC 12.2).
 
+MSG_CHAIN_LEN       = 14        ; `~~ CHAIN x0 ~~` (strings.inc)
+MSG_CHAIN_DIGIT     = 10        ; Where the digit sits inside it
+CHAIN_DIGIT_X       = (PANEL_W - MSG_CHAIN_LEN) / 2 + MSG_CHAIN_DIGIT
+                                ; TextBanner centres on PANEL_W, so the one
+                                ;   cell the chain banner overwrites afterwards
+                                ;   is worked out here rather than counted off
+                                ;   the screen
+CHAIN_MAX_SHOWN     = 9         ; One digit. A chain past 9 says 9 rather than
+                                ;   drawing a glyph that is not a numeral
+
 SCORE_DIGITS        = 7         ; Always all 7 drawn, zero padded
 LEVEL_DIGITS        = 2         ; Always zero padded — level 5 draws "0" / "5"
 
@@ -155,6 +165,39 @@ FALL_FRAMES         = 2         ; Frames a row while the pile falls into the
                                 ;   duration in the game that is the same on
                                 ;   both regions, because SPEC 14 says so: at
                                 ;   two frames there is nothing to round.
+
+; --- Animation (SPEC 14) -----------------------------------------------------
+;   A clear step animates in two windows, and everything SPEC 14 lists happens
+;   inside one of them. A window lasts as long as the LONGEST thing in it:
+;
+;     GLOW      the matched cells' glow glyph, the bolt's beams and the
+;               fireball's white flash. GlowFrames, or the longer FlashFrames
+;               when a fireball fired (tables.inc)
+;     SHATTER   the removal ring, and the prism's blip-out running alongside
+;               it. SHATTER_STEPS ring frames, or BLIP_STEPS when a marked
+;               prism is winking out with them
+;
+;   The two counts below are the SAME on both regions, for the reason
+;   FALL_FRAMES is: they are a tile count times VFX_FRAMES, and two frames a
+;   tile does not round to 1.67. SPEC 14 says so.
+VFX_FRAMES          = 2         ; Frames each tile of a removal ring holds
+SHATTER_STEPS       = 3         ; VFX_REMOVE1..3           — 6 frames
+BLIP_STEPS          = 5         ; PRISM_BLIP, +1, VFX_REMOVE2, VFX_REMOVE1,
+                                ;   FONT_DOT               — 10 frames
+PRISM_SPIN_RATE     = 8         ; Frames per idle rotation frame (SPEC 14).
+                                ;   The only tile on the board that moves when
+                                ;   nothing is happening
+PETRIFY_FRAMES      = 2         ; Frames per row of the game-over petrify
+                                ;   (SPEC 13.4). Same number as FALL_FRAMES
+                                ;   and not the same thing, so it is its own
+                                ;   constant
+TINT_NONE           = $01       ; TintColor when nothing is flashing white.
+                                ;   Every real colour key has its low three
+                                ;   bits clear, so $01 is a value no masked
+                                ;   tile can equal — which is what lets the
+                                ;   Commodores' HalPlotCell test the tint with
+                                ;   one CMP and no separate "is anything
+                                ;   flashing at all" branch (SPEC 4.6)
 
 ; --- Levels (SPEC 10) --------------------------------------------------------
 LEVEL_TILES         = 30        ; Tiles cleared per level

@@ -311,7 +311,7 @@ MatchEmit:
 ;   removed once (SPEC 6.1) — which is why this is per run and not per marked
 ;   cell, and why it runs before the union in MARKS has anything to say.
 ;
-;   MultiBonus is NOT here: it is per step, not per run, and CascadeStep adds
+;   MultiBonus is NOT here: it is per step, not per run, and CascadeScan adds
 ;   it once the four passes have finished counting.
 ; -----------------------------------------------------------------------------
 MatchScoreRun:
