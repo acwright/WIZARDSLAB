@@ -117,8 +117,12 @@ def find_origin(ink, color, w, h, cols, rows, xscale, known):
     return best[1], best[2]
 
 
-def main():
-    path = sys.argv[1]
+def read_screen(path):
+    """Recover a name table from a screenshot: rows of tile numbers, -1 unknown.
+
+    Also importable — tools/crosscheck.py compares the well of one machine's
+    screen against another's.
+    """
     plat = next((p for p in PLATFORMS if p in path), None)
     if plat is None:
         sys.exit("read-screen: cannot tell which platform %r is; the path must "
@@ -136,10 +140,7 @@ def main():
     ox, oy = find_origin(ink, color, w, h, cfg["cols"], cfg["rows"],
                          cfg["xscale"], bypat)
 
-    print("# %s  %d x %d, grid origin (%d,%d)"
-          % (path, cfg["cols"], cfg["rows"], ox, oy))
-    print("#    " + " ".join("%3d" % c for c in range(cfg["cols"])))
-    unknown = 0
+    grid = []
     for r in range(cfg["rows"]):
         out = []
         for c in range(cfg["cols"]):
@@ -148,14 +149,27 @@ def main():
             cand = bypat.get(bits)
             if not cand:
                 out.append(-1)
-                unknown += 1
             elif len(cand) == 1 or fg is None:
                 out.append(cand[0])
             else:
                 want = nearest(fg, palette)
                 match = [t for t in cand if colortab[t] == want]
                 out.append(match[0] if match else cand[0])
-        print("%2d  " % r + " ".join("  ?" if v < 0 else "%3d" % v for v in out))
+        grid.append(out)
+    return plat, grid, (ox, oy)
+
+
+def main():
+    path = sys.argv[1]
+    plat, grid, origin = read_screen(path)
+    cols = PLATFORMS[plat]["cols"]
+    print("# %s  %d x %d, grid origin (%d,%d)"
+          % (path, cols, PLATFORMS[plat]["rows"], origin[0], origin[1]))
+    print("#    " + " ".join("%3d" % c for c in range(cols)))
+    unknown = 0
+    for r, row in enumerate(grid):
+        unknown += sum(1 for v in row if v < 0)
+        print("%2d  " % r + " ".join("  ?" if v < 0 else "%3d" % v for v in row))
     if unknown:
         print("# %d cell(s) matched no tile — the grid origin may be wrong"
               % unknown, file=sys.stderr)

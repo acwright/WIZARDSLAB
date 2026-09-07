@@ -29,10 +29,30 @@ Tmp1:           .res 1
 Tmp2:           .res 1
 Tmp3:           .res 1
 
-ScanRow:        .res 1      ; Match scanner cursor
-ScanCol:        .res 1
+; --- The match scanner (SPEC 6.2) --------------------------------------------
+;   One line of one pass at a time. The cursor is a BOARD INDEX rather than a
+;   row and a column, because all four passes are the same walk with a
+;   different step: +1 horizontal, +8 vertical, +9 diagonal, +7 anti-diagonal.
+ScanIdx:        .res 1      ; Where the cursor was when a run ended: ScanLine
+                            ;   keeps it in X and spills it only here
+ScanStep:       .res 1      ; What to add to reach the next cell of this line
 ScanColor:      .res 1      ; Colour key of the run in progress ($FF = unset)
-ScanLen:        .res 1
+ScanLen:        .res 1      ; Cells in it so far, wildcards included
+ScanEnd:        .res 1      ; Walk-back cursor while a finished run is marked
+ScanTop:        .res 1      ; Row base of the top of the pile. Every pass
+                            ;   starts there rather than at row 0, which is
+                            ;   most of the cost of a scan (match.asm)
+
+; --- Board walks that call the renderer (SPEC 8 steps 6 and 8) ---------------
+;   RenderCell clobbers A, X and Y, so a walk that marks what it changes
+;   cannot keep its cursor in a register. GravIdx also has to survive from one
+;   frame to the next: a row of falling is a cursor and not a bulk enqueue,
+;   because a full well is more cells than the dirty ring holds (D12,
+;   SPEC 12.6).
+GravIdx:        .res 1      ; Cell the fall is walking up from, $FF when the
+                            ;   row is finished
+GravMoved:      .res 1      ; Non-zero if this row of falling moved anything
+CellCount:      .res 1      ; Cells CascadeRemove has taken off the board
 
 ; --- Render and text scratch -------------------------------------------------
 ;   These ARE live across a JSR, unlike Tmp0-Tmp3, because text.asm calls
@@ -46,4 +66,6 @@ TextIdx:        .res 1      ; Cursor within the string, or the BCD byte index
 TextByte:       .res 1      ; The BCD byte being split into two digits
 TextSkip:       .res 1      ; Non-zero while the first high nibble is skipped
 FlushLeft:      .res 1      ; Cells left in this frame's flush budget
-RedrawCol:      .res 1      ; Panel column of the cell RenderBoardStep is on
+RedrawCol:      .res 1      ; Panel column of the cell being marked. Shared by
+                            ;   every routine that marks a run of cells in one
+                            ;   column, because RenderMark clobbers X.

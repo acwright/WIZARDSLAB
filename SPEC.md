@@ -351,6 +351,18 @@ When a run reaches length ≥ 3 and then breaks (or hits a sentinel), set the
 `MARK` bit for each of its cells in the `MARKS` bitmap and record the run's
 length and color for scoring.
 
+**An empty cell breaks the run, not the line.** A pass walks its axis to the
+sentinel whatever it meets on the way: `. R R R` is a run of three, and a line
+that stopped at the first hole would never see below the top of the pile,
+which is most of the board.
+
+**The scan may start at the top of the pile** rather than at row 0. Every one
+of the four steps moves down at most one row at a time, so a line that reaches
+the pile at all must cross the pile's top row; starting each pass there, and
+the diagonals' edge-column start cells below it, misses nothing and skips the
+empty air above — which on a normal board is most of the work. Measured at
+about a third of the cost on a six-row pile ([PLAN.md](PLAN.md) P3).
+
 `MARKS` is a **16 × 1-byte** bitmap (one byte per row, bits 0–5 = columns 0–5),
 so union-of-runs is a free `ORA`. 16 bytes total.
 
@@ -366,6 +378,10 @@ The Prism matches any color. The scanner handles this with one extra rule:
 - Because color is adopted lazily, a single prism can legitimately close a red
   horizontal run *and* a blue vertical run in the same scan. This is intended
   and is the whole reason the prism exists.
+- **In one line it belongs to the run it is already in, not to both.** In
+  `R R W B B` the prism finishes the red run; the blue run starts at the first
+  `B` and is two long. A prism is a bridge across two axes, not a cell that
+  counts twice along one.
 
 ---
 
@@ -553,7 +569,9 @@ STEP:
   7. LEVEL        If tiles_cleared >= 30:
                       tiles_cleared -= 30 ; level += 1  (at most one per step)
 
-  8. GRAVITY      Compact every column downward. Animate at 1 row / 2 frames.
+  8. GRAVITY      Compact every column downward, ONE ROW AT A TIME: every tile
+                  with a hole under it drops into it, then again, until a pass
+                  moves nothing. Animate at 1 row / 2 frames.
 
   9. chain += 1 ; goto STEP
 
@@ -770,8 +788,18 @@ detection (`new = current AND NOT previous`) happens once, centrally.
 | Pause | — | `P` |
 | Start / confirm | Fire | `SPACE` or `RETURN` |
 
-Cursor keys on the Commodores are shifted pairs; read the raw matrix rather
-than the KERNAL so both directions of each key work unshifted.
+Cursor keys on the Commodores are shifted pairs: CRSR-right and CRSR-down
+unshifted, CRSR-left and CRSR-up with SHIFT. Read the raw matrix rather than
+the KERNAL, and read a SHIFT key alongside them, so all four directions are
+reachable — the KERNAL hands back one translated character and loses the
+distinction.
+
+**SPACE is `UP`, not `FIRE`.** One key cannot be both rotate-forward and
+rotate-reverse, so SPACE folds into the same bit as `W` and cursor-up, and
+`RETURN` and `Q` fold into `FIRE`. The two places that ask for a confirm —
+the title screen and the game-over screen — therefore accept **either** bit,
+which is also why joystick UP starts a game. Nothing in play is ambiguous:
+there, `UP` rotates forward and `FIRE` rotates back.
 
 ### 11.3 Auto-repeat (DAS)
 
@@ -787,24 +815,60 @@ non-negotiable — auto-repeating rotate makes a Columns piece unusable.
 
 **Soft drop** does not use DAS; it substitutes its own fall rate:
 **3 frames/row NTSC, 2 frames/row PAL**, and is ignored when gravity is
-already faster (levels 14+ NTSC).
+already faster.
+
+With the tables in [§10.2](#102-gravity-table) that guard never actually
+fires: the fastest gravity ever gets is 6 frames/row on NTSC and 5 on PAL, so
+soft drop is quicker at every level including 16. An earlier draft here said
+"levels 14+ NTSC", which was arithmetic that never happened. The guard stays
+in the code — it is one compare, and it is what keeps soft drop honest if the
+speed table is ever pushed further — but nothing today reaches it.
 
 ### 11.4 Platform reads
 
 - **AC6502.** `ReadJoystick1` (`$A048`, VIA Port B) and `ReadJoystick2`
   (`$A04B`, Port A). Both are **active low**: `%RLDUYXBA` — bit 7 R, 6 L,
   5 D, 4 U, 3 Y, 2 X, 1 B, 0 A. An untouched stick reads `$FF`. Check
-  `HW_GPIO` in `HW_PRESENT` before trusting the value. Keyboard arrives through
-  the same VIA (CB1/CA1 IRQ, ring buffer at `$0200`); poll with `Chrin`
-  (`$A003`, non-blocking) for menu text and use the raw port for in-game keys.
+  `HW_GPIO` in `HW_PRESENT` before trusting the value.
+
+  **This machine has no key matrix.** Two encoders sit on the same VIA ports
+  and hand over one ASCII byte per keystroke, strobing CB1 (matrix keyboard)
+  or CA1 (PS/2). Poll `GPIO_IFR` for those flags and read `GPIO_PORTB` /
+  `GPIO_PORTA` — the read takes the byte and clears the flag, and the flag
+  raises whether or not the VIA is allowed to assert IRQ, so the cartridge
+  never has to clear the CPU's `I` ([D7](PLAN.md)). Read the key **before**
+  `ReadJoystick1`, which releases both encoders and would take a pending key
+  with them.
+
+  There is no key-up event, so a key here is a **one-frame pulse**, not a held
+  bit: rotate, pause and fire behave exactly as on a stick, and left, right
+  and soft drop advance once per keystroke and once per encoder auto-repeat.
+  DAS never engages from this keyboard because no bit is ever down two frames
+  running. WASD, SPACE, RETURN, `Q` and `P` are the whole scheme — the
+  encoders define no code for the arrow keys.
 - **VIC-20.** Joystick is split: up/down/left/fire on VIA1 `$9111` bits 2–5,
-  **right on VIA2 `$9120` bit 7** — and reading right requires briefly setting
-  `$9122` DDR. Do the DDR dance once per frame, not per read. Keyboard: scan
-  the matrix directly via `$9120`/`$9121`.
+  **right on VIA2 `$9120` bit 7** — which is also the last of the eight
+  keyboard row lines.
+
+  That collision does not need resolving. Every key the game reads lives in
+  matrix **rows 1–6**; row 0 is the top number row and row 7 the rest of it,
+  and the game wants neither. So `$9122` is set **once** to `$7F` and never
+  touched again: PB0–PB6 drive the six rows that matter, PB7 stays an input
+  for the RIGHT switch, and the two never take turns. That is shorter than
+  flipping the DDR twice a frame and also safer — PB7 is never configured as
+  an output, so the VIA can never drive it high against a closed RIGHT switch
+  pulling it to ground. Set `$9123` to `$00` for the column reads on `$9121`.
 - **C64.** Joystick port 2 at `$DC00`, active low, bits 0–4 = up/down/left/
-  right/fire. Port 1 (`$DC01`) shares the keyboard matrix; support port 2 only
-  and read the keyboard normally. Disable the KERNAL IRQ keyboard scanner and
-  scan directly.
+  right/fire. Port 1 (`$DC01`) shares the keyboard matrix; support port 2 only.
+  Disable the KERNAL IRQ keyboard scanner and scan directly: `$DC02` = `$FF`
+  and `$DC03` = `$00`, then one column low on `$DC00` and the rows read back
+  from `$DC01`.
+
+  Port 2 shares CIA1's port A with the keyboard columns and that **is not
+  avoidable** — a held direction pulls a column line low and looks to a scan
+  like every key in that column being down at once. Every C64 game with both
+  has this. Read the joystick first, with `$FF` on `$DC00` so no column is
+  selected, and at least the stick is never confused by the keyboard.
 
 ---
 
@@ -1145,7 +1209,7 @@ difference matters; where it doesn't, the same count is used on both.
 | Fireball flash | 8 | 7 | Every tile of the target color turns white, then removes |
 | Bolt beam | 6 | 5 | White beam tiles drawn along the row and column |
 | Bomb blast | 6 | 5 | The removal ring over the 3 × 3, all nine cells in step |
-| Gravity fall | 2/row | 2/row | Tiles descend one row every 2 frames |
+| Gravity fall | 2/row | 2/row | Tiles descend one row every 2 frames. A row that changes more cells than the dirty ring holds takes an extra frame or two while the flush catches up ([§12.6](#126-rendering-strategy)); on a normal clear it never does |
 | Lock delay | 16 | 14 | Resets on horizontal move, max 4 resets |
 | Entry delay (ARE) | 12 | 10 | After a cascade fully settles |
 | Level-up banner | 45 | 38 | "LEVEL 04" in the message band; play continues |
@@ -1245,13 +1309,18 @@ AC6502 and C64 share SID driver code almost verbatim (register base differs:
 | RNG seed, frame counter | 4 | |
 | State machine, flags | 8 | |
 | Audio state | 16 | |
-| **Total** | **~560 bytes** | 557 measured — 29 zero page, 528 BSS; plus row-pointer tables in ROM |
+| **Total** | **~560 bytes** | 563 measured — 34 zero page, 529 BSS; plus row-pointer tables in ROM |
 
 Fits the VIC-20's constrained RAM with room to spare, which is the whole point
 of designing to the tightest target first. In practice the whole of BSS lands
 in the 1 KB at `$1000`–`$13FF` ([C.2](#c2-vic-20)) with 496 bytes still free,
 so the `$1C00`–`$1DFF` block that table earmarks for `DIRTY` is untouched and
 is spare capacity rather than a plan.
+
+Piece state is 7 bytes of the 8 budgeted (column, row, A/B/C is 5; there is no
+rotation byte, because rotation cycles the three cells in place rather than
+turning a footprint). The eighth is `PIECE_DIRTY`, the flag that holds the
+piece's redraw back until any full-board redraw has gone past it.
 
 ### 17.2 ROM (16 KB cartridge)
 

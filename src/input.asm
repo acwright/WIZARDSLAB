@@ -28,11 +28,48 @@ InputPoll:
 ; -----------------------------------------------------------------------------
 ;   InputShift — LEFT/RIGHT with delayed auto shift
 ;   Out: A = INPUT_LEFT, INPUT_RIGHT, or 0 if no move should happen this frame.
+;        Modifies: A, X
 ;   SPEC 11.3 — initial delay 12 frames NTSC / 10 PAL, then 4 / 3.
+;
+;   A fresh press fires on the same frame it arrives; the delay is what comes
+;   after it, not before it, so a tap is always exactly one column.
+;
+;   Holding both directions at once is not something a stick can do, but two
+;   keys can. LEFT wins, and it wins consistently, so the piece sits still
+;   rather than shivering between the two.
 ; -----------------------------------------------------------------------------
 InputShift:
-  ; TODO: on a fresh press, fire immediately and load DasTimer with the
-  ; initial delay; while held, fire again each time DasTimer runs out and
-  ; reload it with the repeat rate; on release, clear DasDir.
+  lda InputNow
+  and #INPUT_LEFT
+  bne @Dir
+  lda InputNow
+  and #INPUT_RIGHT
+  beq @None
+
+@Dir:
+  cmp DasDir
+  beq @Held
+
+  sta DasDir                    ; A new direction: fire now, then wait
+  ldx Region
+  lda DasInitial,x
+  sta DasTimer
+  lda DasDir
+  rts
+
+@Held:
+  dec DasTimer                  ; Always loaded non-zero, so this cannot wrap
+  bne @Wait
+  ldx Region
+  lda DasRepeat,x
+  sta DasTimer
+  lda DasDir
+  rts
+
+@Wait:
   lda #0
   rts
+
+@None:
+  sta DasDir                    ; A is already 0 — release, so the next press
+  rts                           ;   counts as fresh

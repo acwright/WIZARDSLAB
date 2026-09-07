@@ -142,6 +142,20 @@ MSG_Y               = 22        ;   image and code never touches them; the
 SCORE_DIGITS        = 7         ; Always all 7 drawn, zero padded
 LEVEL_DIGITS        = 2         ; Always zero padded — level 5 draws "0" / "5"
 
+; --- Piece and timing (SPEC 5.6, 11.3, 14) -----------------------------------
+;   Every duration in the game is a frame count, and most of them differ
+;   between NTSC and PAL so that wall-clock speed matches. Those live in
+;   tables.inc as two-entry tables indexed by Region, not here — a constant
+;   that is not one number is not a constant. The ones below are the same on
+;   both machines.
+LOCK_RESET_MAX      = 4         ; Horizontal moves that may reset the lock
+                                ;   delay, per piece. Rotation never resets it.
+FALL_FRAMES         = 2         ; Frames a row while the pile falls into the
+                                ;   holes a clear left (SPEC 14). The one
+                                ;   duration in the game that is the same on
+                                ;   both regions, because SPEC 14 says so: at
+                                ;   two frames there is nothing to round.
+
 ; --- Levels (SPEC 10) --------------------------------------------------------
 LEVEL_TILES         = 30        ; Tiles cleared per level
 LEVEL_SPEED_CAP     = 16        ; Speed stops improving here
@@ -173,6 +187,9 @@ INPUT_LEFT          = %00000100
 INPUT_RIGHT         = %00001000
 INPUT_FIRE          = %00010000 ; Rotate reverse / confirm
 INPUT_PAUSE         = %00100000
+INPUT_MASK          = %00111111 ; Everything the game reads. Bits 6-7 are free
+                                ;   for a platform to use as scratch inside
+                                ;   HalReadInput, as long as it strips them.
 
 ; --- Game states (SPEC 13) ---------------------------------------------------
 STATE_TITLE         = 0

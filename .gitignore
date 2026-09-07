@@ -29,6 +29,10 @@
 .DS_Store
 Thumbs.db
 
-# Emulator smoke-test screenshots
+# Emulator smoke-test and crosscheck screenshots
 *-screenshot.png
+*-crosscheck.png
 *-charset.png
+
+# DEBUG=1 build stamps (see each platform Makefile)
+.debug-*

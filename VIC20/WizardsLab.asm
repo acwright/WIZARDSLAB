@@ -223,31 +223,44 @@ HalBlitScreen:
   rts
 
 ; -----------------------------------------------------------------------------
-;   HalReadInput — joystick, folded into the abstract active-high mask
+;   HalReadInput — joystick and keyboard, folded into one active-high mask
+;
 ;   The VIC splits its stick across two chips: up, down, left and fire are on
-;   VIA1 $9111, but RIGHT is on VIA2 $9120 and reading it means flipping that
-;   port's direction register first. Do that dance once, here, per frame.
-;   Keyboard is TODO: it scans the same VIA2 matrix.
+;   VIA1 $9111, but RIGHT is on VIA2 $9120 bit 7 — which is also the last of
+;   the eight keyboard row lines. That collision is PLAN.md S4, and it turns
+;   out not to be one:
+;
+;     Every key this game reads lives in matrix rows 1-6. Row 0 is the top
+;     number row and row 7 the rest of it, and the game wants neither. So DDRB
+;     is set ONCE to $7F and never touched again — PB0-PB6 drive the six rows
+;     that matter, PB7 stays an input for the RIGHT switch, and the two never
+;     take turns.
+;
+;   That is better than flipping the DDR twice a frame, and not only because
+;   it is shorter: driving PB7 high while a closed RIGHT switch pulls it to
+;   ground puts the VIA's output stage against the joystick, and never
+;   configuring PB7 as an output means that cannot happen at all.
 ; -----------------------------------------------------------------------------
 HalReadInput:
   lda $9113                     ; VIA1 DDR: the joystick lines are inputs
   and #%11000011
   sta $9113
 
+  lda #%01111111                ; VIA2 DDRB: rows 0-6 out, RIGHT switch in
+  sta $9122
+  lda #$00                      ; VIA2 DDRA: the column lines are inputs
+  sta $9123
+
   lda $9111                     ; Active low: bit2 U, bit3 D, bit4 L, bit5 fire
   eor #$FF
   and #%00111100                ; Only those four; PA7 here is not the stick
   sta Tmp0
 
-  lda #$7F                      ; VIA2 PB7 as an input for the RIGHT switch
-  sta $9122
   lda $9120
   eor #$FF
   and #$80                      ; Fold RIGHT in as bit 7 of the same byte
   ora Tmp0
   sta Tmp0
-  lda #$FF                      ; Put the DDR back for keyboard scanning
-  sta $9122
 
   lda #0
   sta Tmp1
@@ -288,8 +301,100 @@ HalReadInput:
   sta Tmp1
 @NoFire:
 
-  lda Tmp1
+  jsr ScanKeys
+  ora Tmp1
   rts
+
+; -----------------------------------------------------------------------------
+;   ScanKeys — the keyboard matrix, as the same active-high mask
+;   Out: A = INPUT_* bits.  Modifies: A, X, Tmp2
+;
+;   VIA2 $9120 drives the rows (one bit LOW selects one row) and $9121 reads
+;   the columns, active low. Every key the game uses is in KeyTable below;
+;   the two cursor keys come after it because SHIFT turns them around, and
+;   knowing whether SHIFT is down means having scanned the table first.
+; -----------------------------------------------------------------------------
+KEY_SHIFT           = %01000000 ; Scratch inside this file only — INPUT_MASK
+                                ;   strips it before the mask leaves here
+
+ScanKeys:
+  lda #0
+  sta Tmp2
+  ldx #0
+@Key:
+  lda KeyTable,x
+  beq @Cursors                  ; $00 drives every row at once — the
+  sta $9120                     ;   terminator, because it is not a row mask
+  lda $9121
+  eor #$FF                      ; Active low in, active high out
+  and KeyTable+1,x
+  beq @Next
+  lda Tmp2
+  ora KeyTable+2,x
+  sta Tmp2
+@Next:
+  inx
+  inx
+  inx
+  bne @Key                      ; Always — the table is far shorter than 256
+
+  ; --- the two cursor keys, which SHIFT turns around (SPEC 11.2) ------------
+  ;   Unshifted they are RIGHT and DOWN, shifted LEFT and UP, which is exactly
+  ;   the four the game wants and the reason for reading the matrix rather
+  ;   than letting the KERNAL translate a keystroke into one character.
+@Cursors:
+  lda #%11111011                ; Row 2 — CRSR RIGHT shares it with A and D
+  sta $9120
+  lda $9121
+  and #%10000000                ; Column 7
+  bne @NoLeftRight              ; Still high, so not pressed
+  ldx #INPUT_RIGHT
+  lda Tmp2
+  and #KEY_SHIFT
+  beq @LeftRight
+  ldx #INPUT_LEFT
+@LeftRight:
+  txa
+  ora Tmp2
+  sta Tmp2
+@NoLeftRight:
+
+  lda #%11110111                ; Row 3 — CRSR DOWN, next to LSHIFT
+  sta $9120
+  lda $9121
+  and #%10000000
+  bne @NoUpDown
+  ldx #INPUT_DOWN
+  lda Tmp2
+  and #KEY_SHIFT
+  beq @UpDown
+  ldx #INPUT_UP
+@UpDown:
+  txa
+  ora Tmp2
+  sta Tmp2
+@NoUpDown:
+
+  lda Tmp2
+  and #INPUT_MASK               ; Drop KEY_SHIFT — it is not an input
+  rts
+
+; -----------------------------------------------------------------------------
+;   KeyTable — row mask, column mask, input bit.  Terminated by $00.
+;   Rows 1-6 only; see HalReadInput above for why that matters.
+; -----------------------------------------------------------------------------
+KeyTable:
+  .byte %11111101, %00000010, INPUT_UP      ; W        row 1, col 1
+  .byte %11111011, %00000010, INPUT_LEFT    ; A        row 2, col 1
+  .byte %11011111, %00000010, INPUT_DOWN    ; S        row 5, col 1
+  .byte %11111011, %00000100, INPUT_RIGHT   ; D        row 2, col 2
+  .byte %10111111, %00000001, INPUT_FIRE    ; Q        row 6, col 0
+  .byte %11111101, %00100000, INPUT_PAUSE   ; P        row 1, col 5
+  .byte %11101111, %00000001, INPUT_UP      ; SPACE    row 4, col 0
+  .byte %11111101, %10000000, INPUT_FIRE    ; RETURN   row 1, col 7
+  .byte %11110111, %00000010, KEY_SHIFT     ; LSHIFT   row 3, col 1
+  .byte %11101111, %01000000, KEY_SHIFT     ; RSHIFT   row 4, col 6
+  .byte $00
 
 ; -----------------------------------------------------------------------------
 ;   HalDetectRegion — NTSC has 261 raster lines, PAL 312
@@ -335,6 +440,7 @@ HalSfx:
 .segment "RODATA"
 
 .include "../data/tilecolor-vic20.inc"
+.include "../src/tables.inc"
 .include "../src/strings.inc"
 
 ; --- Screen row start addresses ----------------------------------------------

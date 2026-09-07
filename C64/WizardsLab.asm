@@ -247,12 +247,25 @@ HalBlitScreen:
   rts
 
 ; -----------------------------------------------------------------------------
-;   HalReadInput — joystick port 2, folded into the abstract active-high mask
-;   Port 1 shares the keyboard matrix, so only port 2 is supported. Keyboard
-;   is TODO: the KERNAL scanner is off, so it means scanning $DC00/$DC01
-;   directly.
+;   HalReadInput — joystick port 2 and the keyboard, in one active-high mask
+;
+;   Port 1 shares its lines with the keyboard columns, so only port 2 is
+;   supported — but port 2 shares CIA1's port A with them as well, and that is
+;   not avoidable: a held direction pulls a column line low and looks to the
+;   scan below like every key in that column being down at once. Every C64
+;   game with both has this; the joystick is read FIRST, with all columns
+;   driven high, so at least the stick is never confused by the keyboard.
+;
+;   The KERNAL's IRQ scanner is off (see ColdStart), so the matrix is ours.
 ; -----------------------------------------------------------------------------
 HalReadInput:
+  lda #$FF                      ; CIA1 DDRA: the column lines drive
+  sta $DC02
+  lda #$00                      ; CIA1 DDRB: the row lines are read
+  sta $DC03
+
+  lda #$FF                      ; No column selected — a pressed stick is then
+  sta $DC00                     ;   the only thing that can pull a line low
   lda $DC00                     ; Active low: bit0 U, 1 D, 2 L, 3 R, 4 fire
   eor #$FF
   and #$1F
@@ -297,8 +310,98 @@ HalReadInput:
   sta Tmp1
 @NoFire:
 
-  lda Tmp1
+  jsr ScanKeys
+  ora Tmp1
   rts
+
+; -----------------------------------------------------------------------------
+;   ScanKeys — the keyboard matrix, as the same active-high mask
+;   Out: A = INPUT_* bits.  Modifies: A, X, Tmp2
+;
+;   CIA1 $DC00 drives the columns (one bit LOW selects one) and $DC01 reads
+;   the rows, active low. The two cursor keys come after the table because
+;   SHIFT turns them around, and that means knowing the SHIFT state first.
+; -----------------------------------------------------------------------------
+KEY_SHIFT           = %01000000 ; Scratch inside this file only — INPUT_MASK
+                                ;   strips it before the mask leaves here
+
+ScanKeys:
+  lda #0
+  sta Tmp2
+  ldx #0
+@Key:
+  lda KeyTable,x
+  beq @Cursors                  ; $00 selects every column at once — the
+  sta $DC00                     ;   terminator, because it is no column mask
+  lda $DC01
+  eor #$FF                      ; Active low in, active high out
+  and KeyTable+1,x
+  beq @Next
+  lda Tmp2
+  ora KeyTable+2,x
+  sta Tmp2
+@Next:
+  inx
+  inx
+  inx
+  bne @Key                      ; Always — the table is far shorter than 256
+
+  ; --- the two cursor keys, which SHIFT turns around (SPEC 11.2) ------------
+  ;   Unshifted they are RIGHT and DOWN, shifted LEFT and UP, which is exactly
+  ;   the four the game wants and the reason for reading the matrix rather
+  ;   than letting the KERNAL turn a keystroke into one character.
+@Cursors:
+  lda #%11111011                ; Column 2 — CRSR L/R shares it with A and D
+  sta $DC00
+  lda $DC01
+  and #%00000001                ; Row 0
+  bne @NoLeftRight              ; Still high, so not pressed
+  ldx #INPUT_RIGHT
+  lda Tmp2
+  and #KEY_SHIFT
+  beq @LeftRight
+  ldx #INPUT_LEFT
+@LeftRight:
+  txa
+  ora Tmp2
+  sta Tmp2
+@NoLeftRight:
+
+  lda #%01111111                ; Column 7 — CRSR U/D, next to LSHIFT
+  sta $DC00
+  lda $DC01
+  and #%00000001
+  bne @NoUpDown
+  ldx #INPUT_DOWN
+  lda Tmp2
+  and #KEY_SHIFT
+  beq @UpDown
+  ldx #INPUT_UP
+@UpDown:
+  txa
+  ora Tmp2
+  sta Tmp2
+@NoUpDown:
+
+  lda Tmp2
+  and #INPUT_MASK               ; Drop KEY_SHIFT — it is not an input
+  rts
+
+; -----------------------------------------------------------------------------
+;   KeyTable — column mask, row mask, input bit.  Terminated by $00.
+; -----------------------------------------------------------------------------
+KeyTable:
+  .byte %11111101, %00000010, INPUT_UP      ; W        col 1, row 1
+  .byte %11111011, %00000010, INPUT_LEFT    ; A        col 2, row 1
+  .byte %11011111, %00000010, INPUT_DOWN    ; S        col 5, row 1
+  .byte %11111011, %00000100, INPUT_RIGHT   ; D        col 2, row 2
+  .byte %10111111, %10000000, INPUT_FIRE    ; Q        col 6, row 7
+  .byte %11111101, %00100000, INPUT_PAUSE   ; P        col 1, row 5
+  .byte %11101111, %10000000, INPUT_UP      ; SPACE    col 4, row 7
+  .byte %11111101, %00000001, INPUT_FIRE    ; RETURN   col 1, row 0
+  .byte %01111111, %00000010, KEY_SHIFT     ; LSHIFT   col 7, row 1
+  .byte %11101111, %01000000, KEY_SHIFT     ; RSHIFT   col 4, row 6
+  .byte $00
 
 ; -----------------------------------------------------------------------------
 ;   HalDetectRegion — PAL has 312 raster lines, NTSC 263
@@ -346,6 +449,7 @@ HalSfx:
 .segment "RODATA"
 
 .include "../data/tilecolor-c64.inc"
+.include "../src/tables.inc"
 .include "../src/strings.inc"
 
 ; --- Screen row start addresses ----------------------------------------------

@@ -45,3 +45,38 @@ RngNext:
   bne @Bit
   lda RngLo
   rts
+
+; -----------------------------------------------------------------------------
+;   RngRange — a random number below a small limit
+;   In:  A = limit, 1-128
+;   Out: A = 0 .. limit-1.  Modifies: A, X, Tmp0, Tmp1.  PRESERVES Y.
+;
+;   Not a modulo. `random % 6` throws four of the 256 outcomes into the low
+;   values and leaves colours 0-3 a shade likelier than 4-5; this takes the
+;   HIGH byte of (random * limit) instead, which spreads the remainder evenly
+;   across the range and costs a fixed eight shifts either way.
+;
+;   The eight-bit multiply keeps only the high byte: the low half falls out of
+;   the accumulator one bit at a time and is never wanted.
+;
+;   Y is preserved so a caller can loop over the three cells of a piece with
+;   it (piece.asm does).
+; -----------------------------------------------------------------------------
+RngRange:
+  pha                           ; The limit — RngNext wants A
+  jsr RngNext
+  sta Tmp0                      ; The random byte
+  pla
+  sta Tmp1                      ; The limit, shifted out one bit at a time
+  lda #0
+  ldx #8
+@Bit:
+  lsr Tmp1                      ; Next multiplier bit into C
+  bcc @NoAdd
+  clc
+  adc Tmp0                      ; Partial product, carry out into C
+@NoAdd:
+  ror a                         ; Shift the accumulator down, carry in at bit 7
+  dex
+  bne @Bit
+  rts

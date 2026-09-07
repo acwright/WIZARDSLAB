@@ -228,21 +228,86 @@ RenderCell:
   jmp RenderMark
 
 ; -----------------------------------------------------------------------------
-;   RenderPiece / RenderPieceErase — the three falling cells
-;   P2.
+;   RenderPiece — queue the three falling cells at where the piece is now
+;   In:  nothing        Out: nothing.  Modifies: A, X, Y
+;
+;   RenderMark clobbers X and keeps Y, so the panel column is parked in
+;   RedrawCol and the panel row rides Y down the three cells. Cell C can never
+;   be lower than board row 15, so all three are always inside the well and
+;   there is nothing to clip.
 ; -----------------------------------------------------------------------------
 RenderPiece:
-  rts
+  lda PieceCol
+  clc
+  adc #WELL_ORIGIN_X
+  sta RedrawCol
+  lda PieceRow
+  clc
+  adc #WELL_ORIGIN_Y
+  tay
+  lda PieceA
+  ldx RedrawCol
+  jsr RenderMark
+  iny
+  lda PieceB
+  ldx RedrawCol
+  jsr RenderMark
+  iny
+  lda PieceC
+  ldx RedrawCol
+  jmp RenderMark
 
+; -----------------------------------------------------------------------------
+;   RenderPieceErase — blank the three cells the piece is leaving
+;   In:  nothing        Out: nothing.  Modifies: A, X, Y
+;
+;   Three blanks rather than three board reads, because the cells under a
+;   falling piece are always empty: every move and every gravity step tests
+;   the target cells before it happens, and the one thing that writes them is
+;   PieceLock, after which nothing erases the piece again (piece.asm).
+; -----------------------------------------------------------------------------
 RenderPieceErase:
-  rts
+  lda PieceCol
+  clc
+  adc #WELL_ORIGIN_X
+  sta RedrawCol
+  lda PieceRow
+  clc
+  adc #WELL_ORIGIN_Y
+  tay
+  lda #TILE_EMPTY
+  ldx RedrawCol
+  jsr RenderMark
+  iny
+  lda #TILE_EMPTY
+  ldx RedrawCol
+  jsr RenderMark
+  iny
+  lda #TILE_EMPTY
+  ldx RedrawCol
+  jmp RenderMark
 
 ; -----------------------------------------------------------------------------
 ;   RenderNext — the preview, panel column NEXT_X, rows NEXT_Y..NEXT_Y+2
-;   P2.
+;   In:  nothing        Out: nothing.  Modifies: A, X, Y
+;
+;   All three cells every time. The play screen image ships with a piece
+;   already drawn in the NEXT box (SPEC 12.1), so this has to overwrite rather
+;   than assume it is drawing onto backdrop.
 ; -----------------------------------------------------------------------------
 RenderNext:
-  rts
+  ldy #NEXT_Y
+  lda NextA
+  ldx #NEXT_X
+  jsr RenderMark
+  iny
+  lda NextB
+  ldx #NEXT_X
+  jsr RenderMark
+  iny
+  lda NextC
+  ldx #NEXT_X
+  jmp RenderMark
 
 ; -----------------------------------------------------------------------------
 ;   RenderScore / RenderHigh / RenderLevel — only called when a value changes

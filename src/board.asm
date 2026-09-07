@@ -16,14 +16,21 @@
 ;   the sixteen playfield rows punched back out to empty. Doing it in that
 ;   order means the sentinels can never be forgotten: everything that is not
 ;   explicitly playfield is a wall.
+;
+;   The wall loop counts UP and ends on a CPX. Counting down from 159 to a BPL
+;   looks tidier and is wrong: 159 is $9F, bit 7 already set, so the branch
+;   falls through after the first store and the other 159 bytes keep whatever
+;   the machine powered up with. That went unnoticed for a whole phase,
+;   because nothing read a sentinel until the falling piece needed a floor.
 ; -----------------------------------------------------------------------------
 BoardClear:
   lda #TILE_WALL
-  ldx #BOARD_BYTES - 1
+  ldx #0
 @Wall:
   sta Board,x
-  dex
-  bpl @Wall
+  inx
+  cpx #BOARD_BYTES
+  bne @Wall
 
   ldx #0                        ; X walks the row bases, 0, 8, 16, ...
 @Row:
@@ -58,93 +65,91 @@ BoardRowPtr:
   rts
 
 ; -----------------------------------------------------------------------------
-;   BoardGravity — compact every column downward
+;   BoardGravityBegin / BoardGravityStep — the pile falls, one row at a time
+;   SPEC 8 step 8, SPEC 14: tiles descend one row every FALL_FRAMES.
+;
+;   A row of falling is one pass over the board, bottom to top, moving every
+;   tile that has an empty cell under it down into it. Repeat until a pass
+;   moves nothing and the columns are compacted — but repeat it a row at a
+;   time, because the fall is animated and a column that dropped four rows in
+;   one frame would read as a teleport.
+;
+;   Walking BOTTOM TO TOP is what makes a whole column fall together rather
+;   than one tile a frame: by the time the pass reaches a tile, the tile below
+;   it has already moved and left the gap.
+;
+;   The pass is a CURSOR, not a loop that runs to completion (D12, SPEC 12.6).
+;   Sixty tiles falling is a hundred-odd changed cells and the dirty ring holds
+;   64, so the pass stops when the ring is full and picks up where it stopped
+;   next frame. Nothing is dropped and the board is a legal board at every
+;   point it stops — one frame's worth of columns has fallen a row and the
+;   rest has not, which is a stagger nobody can see.
+;
+;   The two sentinel columns need no special case: a wall's "cell below" is
+;   another wall, so columns 6 and 7 never move.
+; -----------------------------------------------------------------------------
+GRAV_TOP = (BOARD_H - 1) * BOARD_STRIDE - 1     ; The last cell of row 14, the
+                                                ;   lowest row that can fall at
+                                                ;   all. Row 15 is on the floor
+BoardGravityBegin:
+  lda #GRAV_TOP
+  sta GravIdx
+  lda #0
+  sta GravMoved
+  rts
+
+; -----------------------------------------------------------------------------
+;   BoardGravityStep — carry on with the current row of falling
 ;   In:  nothing
-;   Out: C set if anything moved.  Modifies: A, X, Y, Ptr1, Tmp0-Tmp2
-;   SPEC 8 step 8.  P3.
+;   Out: C set when the row is finished; GravMoved non-zero if it moved
+;        anything. Modifies: A, X, Y, GravIdx, GravMoved, RedrawCol
 ; -----------------------------------------------------------------------------
-BoardGravity:
-  ; TODO: per column, walk bottom to top with a write cursor; mark moved cells
-  ; dirty as they go.
-  clc
-  rts
+BoardGravityStep:
+  lda GravIdx
+  bmi @Finished                 ; $FF — the row is already done
 
-.ifdef WL_DEBUG
-; -----------------------------------------------------------------------------
-;   BoardDebugFill — a known pattern, for looking at the render path
-;   In:  nothing        Out: nothing.  Modifies: A, X, Y
-;
-;   TEMPORARY (PLAN.md P1). Nothing in the game calls this; it exists so a
-;   -DWL_DEBUG build has something in the well to draw, and it is deliberately
-;   asymmetric so a transposed row and column, an off-by-one origin or a wrong
-;   stride all show up as a picture rather than as a plausible board:
-;
-;     rows 0-3    empty — the well is not full, and the top edge is visible
-;     rows 4-14   a diagonal colour ramp, (row + col) mod 6
-;     row 14      column 0 left empty — breaks the diagonal's symmetry
-;     row 15      one of every glyph the tileset draws, left to right:
-;                 potion, fireball, bolt, bomb, star, then a prism
-; -----------------------------------------------------------------------------
-BoardDebugFill:
-  ldy #4                        ; Y = row
-@Row:
-  ldx #0                        ; X = column
-@Col:
-  tya
-  stx Tmp0
-  clc
-  adc Tmp0                      ; row + col
-@Mod6:
-  cmp #NUM_COLORS
-  bcc @Got
-  sbc #NUM_COLORS
-  bcs @Mod6                     ; Always — sbc left carry set
-@Got:
-  asl a                         ; colour << 3 + COLOR_BASE
-  asl a
-  asl a
-  clc
-  adc #COLOR_BASE
-  sta Tmp1
+@Cell:
+  lda DirtyCount                ; Room for both cells of a move, or wait for
+  cmp #(DIRTY_ENTRIES - 2)      ;   the flush. A mark dropped here would never
+  bcs @Later                    ;   be marked again (D6 is survivable only
+                                ;   because nothing that MUST land uses it)
 
-  cpy #BOARD_H - 1              ; Bottom row carries the glyph sampler
-  bne @Plain
-  txa
-  cmp #NUM_COLORS - 1           ; Column 5 is the prism
-  bcc @Glyph
-  lda #WILD_BASE
-  sta Tmp1
-  bne @Store                    ; Always — WILD_BASE is non-zero
-@Glyph:
-  ora Tmp1                      ; Glyphs 0-4 of that cell's own colour
-  sta Tmp1
-  bne @Store                    ; Always
-@Plain:
-  cpy #BOARD_H - 2              ; One hole, so the diagonal is not symmetric
-  bne @Store
-  cpx #0
-  bne @Store
+  ldx GravIdx
+  lda Board,x
+  beq @Next                     ; Nothing here to fall
+  lda Board + BOARD_STRIDE,x
+  bne @Next                     ; Something under it — a tile, or the floor
+
+  lda Board,x                   ; Move it down one row
+  sta Board + BOARD_STRIDE,x
   lda #TILE_EMPTY
-  sta Tmp1
-
-@Store:
-  tya                           ; Board index = row * 8 + column
-  asl a
-  asl a
-  asl a
-  stx Tmp0
-  clc
-  adc Tmp0
-  tax
-  lda Tmp1
   sta Board,x
-  ldx Tmp0
+  inc GravMoved
 
-  inx
-  cpx #BOARD_W
-  bcc @Col
-  iny
-  cpy #BOARD_H
-  bcc @Row
+  lda GravIdx                   ; The cell it LEFT only needs redrawing if it
+  cmp #BOARD_STRIDE             ;   is going to stay empty. If there is a tile
+  bcc @Vacated                  ;   above it, that tile lands here later in
+  ldx GravIdx                   ;   this same pass and its own arrival mark
+  lda Board - BOARD_STRIDE,x    ;   covers the cell. Half the marks of a
+  bne @Arrived                  ;   sliding column, which is what the ring
+@Vacated:                       ;   pressure is made of.
+  ldx GravIdx
+  jsr RenderCell
+@Arrived:
+  lda GravIdx
+  clc
+  adc #BOARD_STRIDE
+  tax
+  jsr RenderCell
+
+@Next:
+  dec GravIdx                   ; Down to 0, then $FF, which ends the pass —
+  bpl @Cell                     ;   GRAV_TOP is 119, so bit 7 starts clear
+                                ;   (see PLAN.md section 3)
+@Finished:
+  sec
   rts
-.endif
+
+@Later:
+  clc                           ; Ring full: the rest of this row waits a frame
+  rts

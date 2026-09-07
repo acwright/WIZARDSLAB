@@ -46,7 +46,30 @@ checkboxes and the "Current Status" section as work progresses.**
 - P1 settled how the dirty list is shaped (D11), that a bulk redraw is a
   resumable cursor rather than a bulk enqueue (D12), and that `RenderMark`
   preserves Y and zero page so text can loop across it (D13).
-- Next: **P2 — the falling piece.**
+- **Phase P2 is done.** Pieces spawn, steer, rotate, fall, lock and stack, the
+  preview refills, a blocked spawn ends the game, and all three machines
+  produce the same pieces in the same order — checked against a Python model of
+  the LFSR, cell by cell, not by eye. Both open questions closed: **S4** turned
+  out to be a non-question (the VIC-20 never has to flip its DDR at all), and
+  **S2 was played and the SPEC timings survived unaltered**, so §11.3 and §14
+  stand as written. Keyboards are scanned on all three. Two bugs older than P2
+  came out of it: `BoardClear` was writing exactly one byte of 160, and nothing
+  seeded the LFSR before the first `RngNext`. Work RAM is 558 bytes against
+  SPEC §17.1's ~560; ROM use is 37% / 42% / 54% of 16 KB.
+- **Phase P3 is done.** Runs of three or more clear in all four directions,
+  the pile falls into the holes at SPEC §14's two frames a row, and chains keep
+  going until a step finds nothing — all of it verified against numbers read out
+  of RAM, and one test against the VDP's own name table. The scan turned out to
+  be the expensive routine of the whole game and was measured, not guessed:
+  **33,336 cycles at first, 11,542 now**, against a 16,667-cycle frame. Work RAM
+  is 563 bytes against SPEC §17.1's ~560; ROM use is 41% / 45% / 58% of 16 KB.
+  Two things came out of it that outlive the phase: `make playtest` now steps by
+  GAME frames rather than by cycles (§3), and `make crosscheck` plays the same
+  game on all three machines and compares the wells.
+- Next: **P4 — scoring and levels.** Everything it needs is already in place and
+  commented where it goes: `MatchEmit` is the one moment a run's length and
+  colour are both in hand, `CascadeRemove` leaves the tile count in `CellCount`,
+  and `CascadeSettle` is called from the one place a cascade ends.
 
 ---
 
@@ -117,10 +140,41 @@ Things a session working in this repository needs to know and cannot infer.
   --dbgfile,X.dbg` gives it the symbol addresses. That combination is how P1's
   exit criteria were checked and how the flush cap was confirmed against a
   running machine; do not go back to squinting at PNGs.
-- **`make DEBUG=1`** builds with `-DWL_DEBUG`: the title screen is skipped and
-  the well is filled with a known asymmetric pattern. It is the only way to see
-  the render path on a headless machine with no input attached, and it is
-  temporary — it goes when P2 can put a real piece on the board.
+- **`make DEBUG=1`** builds with `-DWL_DEBUG`, which now does exactly one
+  thing: skip the title screen and start playing. A headless machine has no
+  input attached, so without it every run sits on the title forever. P1's
+  `BoardDebugFill` is gone — a real falling piece is a better test of the
+  render path than a painted-on pattern. Changing the setting forces a
+  rebuild; it did not used to, and a stale build under the other flag looks
+  exactly like a bug in the game.
+- **`make playtest` plays the game and checks what happened.** `tools/playtest.py`
+  boots the AC6502 DEBUG cartridge paused, advances it one frame at a time with
+  the joystick held wherever the test wants it, and reads `PieceCol`,
+  `PieceRow`, `PieceA`-`C` and the board out of RAM after each frame — so DAS
+  timing, rotation, soft drop, the lock delay, the walls and the floor are all
+  assertions about numbers. Joystick **side `b`** is joystick 1; side `a` is the
+  port the game does not read, and pointing at the wrong one looks exactly like
+  input being ignored.
+- **`make playtest` counts GAME frames, not cycles.** It advances with
+  `exec.runTo GameLoop`, which stops at the top of the main loop with the
+  previous frame's logic finished. Running a fixed 16,666 cycles instead — which
+  is what it used to do — drifts the moment anything overruns vblank, and a
+  cascade scan is most of a frame on its own: the peek then lands in the middle
+  of the game's own work and reads a state it is halfway through writing. That
+  looked exactly like two P2 timing regressions that were not regressions.
+- **`make crosscheck` plays one headless game on all three and compares the
+  wells.** It is the cross-platform half of `make playtest`, and it is slow —
+  three whole games. What it proves is that the shared logic runs identically on
+  the two Commodores; what it does not prove is that a *clear* looks right
+  there, because the headless game deals five pieces that happen not to match
+  and there is no way to plant a board through VICE the way the AC6502's debug
+  protocol allows. See P3 below.
+- **A `bpl` loop over more than 128 bytes does not loop.** `BoardClear` counted
+  down from 159 to a `bpl` and wrote one byte of 160 for two whole phases,
+  because bit 7 of 159 is already set. Nothing noticed until the falling piece
+  needed a floor, and on the Commodores it *still* looked right, because
+  uninitialised RAM happened to be non-zero where a sentinel belonged. Count up
+  and end on a `cpx`.
 - **BSD `sed` has no `\b`.** Use Python for word-boundary rewrites in this repo.
 - **`vic20.inc` already defines `SCREEN_COLS` and `SCREEN_ROWS`.** The game's
   own screen constants are `SCR_COLS` / `SCR_ROWS` to avoid the collision.
@@ -135,6 +189,7 @@ Things a session working in this repository needs to know and cannot infer.
 ## 4. Open questions
 
 Things that need measuring, not deciding. Each one blocks the phase named.
+S1, S2 and S4 are settled; S3 and S5 are what is left.
 
 ### S1 — What is the real per-cell cost of a VDP write? — **settled**
 
@@ -177,12 +232,33 @@ than a fragile one. **Nothing here needs real hardware to confirm**, which is
 just as well: SPEC §12.6 and `constants.inc` now carry the reasoning, and P10
 inherits no open question from this.
 
-### S2 — Does the piece feel right at the SPEC timings? — *blocks P2*
+### S2 — Does the piece feel right at the SPEC timings? — **settled**
+
+**Yes. Played, and nothing changed.**
 
 Lock delay 16 frames, DAS 12/4, soft drop 3 frames a row (SPEC §5.6, §11.3).
-These are the numbers the game lives or dies on and they were chosen on paper.
-P2 exists partly to play with them. Whatever comes out, update SPEC §11.3 and
-§14 to match — the tables are the authority, not the code.
+These are the numbers the game lives or dies on and they were chosen on paper;
+they survived contact with a player unaltered, so SPEC §11.3 and §14 stand as
+written and no table moved.
+
+They are also verified, not just liked. `make playtest` confirms frame by frame
+that a fresh press moves on the frame it arrives, that the repeat starts twelve
+frames later and then runs every four, that rotation is edge-triggered and
+never repeats however long UP is held, that soft drop is three frames a row
+against gravity's forty-eight at level 1, and that the lock delay is sixteen
+frames with four resets and no more.
+
+**If a later phase wants to retune them, change SPEC §11.3 and §14 first** —
+the tables are the authority, not the code, and the code reads them out of
+`tables.inc` indexed by region, so a change is one edit in one place. P4 puts
+the level ramp on top of these, which is the next thing that could make them
+feel different; P5's reagents are the one after.
+
+One thing the measurement did settle on the way past: SPEC §11.3 used to say
+soft drop is ignored "at levels 14+ NTSC", and that never happens. Gravity's
+fastest is 6 frames a row against soft drop's 3, so soft drop wins at every
+level. The guard is still in the code and SPEC §11.3 now says why it never
+fires.
 
 ### S3 — How well do the screen images compress? — *blocks nothing yet*
 
@@ -193,12 +269,36 @@ under 200 bytes each. Nobody has measured it, and nothing is waiting on it: at
 43% of 16 KB the C64 carries them raw. Take the measurement when ROM gets
 tight.
 
-### S4 — Can the VIC-20 scan its keyboard without disturbing the joystick? — *blocks P2*
+### S4 — Can the VIC-20 scan its keyboard without disturbing the joystick? — **settled**
 
-Both live on VIA2, and reading the RIGHT switch means flipping `$9122`'s
-direction register. The current `HalReadInput` does that dance once a frame and
-puts the DDR back; adding a keyboard scan to the same frame may or may not
-interact. Measure before designing around it.
+**Yes, and the DDR dance the question assumed turns out to be unnecessary.**
+
+Every key the game reads (SPEC §11.2) lives in matrix **rows 1-6**. Row 0 is
+the top number row and row 7 is the rest of it, and the game wants no key from
+either. So `$9122` is set **once** to `$7F` and never touched again: PB0-PB6
+drive the six rows that matter and PB7 stays an input for the RIGHT switch. The
+joystick and the keyboard never take turns, so there is nothing to interact.
+
+That is also the safer arrangement, for a reason that has nothing to do with
+the scan. Flipping the DDR back to `$FF` makes PB7 an output; drive it high
+while a closed RIGHT switch is pulling it to ground and the VIA's output stage
+is fighting the joystick. Never configuring PB7 as an output means that cannot
+happen at all.
+
+Confirmed on both Commodores by running `make DEBUG=1 smoke` with the scan in
+place and reading the screen back: with no input attached the stack grows dead
+straight up the spawn column and the pieces match a model of the generator
+exactly, so the scan is contributing no phantom bits.
+
+The **C64** has the same collision and it is not solvable there: joystick port
+2 shares CIA1 port A with the keyboard columns, so a held direction pulls a
+column low and a scan sees every key in it. Every C64 game with both has this.
+The joystick is read first, with `$FF` on `$DC00` so no column is selected,
+which at least keeps the stick clean.
+
+The **AC6502** has no matrix at all — two encoders hand over one ASCII byte per
+keystroke and there is no key-up event, so a key there is a one-frame pulse and
+DAS never engages from it. SPEC §11.4 now says all of this.
 
 ### S5 — Does a real machine agree with the region detection? — *blocks P10*
 
@@ -253,6 +353,33 @@ the implementation ones that SPEC.md does not cover.
   cursor across it. The cursor bytes live in their own zero-page block rather
   than `Tmp0`-`Tmp3`, whose contract is the opposite one, and the block's
   comment says why. Anything else called from a marking loop breaks this.
+- **D14 — The piece is marked, not drawn, and the mark waits for any redraw.**
+  Every routine that moves or rotates the piece sets `PieceDirty`; `StatePlay`
+  does the drawing, at the end of the frame, and only once `RedrawIdx` says no
+  full-board redraw is outstanding. `RenderBoard` is a cursor that feeds the
+  ring over several frames (D12), so a mark made while one is in flight is
+  drawn *before* the redraw reaches that cell and is then painted over. One
+  byte of BSS buys the guarantee; the alternative is a piece that disappears
+  for four frames after every unpause.
+- **D15 — SPACE is `UP`, and confirm accepts either bit.** One key cannot be
+  both rotate-forward and rotate-reverse, so SPACE folds into `INPUT_UP` with
+  `W` and cursor-up, while `RETURN` and `Q` fold into `INPUT_FIRE`. The title
+  and game-over screens therefore test `INPUT_FIRE | INPUT_UP`, which also
+  means joystick up starts a game. Nothing in play is ambiguous. SPEC §11.2
+  records it.
+- **D16 — A row of falling is a cursor, like a board redraw.** D12 says
+  anything bigger than the ring is a cursor; gravity is the second thing that
+  is. Six full columns dropping one row changes 84 cells and the ring holds 64,
+  so `BoardGravityStep` stops when the ring is nearly full and resumes next
+  frame, and `PlayGravity` only starts the two-frame beat once the row has
+  actually landed. A heavy board therefore falls a shade slower instead of
+  losing cells off the screen — a dropped mark during a fall is never marked
+  again, which is the one case D6's drop-on-overflow does not survive.
+- **D17 — The match scan starts at the top of the pile, not at row 0.** Every
+  one of the four steps moves down at most one row, so a line that reaches the
+  pile must cross its top row. Finding that row costs about 45 cycles a row of
+  empty air and takes a six-row pile from 448 cells scanned to 178. SPEC §6.2
+  now says so, because it changes the procedure and not just the code.
 - **D9 — The whole static screen comes from the editors.** Panel frame, labels
   and margin are one name-table image per platform; code draws only the well,
   the digits, the preview and the message band over the top.
@@ -350,21 +477,52 @@ things worth knowing before P2:
 **Goal:** pieces spawn, move, rotate, fall and lock. No matching — the pile
 just grows. **This is where the game's feel is decided.**
 
-- [ ] S4 measured; keyboard scanning added to `HalReadInput` on all three
-- [ ] `piece.asm`: `PieceGenerateNext` per SPEC §5.2 (colours only for now)
-- [ ] `PieceSpawn`, with the game-over condition detected but not yet acted on
-- [ ] `PieceMoveLeft` / `PieceMoveRight` / `PieceRotate` / `PieceRotateBack`
-- [ ] `PieceStep`, lock delay with `LOCK_RESET_MAX` resets, `PieceLock`
-- [ ] `input.asm`: `InputShift` — DAS on left/right, **no auto-repeat on rotate**
-- [ ] Soft drop, ignored when gravity is already faster
-- [ ] `RenderPiece` / `RenderPieceErase` / `RenderNext`
-- [ ] `main.asm`: `StatePlay` dispatching `PLAY_FALLING`, `PLAY_LOCKING`, `PLAY_ARE`
-- [ ] S2: play it, tune the timings, update SPEC §11.3 and §14 to match
+- [x] S4 measured; keyboard scanning added to `HalReadInput` on all three
+- [x] `piece.asm`: `PieceGenerateNext` per SPEC §5.2 — colours *and* reagents,
+      because the compare chain is 20 bytes and leaving it out would have meant
+      writing the same roll twice
+- [x] `PieceSpawn`, with the game-over condition detected and handed to
+      `STATE_GAMEOVER` (the petrify animation is still P7's)
+- [x] `PieceMoveLeft` / `PieceMoveRight` / `PieceRotate` / `PieceRotateBack`
+- [x] `PieceStep`, lock delay with `LOCK_RESET_MAX` resets, `PieceLock`
+- [x] `input.asm`: `InputShift` — DAS on left/right, **no auto-repeat on rotate**
+- [x] Soft drop, ignored when gravity is already faster — the guard is there,
+      and with the shipped speed table it never fires (S2)
+- [x] `RenderPiece` / `RenderPieceErase` / `RenderNext`
+- [x] `main.asm`: `StatePlay` dispatching `PLAY_FALLING`, `PLAY_LOCKING`, `PLAY_ARE`
+- [x] S2: played. The SPEC timings survived unaltered, so §11.3 and §14 stand
+      as written and no table moved
 
-**Exit criteria:** pieces can be steered anywhere in the well and stack up
-correctly; the preview shows the next piece; rotation cycles the three cells
-and never auto-repeats; the piece cannot leave the well or overlap the pile;
-timings feel right and SPEC.md records whatever they ended up being.
+Two things arrived alongside, because P2 could not run without them:
+`ScoreGravity` (P4's module, but nothing falls without a speed) and
+`tables.inc`, which had been written in P0 and never actually `.include`d by
+any platform — nothing had needed a table until now.
+
+**Exit criteria: met**, and checked against a model rather than by eye. The
+falling piece can be steered to either wall and no further, rotation cycles the
+three cells forward on UP and back on FIRE and never repeats however long the
+button is held, soft drop and gravity run at their table rates, the piece locks
+on the floor and on the pile after sixteen frames with four resets available,
+the preview refills and overwrites the piece the artwork ships in the NEXT box,
+and a blocked spawn ends the game. Every one of those is an assertion in
+`make playtest` against `PieceCol` / `PieceRow` / `PieceA`-`C` read out of RAM,
+frame by frame — see §3.
+
+Cross-platform agreement is exact: with the LFSR seeded identically, the first
+three pieces on all three machines are `[72,72,88]`, `[72,64,104]`,
+`[64,64,80]`, matching a Python model of `RngNext` / `RngRange` /
+`PieceGenerateNext` byte for byte, and the whole five-piece stack of a headless
+run matches it too. Work RAM 558 bytes; ROM 37% / 42% / 54%.
+
+**What P2 settled, for the phases that inherit it:** D14, D15, S2, S4, and four
+things worth knowing before P3:
+
+| Found | Consequence |
+|---|---|
+| `BoardClear` counted `ldx #159` down to a `bpl` and wrote **one byte of 160**. Bit 7 of 159 is already set, so the branch fell through immediately | The sentinels were never laid down. P1 did not notice because nothing read one; the Commodores did not notice because uninitialised RAM happened to be non-zero where the floor belonged, and only the AC6502's zeroed RAM let the piece fall out of the well. Count up, end on `cpx` — and see §3 |
+| Nothing seeded the LFSR before the first `RngNext`, and a zero state is the one state a Galois LFSR never leaves | Every piece was identical. `GameInit` now seeds once so the generator is never stuck; `StateTitle` still reseeds from reaction time, which is the seed SPEC §15 actually cares about |
+| `RngRange` takes the high byte of `random * limit` rather than a modulo | `random % 6` gives colours 0-3 a 43/256 chance against 4-5's 42/256. The multiply is uniform to within one part in 256, is fixed-time, and is reusable — P7's title shimmer wants a cell in 0-27 and a tile in 0-127 |
+| The three cells under a falling piece are always empty, because every move and every gravity step tests them first and `PieceLock` is the only thing that writes them | `RenderPieceErase` is three blanks, not three board reads. If P3 ever writes the piece into the board early, that stops being true |
 
 ---
 
@@ -372,21 +530,57 @@ timings feel right and SPEC.md records whatever they ended up being.
 
 **Goal:** it becomes a game. Runs clear, tiles fall, chains count.
 
-- [ ] `match.asm`: the four scan passes, `Marks` filled, `RunCount` set
-- [ ] Wildcard handling in the scanner, ahead of the prism existing (SPEC §6.3)
-- [ ] `MarksClear` / `MarkSet` / `MarkTest`
-- [ ] `BoardGravity` — per-column compaction, marking moved cells dirty
-- [ ] `cascade.asm`: `CascadeBegin` / `CascadeStep` / `CascadeSettle` skeleton,
+- [x] `match.asm`: the four scan passes, `Marks` filled, `RunCount` set — one
+      `ScanLine` walked with four different steps, +1, +8, +9 and +7, each
+      ending on a sentinel rather than on a bounds check
+- [x] Wildcard handling in the scanner, ahead of the prism existing (SPEC §6.3)
+- [x] `MarksClear` / `MarkSet` / `MarkTest`
+- [x] `BoardGravity` — per-column compaction, marking moved cells dirty; a row
+      at a time and as a resumable cursor (D16)
+- [x] `cascade.asm`: `CascadeBegin` / `CascadeStep` / `CascadeSettle` skeleton,
       scan and removal only
-- [ ] `PLAY_GRAVITY` sub-state, one row every `FALL_FRAMES`
-- [ ] Chain counter advancing across cascade steps
+- [x] `PLAY_GRAVITY` sub-state, one row every `FALL_FRAMES`
+- [x] Chain counter advancing across cascade steps
 
-**Exit criteria:** three or more of a colour clear in all four directions;
-overlapping runs clear once and count once each; a run of four is one run, not
-two threes; tiles above a clear fall and can trigger further clears; cascades
-terminate; the board is never left in an impossible state. Playable, scoreless.
+**Exit criteria: met**, and checked against RAM rather than by eye. Three of a
+colour clear horizontally, vertically and on both diagonals; two do not; a run
+of four is one run and counts once; a hole in a row does not hide the run past
+it; an L of five cells is two runs and clears once; a prism closes a red run,
+three prisms are a run of their own, and one prism closes a red run and a blue
+one in the same scan and counts twice; a red potion, a red fireball and a red
+star are one run, because colour matches and glyph does not. Tiles above a clear
+fall **one row every two frames, measured row by row**, and a fall that makes a
+new run runs the cascade on to `ChainStep` 3. Every one of those is an assertion
+in `make playtest` against `Marks`, `RunCount`, `ChainStep` and the board, read
+out of RAM frame by frame.
 
----
+The two invariants the criteria really turn on are checked on a full board, not
+a contrived one: an 84-cell well with a six-wide clear along the bottom
+settles in 7 frames with **nothing floating** and — read back out of the VDP's
+own name table — **not one cell of the well differing between the board and
+the screen**. That is the test that says D16 works.
+
+`make crosscheck` plays one headless game on all three machines and compares
+the wells: the VIC-20, the C64 and the AC6502 finish byte for byte identical.
+**What that does not cover is a clear on a Commodore**, and it is worth being
+plain about it: the headless game has no input, so every piece lands in the
+spawn column, and the five pieces it deals before the well blocks happen to
+contain no run. Planting a board needs memory writes at a chosen moment, which
+the AC6502's debug protocol gives and VICE's `-moncommands` does not — VICE has
+a binary monitor that would, and P4 or P6 is where building that client starts
+to pay for itself. Until then the rules are proven on one machine and *identical
+execution* on the other two.
+
+**What P3 settled, for the phases that inherit it:** D16, D17, and five things
+worth knowing before P4:
+
+| Found | Consequence |
+|---|---|
+| A line that stops at the first empty cell never looks below the top of the pile. Every diagonal starts in row 0, which is empty for most of a game, so the first scanner found nothing at all | **A hole breaks the run, not the line.** Only a wall ends a line. SPEC §6.2 now says so, because it is a property of the procedure and not of the code |
+| The first working scan cost **33,336 cycles** — two whole frames — where the estimate had been "it runs once a step, it will be fine" | Measured, then fixed: start at the top of the pile (D17), keep the cursor in X, and never call a subroutine on the two paths a scan spends its life in (an empty cell, and a colour change, which is five adjacent cells in six). **11,542 cycles** now, and `CascadeRemove` 8,411 → 1,352 by skipping rows whose `Marks` byte is zero |
+| Six columns falling one row changes 84 cells; the dirty ring holds 64 and drains 24 a frame | D16. Gravity is a cursor, and the two-frame beat starts when the row lands rather than when it was asked for. A dropped mark in a *fall* is never corrected, which is the one place D6 does not hold |
+| A cascade step is a whole frame's work on a deep pile, and the game's frame is one trip round `GameLoop` however long that takes | A test that advances by cycles reads state the game is halfway through writing. `make playtest` advances by `exec.runTo GameLoop` instead (§3) — and two P2 assertions that "broke" in P3 were this, not the game |
+| `StatePause` put the piece back on resume whatever the sub-state was, and from `PLAY_GLOW` upward `PieceA`-`C` are stale — the cascade may have taken those cells away entirely | Resume only re-marks the piece below `PLAY_GLOW`. Harmless before P3, because a locked piece still matched the board underneath it |
 
 ### Phase P4 — Scoring and levels
 
@@ -557,10 +751,18 @@ both regions where the machine has both.
   VIC-20's 2024, because its screen is bigger. This has got better rather than
   worse: the margin is two tiles now, so the images are long runs and should
   RLE well past the 4:1 the budget assumed (S3). Nothing is tight at 43%.
-- **The effect queue on a pathological board.** Termination is proven — effects
-  only remove tiles and each cell marks once — but the *frame cost* of a
-  96-cell cascade is not measured. If it stalls, the queue drains across frames
-  the way the dirty list does.
+- **The frame cost of a cascade step.** Half measured now. The scan and the
+  removal come to **12,894 cycles** on a six-row pile against a 16,667-cycle
+  frame at 1 MHz, so a step fits — but only just, and a pile twice as deep does
+  not: the cost is roughly linear in the pile's height and a nearly-full board
+  is nearer two frames. Overrunning is not corruption, it is one dropped frame
+  at the moment a piece locks, and P6 is about to put twelve frames of
+  animation in the same place. P5's effects add to the same frame, and the
+  natural fix if it matters is the one D4 already implies: the scan and the
+  removal are separated by `PLAY_GLOW` in P6 anyway, so they stop sharing a
+  frame. **Termination** was never in doubt — effects only remove tiles and each
+  cell marks once — and is now also observed: every cascade in `make playtest`
+  settles, including one on a full board.
 - **Reagent probability is guesswork.** SPEC §5.3's tables were chosen on
   paper. They are the most likely thing to need rebalancing after P5, and they
   are also the easiest — five rows of a table.

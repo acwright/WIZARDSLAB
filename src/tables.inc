@@ -21,6 +21,25 @@ SpeedPAL:
   .byte  40, 36, 32, 28, 25, 22, 19, 17   ; levels  1- 8   0.800s .. 0.340s
   .byte  14, 13, 11,  9,  8,  7,  6,  5   ; levels  9-16   0.280s .. 0.100s
 
+; --- Frame counts that differ by region (SPEC 5.6, 11.3, 14) -----------------
+;   Indexed by Region: 0 = NTSC, 1 = PAL. PAL is round(NTSC * 50/60) wherever
+;   the difference is worth a frame, so a piece takes the same number of
+;   SECONDS to lock on both machines rather than the same number of frames.
+;
+;   Two bytes each rather than one table of pairs, because every read is
+;   `ldx Region / lda Name,x` and a pair table would need the index doubled.
+
+LockDelay:                              ; SPEC 5.6
+  .byte 16, 14
+AreDelay:                               ; Entry delay after a cascade settles
+  .byte 12, 10
+DasInitial:                             ; SPEC 11.3 — first repeat
+  .byte 12, 10
+DasRepeat:                              ; ...and every one after it
+  .byte  4,  3
+SoftDropRate:                           ; Frames per row while DOWN is held.
+  .byte  3,  2                          ;   Never used when gravity is faster.
+
 ; --- Per-tile value for MATCH removals (SPEC 9.1) ----------------------------
 ;   Indexed by (chain - 1), clamped to 7.   20 50 100 200 300 400 500 600
 TileValueLo:

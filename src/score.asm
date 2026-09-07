@@ -90,7 +90,22 @@ ScoreLevelCheck:
 ; -----------------------------------------------------------------------------
 ;   ScoreGravity — frames per row for the current level
 ;   Out: A = frame count, from SpeedNTSC or SpeedPAL per Region.
+;        Modifies: A, X
+;   SPEC 10.2. Strictly this module is P4's, but the falling piece cannot fall
+;   without it, so it is real ahead of the rest of the file — the same reason
+;   ScoreHighInit landed here in P1.
 ; -----------------------------------------------------------------------------
 ScoreGravity:
-  lda #48                       ; TODO: index SpeedNTSC/SpeedPAL by Level-1,
-  rts                           ;       clamped to LEVEL_SPEED_CAP - 1
+  ldx Level
+  dex                           ; The table is indexed by level - 1 ...
+  cpx #LEVEL_SPEED_CAP
+  bcc @Level
+  ldx #LEVEL_SPEED_CAP - 1      ;   ... and stops improving at the cap
+@Level:
+  lda Region
+  bne @Pal
+  lda SpeedNTSC,x
+  rts
+@Pal:
+  lda SpeedPAL,x
+  rts

@@ -6,15 +6,15 @@
 
 PLATFORMS = AC6502 VIC20 C64
 
-.PHONY: all clean artwork artwork-check data smoke $(PLATFORMS) \
+.PHONY: all clean artwork artwork-check data smoke playtest crosscheck $(PLATFORMS) \
         run-AC6502 run-VIC20 run-C64 \
         smoke-AC6502 smoke-VIC20 smoke-C64
 
 all: $(PLATFORMS)
 
 # DEBUG=1 builds the -DWL_DEBUG variant: the title screen is skipped and the
-# well is filled with a known pattern, so the render path can be looked at on a
-# machine with no input attached. TEMPORARY — see PLAN.md P1.
+# game starts playing, so a headless machine with no input attached still gets
+# past it. Changing the setting forces a rebuild — see any platform Makefile.
 export DEBUG
 
 AC6502 VIC20 C64:
@@ -52,6 +52,27 @@ artwork:
 # Fail if data/ is behind the master. Cheap enough to run before a release.
 artwork-check:
 	python3 tools/import-artwork.py --check
+
+# Play the game with a script and check what the piece actually did — DAS
+# timing, rotation, soft drop, lock delay, the walls and the floor, all read
+# out of RAM rather than off a picture. Needs the DEBUG cartridge and a -g
+# build beside it for the symbols. See tools/playtest.py.
+playtest:
+	@$(MAKE) DEBUG=1 AC6502
+	cd AC6502 && cl65 -t none -g --asm-define WL_DEBUG=1 -C AC6502-16K.cfg \
+	  -Wl --dbgfile,/tmp/wl.dbg -o /tmp/wl.crt WizardsLab.asm
+	python3 tools/playtest.py
+
+# Play one headless game on ALL THREE and check they end up with the same well.
+# `make playtest` proves the rules on the machine whose memory can be read and
+# written; this proves the other two run the same code to the same answer. Slow
+# — three whole games, one of them a frame at a time — so it is a phase check
+# and not something to run after every edit. See tools/crosscheck.py.
+crosscheck:
+	@$(MAKE) DEBUG=1
+	cd AC6502 && cl65 -t none -g --asm-define WL_DEBUG=1 -C AC6502-16K.cfg \
+	  -Wl --dbgfile,/tmp/wl.dbg -o /tmp/wl.crt WizardsLab.asm
+	python3 tools/crosscheck.py
 
 # Regenerate the placeholder artwork from scratch. Bootstrap only — this throws
 # the real art away, and a plain run writes nothing. See data/README.md.

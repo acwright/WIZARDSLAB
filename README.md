@@ -70,9 +70,14 @@ Then:
 make              # Build all three cartridges
 make run-C64      # Launch one in an emulator
 make smoke        # Boot all three headless and check they come up
+make playtest     # Play it with a script and check what the game did
+make crosscheck   # Play the same game on all three and compare the wells
 make artwork      # Re-import the art after drawing in TMS9918-EDITOR
 make clean
 ```
+
+`make DEBUG=1` skips the title screen and starts playing, which is how a
+headless machine gets past a screen it has no input to answer.
 
 Each platform directory has its own Makefile with the same targets, so
 `cd C64 && make run` works too. `make view` hexdumps a cartridge image.
@@ -117,6 +122,21 @@ rather than reaching its main loop, and leaves a screenshot beside each
 Commodore image. It is the fastest way to tell whether a change to the
 platform layer broke a boot.
 
+`make playtest` goes further: it boots the AC6502 build paused and advances it
+a game frame at a time with the joystick held wherever the test wants it,
+reading the piece's column, row and contents straight out of RAM after each
+frame. So the auto-repeat delay, the lock delay, soft-drop speed, the walls and
+the floor are all assertions about numbers rather than about pixels. It also
+writes boards into RAM to order, which is how the match scanner, the clears and
+the falling pile are checked — including one board read back out of the video
+chip to prove that what the game believes is also what is on the screen.
+
+`make crosscheck` is the cross-platform half of it: one headless game on each
+of the three machines, played to game over, with the wells compared cell by
+cell. The two Commodores are read off their screenshots, because a screenshot
+is all VICE offers — and the well *is* the board, since the board byte is the
+tile index.
+
 ---
 
 ## Burning to a cartridge
@@ -152,6 +172,9 @@ artwork/           Editor projects — the drawn master; see artwork/README.md
 data/              Tileset, screens and colour tables — see data/README.md
 include/           Platform hardware definitions
 tools/             import-artwork.py, the master -> data/ pipeline
+                   read-screen.py, a screenshot -> the name table
+                   playtest.py, a scripted game -> assertions about RAM
+                   crosscheck.py, the same game on all three -> one well
 
 AC6502/  VIC20/  C64/
                    Cartridge header, linker config, and each machine's HAL

@@ -277,14 +277,31 @@ HalBlitScreen:
   rts
 
 ; -----------------------------------------------------------------------------
-;   HalReadInput — joystick 1, folded into the abstract active-high mask
-;   The port is active low, %RLDUYXBA (6502.inc). Keyboard is TODO: it arrives
-;   through the same VIA, so it reads from GPIO_PORTB alongside the stick.
+;   HalReadInput — joystick 1 and the keyboard, in one active-high mask
+;   The port is active low, %RLDUYXBA (ac6502.inc).
+;
+;   This machine has no key matrix to scan. Two encoders sit on the VIA ports
+;   the joysticks share and hand over one ASCII byte per keystroke, strobing
+;   CB1 (matrix keyboard) or CA1 (PS/2) when it is ready. There is no key-up
+;   event and no way to ask whether a key is still down, so a key here is a
+;   ONE-FRAME PULSE rather than a held bit: the edge-triggered controls
+;   (rotate, pause, fire) work exactly as they do on a stick, and the held
+;   ones (left, right, soft drop) advance once per keystroke and once per
+;   encoder auto-repeat. DAS never engages from the keyboard, because the bit
+;   is never down two frames running.
+;
+;   Polled, not interrupt driven: the IFR flag raises on the strobe whether or
+;   not the VIA is allowed to assert IRQ, and this cartridge never clears the
+;   CPU's I flag (D7). Reading the port takes the byte and clears the flag.
 ; -----------------------------------------------------------------------------
 HalReadInput:
   lda HW_PRESENT
   and #HW_GPIO                  ; No GPIO card means a floating bus, not input
   beq @None
+
+  jsr ScanKeys                  ; BEFORE the joystick: ReadJoystick1 releases
+  sta Tmp2                      ;   both encoders, and a key pending at that
+                                ;   moment would go with them
 
   jsr ReadJoystick1
   eor #$FF                      ; Active low in, active high out
@@ -330,10 +347,87 @@ HalReadInput:
 @NoFire:
 
   lda Tmp1
+  ora Tmp2
   rts
 
 @None:
   lda #0
+  rts
+
+; -----------------------------------------------------------------------------
+;   ScanKeys — whatever the two encoders have strobed since the last frame
+;   Out: A = INPUT_* bits.  Modifies: A, X, Tmp2
+;   Both are checked, so either keyboard drives the game.
+; -----------------------------------------------------------------------------
+ScanKeys:
+  lda #0
+  sta Tmp2
+
+  lda GPIO_IFR
+  and #GPIO_INT_CB1             ; Matrix keyboard encoder, on port B
+  beq @Ps2
+  lda GPIO_PORTB                ; Reading it takes the byte and clears CB1
+  jsr KeyBit
+  ora Tmp2
+  sta Tmp2
+
+@Ps2:
+  lda GPIO_IFR
+  and #GPIO_INT_CA1             ; PS/2 encoder, on port A
+  beq @Done
+  lda GPIO_PORTA
+  jsr KeyBit
+  ora Tmp2
+  sta Tmp2
+
+@Done:
+  lda Tmp2
+  rts
+
+; -----------------------------------------------------------------------------
+;   KeyBit — one ASCII byte to one input bit
+;   In:  A = character      Out: A = INPUT_* bit, or 0 for anything else
+;   SPEC 11.2. The arrow keys are not here: the encoders define no code for
+;   them, so WASD is the whole of the keyboard control scheme on this machine.
+; -----------------------------------------------------------------------------
+KeyBit:
+  cmp #$0D                      ; RETURN — confirm
+  beq @Fire
+  cmp #' '                      ; SPACE — rotate, and start (D15)
+  beq @Up
+  ora #$20                      ; Fold to lower case. Anything that is not a
+  cmp #'w'                      ;   letter simply matches nothing below.
+  beq @Up
+  cmp #'s'
+  beq @Down
+  cmp #'a'
+  beq @Left
+  cmp #'d'
+  beq @Right
+  cmp #'q'
+  beq @Fire
+  cmp #'p'
+  beq @Pause
+  lda #0
+  rts
+
+@Up:
+  lda #INPUT_UP
+  rts
+@Down:
+  lda #INPUT_DOWN
+  rts
+@Left:
+  lda #INPUT_LEFT
+  rts
+@Right:
+  lda #INPUT_RIGHT
+  rts
+@Fire:
+  lda #INPUT_FIRE
+  rts
+@Pause:
+  lda #INPUT_PAUSE
   rts
 
 ; -----------------------------------------------------------------------------
@@ -356,6 +450,7 @@ HalSfx:
 .segment "RODATA"
 
 .include "../data/tilecolor-tms9918.inc"
+.include "../src/tables.inc"
 .include "../src/strings.inc"
 
 ; --- PLACEHOLDER ART — replace via TMS9918-EDITOR, see data/README.md --------

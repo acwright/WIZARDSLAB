@@ -58,6 +58,11 @@ PieceC:         .res 1
 NextA:          .res 1                  ; The preview piece
 NextB:          .res 1
 NextC:          .res 1
+PieceDirty:     .res 1                  ; Non-zero when the three cells need
+                                        ;   drawing. Not drawn on the spot,
+                                        ;   because a full-board redraw may be
+                                        ;   in flight and would paint over
+                                        ;   them — see StatePlay (D14).
 
 ; --- Progress (SPEC 9, 10) ---------------------------------------------------
 ScoreLo:        .res 1                  ; 7 digits packed BCD, low byte first;
