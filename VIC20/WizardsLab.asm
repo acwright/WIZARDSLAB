@@ -335,6 +335,7 @@ HalSfx:
 .segment "RODATA"
 
 .include "../data/tilecolor-vic20.inc"
+.include "../src/strings.inc"
 
 ; --- Screen row start addresses ----------------------------------------------
 RowLo:

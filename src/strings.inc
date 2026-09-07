@@ -1,0 +1,60 @@
+; =============================================================================
+;   strings.inc — Wizards Lab, tile-encoded text
+; =============================================================================
+;   Strings are stored as TILE numbers, not ASCII, terminated by TEXT_END, so
+;   TextDraw is a copy with no translation at run time (see text.asm). The
+;   translation happens here instead, at assembly time, in TileStr.
+;
+;   Hand-authored, never overwritten by an editor export (D3). Included once,
+;   from each platform's RODATA segment.
+; =============================================================================
+
+; -----------------------------------------------------------------------------
+;   TileChar / TileStr — ASCII source, tile bytes out
+;   The font is forty glyphs in one run from FONT_BASE:
+;       0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ . x ! ~
+;   and a space is TILE_BLANK. Anything else is not in the tileset and is an
+;   assembly error rather than a wrong glyph on the screen.
+; -----------------------------------------------------------------------------
+.macro TileChar c
+  .if c = ' '
+    .byte TILE_BLANK
+  .elseif (c >= '0') .and (c <= '9')
+    .byte FONT_DIGIT_0 + (c - '0')
+  .elseif (c >= 'A') .and (c <= 'Z')
+    .byte FONT_LETTER_A + (c - 'A')
+  .elseif c = '.'
+    .byte FONT_DOT
+  .elseif c = 'x'
+    .byte FONT_TIMES
+  .elseif c = '!'
+    .byte FONT_BANG
+  .elseif c = '~'
+    .byte FONT_TILDE
+  .else
+    .error "strings.inc: no tile for this character"
+  .endif
+.endmacro
+
+.macro TileStr s
+  .repeat .strlen(s), I
+    TileChar {.strat(s, I)}
+  .endrepeat
+  .byte TEXT_END
+.endmacro
+
+; -----------------------------------------------------------------------------
+;   Banners — SPEC 12.2, 13.3
+;   Even length, so (PANEL_W - length) / 2 centres exactly. The band is 18
+;   cells of backdrop between two shelf tiles either side, so a banner has 18
+;   to play with before it starts overwriting the artwork.
+;
+;   MsgPaused matches the play screen image byte for byte on purpose: the
+;   artwork ships with the band already reading `~~ PAUSED ~~` (see SPEC 12.1),
+;   so entering play clears the band and pausing draws this straight back.
+; -----------------------------------------------------------------------------
+MsgPaused:
+  TileStr "~~ PAUSED ~~"                 ; 12 cells, centres at panel column 5
+
+MsgLevelUp:
+  TileStr "~~ LEVEL UP ~~"               ; 14 cells, centres at panel column 4

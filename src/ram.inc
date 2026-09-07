@@ -31,9 +31,23 @@ CascadeMid:     .res 1
 CascadeHi:      .res 1
 
 ; --- Render (SPEC 12.6) ------------------------------------------------------
-Dirty:          .res DIRTY_BYTES        ; offset lo, offset hi, tile
-DirtyCount:     .res 1
-DirtyFlushed:   .res 1                  ; Carried across frames when capped
+;   A ring of DIRTY_ENTRIES cells waiting to be pushed to the screen, three
+;   bytes each: SCREEN column, SCREEN row, tile. Not a 16-bit screen offset —
+;   HalPlotCell takes a column and a row (hal.inc), and every platform reaches
+;   a cell through a per-row pointer table (SPEC 12.3), so an offset would only
+;   have to be taken apart again at the far end.
+;
+;   A ring rather than a list with a resume index, because a frame that flushes
+;   its cap leaves a remainder and the next frame's marks have to go somewhere.
+;   Head and tail are BYTE offsets into Dirty, not entry numbers, so stepping
+;   one entry is an add of 3 and never a multiply.
+Dirty:          .res DIRTY_BYTES        ; screen col, screen row, tile
+DirtyCount:     .res 1                  ; Entries pending, 0..DIRTY_ENTRIES
+DirtyHead:      .res 1                  ; Byte offset of the oldest pending
+DirtyTail:      .res 1                  ; Byte offset the next mark goes to
+RedrawIdx:      .res 1                  ; Board index RenderBoardStep resumes
+                                        ;   at, or $FF when no redraw is
+                                        ;   outstanding
 
 ; --- The falling piece (SPEC 5) ----------------------------------------------
 PieceCol:       .res 1

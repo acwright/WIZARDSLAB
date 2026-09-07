@@ -35,13 +35,21 @@ GameInit:
   sta InputEdge
   sta TitlePage
 
+  jsr ScoreHighInit             ; Once a session, before the first ScoreReset
   jsr ScoreReset
   jsr BoardClear
 
+.ifdef WL_DEBUG
+  jsr GameStart                 ; TEMPORARY (PLAN.md P1): skip the title and
+                                ;   go straight to a well full of known tiles,
+                                ;   so the render path has something to draw
+                                ;   on a machine with no input attached.
+.else
   lda #STATE_TITLE
   sta GameState
   lda #1
   sta NeedsRedraw
+.endif
   ; falls through into GameLoop
 
 ; -----------------------------------------------------------------------------
@@ -91,6 +99,7 @@ StateTitle:
   lda #0
   sta NeedsRedraw
   jsr DrawTitleScreen
+  jsr RenderDirtyReset          ; A full blit went behind the renderer's back
 
 @Live:
   ; TODO: blink the prompt every 30 frames, and shimmer the magic field —
@@ -111,14 +120,33 @@ StateTitle:
 GameStart:
   jsr ScoreReset
   jsr BoardClear
-  jsr RenderDirtyReset
+.ifdef WL_DEBUG
+  jsr BoardDebugFill            ; TEMPORARY (PLAN.md P1)
+.endif
 
   lda #1
   sta Level
   lda #0
   sta TilesCleared
 
-  jsr DrawPlayScreen
+  jsr DrawPlayScreen            ; The whole screen at once, behind the
+  jsr RenderDirtyReset          ;   renderer's back — so drop anything queued
+                                ;   against the screen that just went away
+
+  jsr TextBannerClear           ; The play image ships with the band reading
+                                ;   `~~ PAUSED ~~` (SPEC 12.1); play owns it
+  jsr RenderScore               ; The panel fields are code's, not the image's
+  jsr RenderHigh
+  jsr RenderLevel
+.ifdef WL_DEBUG
+  lda #<MsgLevelUp              ; TEMPORARY (PLAN.md P1): something in the band
+  sta Ptr1
+  lda #>MsgLevelUp
+  sta Ptr1+1
+  jsr TextBanner
+.endif
+  jsr RenderBoard               ; Queued across as many frames as it takes
+
   jsr PieceGenerateNext         ; Fill the preview...
   jsr PieceSpawn                ; ...then promote it and refill
   jsr PieceGenerateNext

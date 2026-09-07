@@ -356,6 +356,7 @@ HalSfx:
 .segment "RODATA"
 
 .include "../data/tilecolor-tms9918.inc"
+.include "../src/strings.inc"
 
 ; --- PLACEHOLDER ART — replace via TMS9918-EDITOR, see data/README.md --------
 TitleScreen:  .incbin "../data/screen-title-ac6502.bin"

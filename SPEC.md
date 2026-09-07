@@ -944,6 +944,11 @@ Precompute a **row-start pointer table** per platform (one lo byte + one hi
 byte per screen row) so a cell write is `LDA (rowptr),Y`-shaped with `Y` =
 column. This is the same code on all three machines; only the table differs.
 
+`PANEL_X` / `PANEL_Y` are applied **once**, where a cell is queued, and nothing
+above that line knows which machine it is running on: everything upstream works
+in panel coordinates and the dirty ring holds screen ones
+([§12.6](#126-rendering-strategy)).
+
 ### 12.4 Per-platform placement
 
 | Platform | Grid | `PANEL_X` | `PANEL_Y` | Panel rows shown | Margin to fill |
@@ -988,17 +993,40 @@ two.
 ### 12.6 Rendering strategy
 
 **Never redraw the full screen during play.** All three platforms use a
-**dirty-cell list**:
+**dirty-cell ring**:
 
 - The well interior is 96 cells. A worst-case cascade step touches all of them.
-- Maintain `DIRTY`, a list of `(offset, tile)` pairs flushed once per frame
-  during vertical blank.
-- Cap the flush at **48 cells per frame** and carry the remainder to the next
-  frame. This matters most on the AC6502, where each VRAM write is a port
-  write with a minimum inter-write spacing (~29 cycles on a real TMS9918A);
-  48 writes is comfortably inside a 60 Hz frame at 1 MHz.
+- Maintain `DIRTY`, a ring of `(screen column, screen row, tile)` entries,
+  flushed once per frame during vertical blank. It is a column and a row, not
+  a 16-bit offset, because every platform reaches a cell through the row-start
+  pointer table of [§12.3](#123-board--screen-address) and would only have to
+  take an offset apart again.
+- A ring rather than a list with a resume index: a frame that flushes its cap
+  leaves a remainder, and the next frame's marks still have to go somewhere.
+- Cap the flush at **24 cells per frame** and carry the remainder to the next
+  frame. **This is a time budget, not a hardware limit** — see below.
 - The score/level/next fields are dirty-flagged separately and only pushed when
   their values change.
+- Anything that queues more than the ring holds — a full 96-cell well redraw —
+  is a *cursor*, refilled from the flush each frame, so it spreads over as many
+  frames as it needs and never overflows.
+
+**Why 24, measured.** One flush costs **165 CPU cycles a cell** on the AC6502
+and about 132 on the Commodores, so 24 cells is ~3,965 cycles: inside vertical
+blank on all three, and tightest on the AC6502, whose 70 blank lines are about
+4,450 cycles at 1 MHz. It is also a quarter of the well, so a full redraw is
+exactly four frames.
+
+**Write spacing is not the constraint, on any of them.** A real TMS9918A wants
+8 µs between VRAM data accesses during active display and 2 µs between any two
+port accesses. This loop puts two VRAM writes **165 µs** apart at 1 MHz and its
+closest two port accesses 8 cycles — 8 µs — apart, so it clears both windows
+with two orders of magnitude to spare even at 2 MHz. The AC6502's pico9918 is
+looser still: it latches bus writes in the RP2040's PIO and emulates VRAM in
+processor memory at 252 MHz or more, so it has no display contention to have a
+window about. **A 6502 at this clock cannot write a TMS9918 too fast.**
+Overrunning the vblank budget is therefore never corruption — at worst a cell
+lands a frame late.
 
 ---
 
@@ -1207,7 +1235,7 @@ AC6502 and C64 share SID driver code almost verbatim (register base differs:
 | `BOARD` | 160 | 20 rows × 8 stride, page-aligned |
 | `MARKS` | 16 | 1 byte per row, bits 0–5 |
 | `EFFECTQ` | 96 | 48 entries × 2 bytes |
-| `DIRTY` | 192 | 64 entries × 3 bytes (offset lo/hi, tile) |
+| `DIRTY` | 192 | 64 entries × 3 bytes (screen col, screen row, tile) |
 | Piece state | 8 | column, row, A/B/C, rotation |
 | Next piece | 3 | |
 | Score / High | 9 | 4 bytes BCD each, + 1 for the high score's level |
@@ -1217,10 +1245,13 @@ AC6502 and C64 share SID driver code almost verbatim (register base differs:
 | RNG seed, frame counter | 4 | |
 | State machine, flags | 8 | |
 | Audio state | 16 | |
-| **Total** | **~530 bytes** | 526 measured; plus row-pointer tables in ROM |
+| **Total** | **~560 bytes** | 557 measured — 29 zero page, 528 BSS; plus row-pointer tables in ROM |
 
 Fits the VIC-20's constrained RAM with room to spare, which is the whole point
-of designing to the tightest target first.
+of designing to the tightest target first. In practice the whole of BSS lands
+in the 1 KB at `$1000`–`$13FF` ([C.2](#c2-vic-20)) with 496 bytes still free,
+so the `$1C00`–`$1DFF` block that table earmarks for `DIRTY` is untouched and
+is spare capacity rather than a plan.
 
 ### 17.2 ROM (16 KB cartridge)
 

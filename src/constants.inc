@@ -62,6 +62,9 @@ FONT_DOT            = 52        ; A CENTRED dot, not a baseline period — it is
 FONT_TIMES          = 53
 FONT_BANG           = 54
 FONT_TILDE          = 55        ; The banner ornament, ~~~LIKE THIS~~~
+TEXT_END            = $FF       ; String terminator. Shares its value with
+                                ;   TILE_WALL, which costs nothing: no string
+                                ;   ever contains tile 255.
 
 ; The removal ring (SPEC 14). One animation, used for every removal there is:
 ; the match shatter, the bomb blast, the star. It opens outward
@@ -129,8 +132,12 @@ LEVEL_X             = 18        ; Single column: tens above units
 LEVEL_Y             = 17        ; Tens at LEVEL_Y, units at LEVEL_Y + 1
 NEXT_X              = 11        ; Single tile column
 NEXT_Y              = 16        ; Cells A, B, C at NEXT_Y, +1, +2
-MSG_X               = 0
-MSG_Y               = 22        ; One row, full panel width, centred
+MSG_X               = 2         ; The band's OWNED cells. Panel columns 0-1 and
+MSG_W               = 18        ;   20-21 of row 22 are shelf in the static
+MSG_Y               = 22        ;   image and code never touches them; the
+                                ;   banner still centres on the full PANEL_W,
+                                ;   which lands in the same place for an
+                                ;   even-length string (SPEC 12.2).
 
 SCORE_DIGITS        = 7         ; Always all 7 drawn, zero padded
 LEVEL_DIGITS        = 2         ; Always zero padded — level 5 draws "0" / "5"
@@ -187,4 +194,18 @@ EFFECTQ_ENTRIES     = 48        ; 2 bytes each; drop on overflow
 EFFECTQ_BYTES       = EFFECTQ_ENTRIES * 2
 DIRTY_ENTRIES       = 64        ; 3 bytes each: offset lo, offset hi, tile
 DIRTY_BYTES         = DIRTY_ENTRIES * 3
-DIRTY_FLUSH_MAX     = 48        ; Cells pushed to the screen per frame
+DIRTY_FLUSH_MAX     = 24        ; Cells pushed to the screen per frame.
+                                ;   MEASURED, not estimated (PLAN.md S1). A
+                                ;   flush costs 165 cycles a cell on the
+                                ;   AC6502 and about 132 on the Commodores, so
+                                ;   24 cells is 3965 cycles — inside vertical
+                                ;   blank on all three, and tightest on the
+                                ;   AC6502 at 1 MHz, whose 70 blank lines are
+                                ;   roughly 4450. It is also a quarter of the
+                                ;   96-cell well, so a full redraw is exactly
+                                ;   four frames.
+                                ;   Overrunning vblank is not dangerous on any
+                                ;   of the three — no VRAM write spacing is
+                                ;   anywhere near violated (S1) — it only
+                                ;   risks a cell landing a frame late. This is
+                                ;   a budget, not a hardware limit.

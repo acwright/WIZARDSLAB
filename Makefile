@@ -12,6 +12,11 @@ PLATFORMS = AC6502 VIC20 C64
 
 all: $(PLATFORMS)
 
+# DEBUG=1 builds the -DWL_DEBUG variant: the title screen is skipped and the
+# well is filled with a known pattern, so the render path can be looked at on a
+# machine with no input attached. TEMPORARY — see PLAN.md P1.
+export DEBUG
+
 AC6502 VIC20 C64:
 	@echo "==> Building $@"
 	@$(MAKE) -C $@ all

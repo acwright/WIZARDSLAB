@@ -1,6 +1,13 @@
 TARGET = WizardsLab
 CONFIG = VIC20-16K
 
+# DEBUG=1 adds -DWL_DEBUG: the P1 debug board fill and a straight jump into
+# play. Changing it must force a rebuild, so it is part of DEPS' effect via
+# the ASMFLAGS below rather than a silent recompile.
+ifeq ($(DEBUG),1)
+ASMFLAGS = --asm-define WL_DEBUG=1
+endif
+
 DEPS = ../src/*.asm ../src/*.inc ../data/*.inc ../data/*.bin ../include/vic20.inc
 
 .PHONY: all build view run smoke clean
@@ -14,7 +21,7 @@ build: $(TARGET)-blk5.crt
 # ld65 names both files itself from the config, so -o only supplies the stem
 # and cl65 leaves an empty file behind under that name. Sweep it up.
 $(TARGET)-blk5.crt: $(TARGET).asm $(DEPS)
-	cl65 -t none -C $(CONFIG).cfg -l $(TARGET).lst -o $(TARGET) $(TARGET).asm
+	cl65 -t none $(ASMFLAGS) -C $(CONFIG).cfg -l $(TARGET).lst -o $(TARGET) $(TARGET).asm
 	@rm -f $(TARGET)
 
 view: $(TARGET)-blk5.crt

@@ -20,8 +20,15 @@ checkboxes and the "Current Status" section as work progresses.**
   emulator and draw their title screen at the correct offset. The build system,
   the platform layer and the artwork pipeline are in place; every game module
   in `src/` exists with the routines SPEC.md calls for and a `TODO` where the
-  body goes. Work RAM is 526 bytes on every platform, against SPEC §17.1's
-  530-byte budget. ROM use is 27% / 31% / 43% of 16 KB.
+  body goes.
+- **Phase P1 is done.** The dirty-cell ring, the board, and the text and
+  number routines are real, and a `make DEBUG=1` build draws a known board,
+  both BCD fields, the stacked level and a centred banner identically on all
+  three machines — verified cell by cell, not by eye (see §3). S1 is measured
+  and settled; `DIRTY_FLUSH_MAX` is **24**, down from the estimated 48, and
+  the reason turned out not to be the one the estimate assumed. Work RAM is
+  557 bytes on every platform against SPEC §17.1's ~560; ROM use is 30% / 33% /
+  45% of 16 KB.
 - **Phase P9 is done, out of sequence.** All 256 tiles and both screens are
   drawn in `artwork/WizardsLab.tms9918`; `make artwork` imports them into
   `data/` and into the VIC-EDITOR project. SPEC Appendix A describes what is
@@ -36,7 +43,10 @@ checkboxes and the "Current Status" section as work progresses.**
   cartridge takes over before the KERNAL sets them (D8). And the headless
   AC6502 emulator fits **no video card at all** unless `--console video` is
   passed, which looks exactly like a hung cartridge (§3).
-- Next: **P1 — the render path.**
+- P1 settled how the dirty list is shaped (D11), that a bulk redraw is a
+  resumable cursor rather than a bulk enqueue (D12), and that `RenderMark`
+  preserves Y and zero page so text can loop across it (D13).
+- Next: **P2 — the falling piece.**
 
 ---
 
@@ -97,6 +107,20 @@ Things a session working in this repository needs to know and cannot infer.
 - **The board has an 8-byte stride and permanent sentinels**, which is what
   lets scans run without bounds checks. Do not "fix" the two wasted bytes per
   row (SPEC §3.2).
+- **Screens can be read back, so read them.** `tools/read-screen.py` recovers
+  the name table from a `make smoke` screenshot by matching each cell against
+  `data/tileset.bin`, using the cell's colour to tell the potion groups apart.
+  On the AC6502 there is no screenshot but something better: the emulator's
+  debug protocol (`6502 run --debug --debug-port N --debug-token T`, then
+  JSON-RPC `POST /rpc`) serves `mem.read` with `space: "vram"`, plus `bp.set` /
+  `exec.run` / `exec.step` for stepping a frame at a time. `cl65 -g -Wl
+  --dbgfile,X.dbg` gives it the symbol addresses. That combination is how P1's
+  exit criteria were checked and how the flush cap was confirmed against a
+  running machine; do not go back to squinting at PNGs.
+- **`make DEBUG=1`** builds with `-DWL_DEBUG`: the title screen is skipped and
+  the well is filled with a known asymmetric pattern. It is the only way to see
+  the render path on a headless machine with no input attached, and it is
+  temporary — it goes when P2 can put a real piece on the board.
 - **BSD `sed` has no `\b`.** Use Python for word-boundary rewrites in this repo.
 - **`vic20.inc` already defines `SCREEN_COLS` and `SCREEN_ROWS`.** The game's
   own screen constants are `SCR_COLS` / `SCR_ROWS` to avoid the collision.
@@ -112,13 +136,46 @@ Things a session working in this repository needs to know and cannot infer.
 
 Things that need measuring, not deciding. Each one blocks the phase named.
 
-### S1 — What is the real per-cell cost of a VDP write? — *blocks P1*
+### S1 — What is the real per-cell cost of a VDP write? — **settled**
 
-SPEC §12.6 caps the dirty-cell flush at 48 cells a frame on the theory that a
-real TMS9918A needs roughly 29 cycles between VRAM writes at 1 MHz. Measure
-what the emulator and, if possible, real hardware actually tolerate, and set
-`DIRTY_FLUSH_MAX` from the measurement rather than the estimate. Getting this
-wrong is invisible in an emulator and shows up as corruption on hardware.
+**The question was wrong, and the answer is 24.**
+
+Measured, with the real `RenderFlush` and the real AC6502 `HalPlotCell` in a
+cycle harness against the emulator's cycle counter: **165 cycles a cell**, so
+a 24-cell flush is 3,965 cycles. The Commodores' path hand-counts to about 132
+a cell. Confirmed against a running machine by breaking on `RenderFlush` and
+diffing the name table frame to frame: 24 cells is the most that ever reaches
+the screen in one frame, and a 146-cell state entry settles in 8.
+
+The premise — that write spacing is what limits the cap — does not survive
+contact with the numbers:
+
+- A real TMS9918A wants **8 µs** between VRAM data accesses during active
+  display and **2 µs** between any two port accesses. At 165 cycles a cell,
+  two VRAM writes are **165 µs** apart at 1 MHz, and the closest two port
+  accesses (the two halves of `VdpSetWrite`) are 8 cycles — 8 µs — apart. Both
+  clear with two orders of magnitude to spare, and still clear at 2 MHz, which
+  is the AC6502's other speed. **A 6502 at this clock cannot write a TMS9918
+  too fast**, whatever it does.
+- The AC6502 does not have a TMS9918A anyway; it has a **pico9918**. Reading
+  its firmware settles it: `src/tms9918.pio` latches each bus write off the
+  CSW edge into a PIO FIFO and `tmsWriteIrqHandler` in `src/main.c` drains it
+  from RAM-resident code on an RP2040 clocked at 252–352 MHz, into VRAM that is
+  ordinary processor memory. There is no display contention to have a window
+  about, so its tolerance is strictly looser than the part it replaces. Its
+  documentation says nothing about write timing because there is nothing to
+  say.
+
+So the cap is a **time budget**, not a hardware limit, and the right thing to
+budget against is vertical blank: 24 cells fits inside it on all three, and is
+tightest on the AC6502, whose 70 blank lines are about 4,450 cycles at 1 MHz.
+24 is also a quarter of the 96-cell well, so a full redraw is four frames.
+
+Overrunning that budget would not corrupt anything on any of the three — at
+worst a cell lands a frame late — so the number is a comfort setting rather
+than a fragile one. **Nothing here needs real hardware to confirm**, which is
+just as well: SPEC §12.6 and `constants.inc` now carry the reasoning, and P10
+inherits no open question from this.
 
 ### S2 — Does the piece feel right at the SPEC timings? — *blocks P2*
 
@@ -177,6 +234,25 @@ the implementation ones that SPEC.md does not cover.
   reading the status register acknowledges it.
 - **D8 — The VIC-20 sets its own `$9000`/`$9001`.** An autostart cartridge runs
   before the KERNAL centres the screen, so the game does it, per region.
+- **D11 — The dirty list is a ring of `(screen column, screen row, tile)`.**
+  Not a 16-bit offset, which SPEC §17.1 originally said: `HalPlotCell` takes a
+  column and a row, and every platform reaches a cell through a row-pointer
+  table (SPEC §12.3), so an offset would only be taken apart again at the far
+  end. Three bytes an entry either way. A ring rather than a list with a resume
+  index, because a frame that flushes its cap leaves a remainder and the next
+  frame's marks still have to go somewhere; the alternative is compacting 48
+  bytes down every frame that overflows.
+- **D12 — A bulk redraw is a cursor, not a bulk enqueue.** The well is 96 cells
+  and the ring holds 64, so `RenderBoard` cannot queue one. It sets a cursor;
+  `RenderFlush` calls `RenderBoardStep` first thing every frame, which fills
+  whatever the ring has room for. The redraw then paces itself to the flush and
+  never overflows — which is the only reason D6's drop-on-overflow is
+  survivable, because a dropped cell in a *redraw* would never be corrected.
+- **D13 — `RenderMark` preserves Y and the whole of zero page.** It clobbers A,
+  X and the stack, and nothing else. That is what lets `text.asm` hold a string
+  cursor across it. The cursor bytes live in their own zero-page block rather
+  than `Tmp0`-`Tmp3`, whose contract is the opposite one, and the block's
+  comment says why. Anything else called from a marking loop breaks this.
 - **D9 — The whole static screen comes from the editors.** Panel frame, labels
   and margin are one name-table image per platform; code draws only the well,
   the digits, the preview and the message band over the top.
@@ -233,22 +309,39 @@ RAM, and any new full-screen loop needs the same care.
 **Goal:** the well and the panel fields draw through the dirty-cell path,
 driven by data rather than by the game.
 
-- [ ] S1 measured; `DIRTY_FLUSH_MAX` set from it
-- [ ] `render.asm`: `RenderMark` appends `(screen offset, tile)` applying
-      `PANEL_X`/`PANEL_Y` once, here
-- [ ] `RenderFlush` pushes up to the cap per frame and resumes where it stopped
-- [ ] `board.asm`: `BoardClear` and `BoardRowPtr`, sentinels laid down correctly
-- [ ] `RenderBoard` queues the whole 6 × 16 well
-- [ ] `text.asm`: `TextDraw`, `TextBcd`, `TextBanner`, `TextBannerClear`
-- [ ] `RenderScore` / `RenderHigh` / `RenderLevel`, dirty-flagged on change only
-- [ ] A temporary debug path that fills the board with a known pattern
+- [x] S1 measured; `DIRTY_FLUSH_MAX` set from it — **24**, and for a different
+      reason than the question assumed
+- [x] `render.asm`: `RenderMark` appends `(screen column, screen row, tile)`
+      applying `PANEL_X`/`PANEL_Y` once, here (D11)
+- [x] `RenderFlush` pushes up to the cap per frame and resumes where it stopped
+- [x] `board.asm`: `BoardClear` and `BoardRowPtr`, sentinels laid down correctly
+- [x] `RenderBoard` queues the whole 6 × 16 well — as a cursor, across frames
+      (D12)
+- [x] `text.asm`: `TextDraw`, `TextBcd`, `TextBanner`, `TextBannerClear`,
+      `TextLevel`
+- [x] `RenderScore` / `RenderHigh` / `RenderLevel`, dirty-flagged on change only
+- [x] A temporary debug path that fills the board with a known pattern —
+      `make DEBUG=1`, `BoardDebugFill`
 
-**Exit criteria:** a hand-seeded board renders correctly in the well on all
-three platforms; seven-digit and two-digit BCD numbers draw in the right panel
-cells; the level draws as two stacked digits; a banner centres in the one-row
-message band; the flush cap is respected and a
-full-board redraw completes over several frames without tearing or dropping
-cells.
+**Exit criteria: met**, and checked cell by cell rather than by eye. The
+panel's 22 × 23 is **byte-identical on all three machines**; the well matches a
+Python model of `BoardDebugFill` in all 96 cells; SCORE reads `0000000` and
+HIGH `0010000` with `01` under it; LEVEL draws `0` over `1` in one column;
+`~~ LEVEL UP ~~` centres at panel column 4 in the one-row band with the rest of
+it cleared. Breaking on `RenderFlush` and diffing the AC6502's name table frame
+to frame shows **at most 24 cells reaching the screen in any frame** and a
+146-cell state entry settling in 8, with every cell correct — nothing dropped.
+Not torn, either: 24 cells is 3,965 cycles and fits inside vertical blank on
+all three (S1).
+
+**What P1 settled, for the phases that inherit it:** D11, D12, D13, and three
+things worth knowing before P2:
+
+| Found | Consequence |
+|---|---|
+| The play screen image ships with `~~ PAUSED ~~` already in the message band, and a preview piece already in the NEXT box — the artist drew a populated panel | Entering play must **clear** the band (`TextBannerClear`); `RenderNext` must overwrite the box rather than assume it is empty |
+| `RenderBoard` falling through into `RenderBoardStep` filled the ring on the spot and silently dropped whatever the caller marked next | D12. A routine that says it only sets a cursor must only set a cursor |
+| `ScoreReset` seeding the high score from "is it zero?" assumes BSS is cleared, which is not true on all three | Split into `ScoreHighInit` (once, from `GameInit`) and `ScoreReset` (per game). Strictly P4's module; done here because P1 cannot render an undefined field |
 
 ---
 
@@ -440,7 +533,8 @@ that own it, and each is easy to get wrong by assuming the obvious:
 **Goal:** it runs on the real machines.
 
 - [ ] S5 measured on a real 6560 and 6561
-- [ ] AC6502 on real hardware: TMS9918 write spacing, joystick, keyboard
+- [ ] AC6502 on real hardware: joystick and keyboard. **Not write spacing** —
+      S1 settled that, and the margin is two orders of magnitude
 - [ ] VIC-20 on real hardware, NTSC and PAL
 - [ ] C64 on real hardware, NTSC and PAL
 - [ ] Burn instructions in the README confirmed against an actual programmer
@@ -456,7 +550,9 @@ both regions where the machine has both.
 - **Timing tuned only in emulators.** P2 sets the feel of the game against
   VICE and the AC6502 emulator. Real hardware is the only authority, and P10 is
   late for finding out. Mitigate by getting one real machine running as early
-  as P2 if hardware is to hand.
+  as P2 if hardware is to hand. This is about *feel* — lock delay, DAS, drop
+  rate — not about whether the machine can keep up; S1 answered that from the
+  cycle counts, which emulators reproduce exactly.
 - **The C64's ROM budget.** It carries 4000 bytes of screen images against the
   VIC-20's 2024, because its screen is bigger. This has got better rather than
   worse: the margin is two tiles now, so the images are long runs and should

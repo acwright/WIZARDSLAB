@@ -14,12 +14,41 @@
 ; =============================================================================
 
 ; -----------------------------------------------------------------------------
-;   ScoreReset — zero the score, seed the session high score
+;   ScoreHighInit — seed the session high score, once, at power-on
 ;   SPEC 9.8 — the high score is not persisted; it starts at 0010000 on every
-;   power-on, which is the target the first game is played against.
+;   power-on, which is the target the first game is played against. It then
+;   survives every game in the session, so this is deliberately NOT part of
+;   ScoreReset. Nothing may infer "cold boot" from the value being zero: BSS
+;   is not cleared on all three machines.
+;   Out: nothing.  Modifies: A
+; -----------------------------------------------------------------------------
+ScoreHighInit:
+  lda #HIGH_INIT_LO
+  sta HighLo
+  lda #HIGH_INIT_MID
+  sta HighMid
+  lda #HIGH_INIT_HI
+  sta HighHi
+  lda #HIGH_INIT_TOP
+  sta HighTop
+  lda #$01                      ; BCD — the level the target was "set" on
+  sta HighLevel
+  rts
+
+; -----------------------------------------------------------------------------
+;   ScoreReset — zero the score for a new game
+;   Out: nothing.  Modifies: A
 ; -----------------------------------------------------------------------------
 ScoreReset:
-  ; TODO
+  lda #0
+  sta ScoreLo
+  sta ScoreMid
+  sta ScoreHi
+  sta ScoreTop
+  sta CascadeLo
+  sta CascadeMid
+  sta CascadeHi
+  sta StarCount
   rts
 
 ; -----------------------------------------------------------------------------
