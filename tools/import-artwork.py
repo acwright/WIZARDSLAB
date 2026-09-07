@@ -14,8 +14,8 @@ in step so the two never drift apart by hand.
 Written:
 
     data/tileset.bin                    2048   charset, verbatim
-    data/screen-play-ac6502.bin          768   32 x 24, verbatim
-    data/screen-title-ac6502.bin         768
+    data/screen-play-ac6502.bin          768   32 x 24, well and preview blanked
+    data/screen-title-ac6502.bin         768   32 x 24, verbatim
     artwork/WizardsLab.vic20                   charset + both screens, clipped
     data/screen-play-vic20.bin           506   22 x 23, panel cols 5-26
     data/screen-play-vic20-color.bin     506
@@ -37,6 +37,11 @@ authority (data/README.md); this script reads the VIC table out of it and
 checks the TMS9918 project's 32 groups against the AC6502 table, so a group
 recoloured in the editor and not in the .inc is caught here rather than on a
 real machine.
+
+The play screen's well and preview are code's, not the artist's (SPEC 12.2), so
+whatever the editors hold in them is blanked on the way into data/. The editor
+projects keep it — a well with a pile in it is what the panel gets drawn
+against — and only the shipped bytes are emptied.
 """
 
 import json
@@ -61,8 +66,12 @@ C64_INSET = (C64_COLS - TMS_COLS) // 2
 
 SCREENS = ("Play", "Title")
 
-# SPEC.md 12.2 — cells code draws over. Anything left in them by the editor is
-# a design aid, not artwork, and gets flagged rather than silently shipped.
+# SPEC.md 12.2 — cells code draws over: the 6 x 16 well and the three preview
+# cells. Whatever the editor leaves in them is a design aid, not artwork. It
+# stays in the editor projects, where it is there to be drawn against, and is
+# blanked out of data/ on the way past. It used to only be flagged, and the aid
+# was then visible for the few frames between the play screen going up and
+# RenderBoard / RenderNext catching up with it.
 WELL_COLS = range(1, 7)
 WELL_ROWS = range(4, 20)
 NEXT_CELLS = [(11, 16), (11, 17), (11, 18)]
@@ -142,19 +151,27 @@ def color_of(cells, table):
     return [table[t >> 3] & 0x0F for t in cells]
 
 
-def design_aids(cells):
-    """Cells inside regions code owns that the editor left something in."""
-    left = []
-    for y in WELL_ROWS:
-        for x in WELL_COLS:
-            t = cells[y * TMS_COLS + TMS_PANEL_X + x]
-            if t:
-                left.append((x, y, t))
-    for x, y in NEXT_CELLS:
-        t = cells[y * TMS_COLS + TMS_PANEL_X + x]
-        if t:
-            left.append((x, y, t))
-    return left
+def owned_cells():
+    """Panel coordinates of every cell code draws over (SPEC 12.2)."""
+    return [(x, y) for y in WELL_ROWS for x in WELL_COLS] + list(NEXT_CELLS)
+
+
+def blank_owned(cells):
+    """Empty the well and the preview. Returns the new cells and what went.
+
+    Done on the master's cells, before any platform's screen and colour data is
+    derived from them — the alternative is six files to keep in step and a play
+    screen that flashes the aid on entry. The caller keeps the original for the
+    editor projects.
+    """
+    out = list(cells)
+    cleared = []
+    for x, y in owned_cells():
+        i = y * TMS_COLS + TMS_PANEL_X + x
+        if out[i]:
+            cleared.append((x, y, out[i]))
+            out[i] = 0
+    return out, cleared
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +254,7 @@ def main():
     charset, screens, groups, modified = load_master()
 
     warnings = []
+    report = []
     expected = group_table("tilecolor-tms9918.inc")
     if groups != expected:
         bad = [i for i in range(32) if groups[i] != expected[i]]
@@ -246,31 +264,38 @@ def main():
                         % (i, groups[i], expected[i]) for i in bad)
             + " — the .inc is the authority (data/README.md)")
 
-    aids = design_aids(screens["Play"])
-    if aids:
-        warnings.append(
-            "play screen has %d cell(s) left in the well and preview, which "
-            "code draws over: %s%s" % (
-                len(aids),
-                ", ".join("(%d,%d)=$%02X" % a for a in aids[:6]),
-                ", ..." if len(aids) > 6 else ""))
-
     vic_table = group_table("tilecolor-vic20.inc")
-    vic_cells = {n: vic_screen(screens[n]) for n in SCREENS}
+    c64_table = group_table("tilecolor-c64.inc")
+
+    # The editor projects keep the design aid — it is there to be drawn against
+    # — so vic_project below is fed the master's own cells. Only what the build
+    # reads is blanked.
+    vic_edit = {n: vic_screen(screens[n]) for n in SCREENS}
+    vic_edit_color = {n: color_of(vic_edit[n], vic_table) for n in SCREENS}
+
+    shipped = dict(screens)
+    shipped["Play"], aids = blank_owned(shipped["Play"])
+    if aids:
+        report.append(
+            "    blanked %d design-aid cell(s) in the well and preview of the "
+            "shipped play screen: %s%s"
+            % (len(aids),
+               ", ".join("(%d,%d)=$%02X" % a for a in aids[:6]),
+               ", ..." if len(aids) > 6 else ""))
+
+    vic_cells = {n: vic_screen(shipped[n]) for n in SCREENS}
     vic_color = {n: color_of(vic_cells[n], vic_table) for n in SCREENS}
 
-    c64_table = group_table("tilecolor-c64.inc")
-    c64_cells = {n: c64_screen(screens[n]) for n in SCREENS}
+    c64_cells = {n: c64_screen(shipped[n]) for n in SCREENS}
     c64_color = {n: color_of(c64_cells[n], c64_table) for n in SCREENS}
 
-    report = []
     stale = False
     stale |= emit(os.path.join(DATA, "tileset.bin"), tileset(charset),
                   check, report)
     for name in SCREENS:
         low = name.lower()
         stale |= emit(os.path.join(DATA, f"screen-{low}-ac6502.bin"),
-                      bytes(screens[name]), check, report)
+                      bytes(shipped[name]), check, report)
         stale |= emit(os.path.join(DATA, f"screen-{low}-vic20.bin"),
                       bytes(vic_cells[name]), check, report)
         stale |= emit(os.path.join(DATA, f"screen-{low}-vic20-color.bin"),
@@ -280,7 +305,7 @@ def main():
         stale |= emit(os.path.join(DATA, f"screen-{low}-c64-color.bin"),
                       bytes(c64_color[name]), check, report)
     stale |= emit(VIC_PROJECT,
-                  vic_project(charset, vic_cells, vic_color, modified),
+                  vic_project(charset, vic_edit, vic_edit_color, modified),
                   check, report)
 
     print("Importing artwork/WizardsLab.tms9918:")

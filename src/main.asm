@@ -75,7 +75,12 @@ GameLoop:
   beq @Play
   cmp #STATE_PAUSE
   beq @Pause
-  jmp StateGameOver
+  jsr StateGameOver             ; JSR, not JMP — every state handler ends in an
+  jmp @Audio                    ;   RTS, and a JMP here would hand that RTS the
+                                ;   return address of the JSR GameInit that the
+                                ;   cart entry point never expects back. The
+                                ;   first loss unwound the loop into GameInit;
+                                ;   the second pulled from an empty stack.
 
 @Title:
   jsr StateTitle
@@ -215,6 +220,11 @@ StatePlay:
 @ToPause:
   lda #STATE_PAUSE
   sta GameState
+  lda #<MsgPaused               ; SPEC 12.2 — without this the screen does not
+  sta Ptr1                      ;   change at all on a pause, and a paused game
+  lda #>MsgPaused               ;   is indistinguishable from a hung one
+  sta Ptr1+1
+  jsr TextBanner
   ; TODO (P7): wash the well with TILE_WASH so a pause cannot be used to study
   ; the board (13.3). A wash, not a blank — a blanked well reads as crashed.
   rts
@@ -382,7 +392,8 @@ StatePause:
   beq @Done
   lda #STATE_PLAY
   sta GameState
-  jsr RenderBoard               ; Put the board back...
+  jsr TextBannerClear           ; The banner comes down...
+  jsr RenderBoard               ; ...the board goes back up...
   lda PlayState                 ;   ...and the piece on top of it, once the
   cmp #PLAY_GLOW                ;   redraw has gone by (D14) — but only while
   bcs @Done                     ;   there IS one. From GLOW on up the piece is

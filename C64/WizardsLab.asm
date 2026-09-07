@@ -351,10 +351,10 @@ ScanKeys:
   ;   the four the game wants and the reason for reading the matrix rather
   ;   than letting the KERNAL turn a keystroke into one character.
 @Cursors:
-  lda #%11111011                ; Column 2 — CRSR L/R shares it with A and D
-  sta $DC00
+  lda #%11111110                ; Column 0 — CRSR L/R shares it with RETURN
+  sta $DC00                     ;   and the function keys
   lda $DC01
-  and #%00000001                ; Row 0
+  and #%00000100                ; Row 2
   bne @NoLeftRight              ; Still high, so not pressed
   ldx #INPUT_RIGHT
   lda Tmp2
@@ -367,10 +367,10 @@ ScanKeys:
   sta Tmp2
 @NoLeftRight:
 
-  lda #%01111111                ; Column 7 — CRSR U/D, next to LSHIFT
+  lda #%11111110                ; Column 0 again — CRSR U/D is its last row
   sta $DC00
   lda $DC01
-  and #%00000001
+  and #%10000000                ; Row 7
   bne @NoUpDown
   ldx #INPUT_DOWN
   lda Tmp2
@@ -389,18 +389,23 @@ ScanKeys:
 
 ; -----------------------------------------------------------------------------
 ;   KeyTable — column mask, row mask, input bit.  Terminated by $00.
+;
+;   These are C64 matrix positions, which are NOT the VIC-20's with the axes
+;   renamed: the two machines wire genuinely different keys to the same
+;   (row, column). Only W and D sit on a symmetric position, which is why they
+;   were the two that worked when this table still held the VIC-20's numbers.
 ; -----------------------------------------------------------------------------
 KeyTable:
   .byte %11111101, %00000010, INPUT_UP      ; W        col 1, row 1
-  .byte %11111011, %00000010, INPUT_LEFT    ; A        col 2, row 1
-  .byte %11011111, %00000010, INPUT_DOWN    ; S        col 5, row 1
+  .byte %11111101, %00000100, INPUT_LEFT    ; A        col 1, row 2
+  .byte %11111101, %00100000, INPUT_DOWN    ; S        col 1, row 5
   .byte %11111011, %00000100, INPUT_RIGHT   ; D        col 2, row 2
-  .byte %10111111, %10000000, INPUT_FIRE    ; Q        col 6, row 7
-  .byte %11111101, %00100000, INPUT_PAUSE   ; P        col 1, row 5
-  .byte %11101111, %10000000, INPUT_UP      ; SPACE    col 4, row 7
-  .byte %11111101, %00000001, INPUT_FIRE    ; RETURN   col 1, row 0
-  .byte %01111111, %00000010, KEY_SHIFT     ; LSHIFT   col 7, row 1
-  .byte %11101111, %01000000, KEY_SHIFT     ; RSHIFT   col 4, row 6
+  .byte %01111111, %01000000, INPUT_FIRE    ; Q        col 7, row 6
+  .byte %11011111, %00000010, INPUT_PAUSE   ; P        col 5, row 1
+  .byte %01111111, %00010000, INPUT_UP      ; SPACE    col 7, row 4
+  .byte %11111110, %00000010, INPUT_FIRE    ; RETURN   col 0, row 1
+  .byte %11111101, %10000000, KEY_SHIFT     ; LSHIFT   col 1, row 7
+  .byte %10111111, %00010000, KEY_SHIFT     ; RSHIFT   col 6, row 4
   .byte $00
 
 ; -----------------------------------------------------------------------------
