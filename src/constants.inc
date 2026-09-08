@@ -292,8 +292,13 @@ SFX_CHAIN_MAX       = 8         ;   link, and the most it ever rises (SPEC 16)
 ;   title, and every so often one of the game's own effects drifting past at
 ;   half volume, as though an experiment two benches over just went off.
 ;   ambience.asm sequences it; AmbTable (tables.inc) is the mix.
-AMB_ENTRIES         = 16        ; Rows in AmbTable. A power of two, so a random
-                                ;   nibble picks one evenly with an AND
+AMB_ENTRIES         = 32        ; Rows in AmbTable. A power of two, so five
+                                ;   random bits pick one evenly with an AND.
+                                ;   Thirty-two rather than sixteen because it
+                                ;   is how often a borrowed effect comes up
+                                ;   that this table tunes, and halving that
+                                ;   without dropping any of the five means
+                                ;   twice the rows (tables.inc)
 AMB_SHIFT_RANGE     = 8         ; Semitones a sound may be pitched up by, so no
                                 ;   two bubbles are the same size. Every list
                                 ;   below is written low enough that +7 stays

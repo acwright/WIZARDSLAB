@@ -591,8 +591,13 @@ Current file: WizardsLab.asm
 000000r 2               ;   title, and every so often one of the game's own effects drifting past at
 000000r 2               ;   half volume, as though an experiment two benches over just went off.
 000000r 2               ;   ambience.asm sequences it; AmbTable (tables.inc) is the mix.
-000000r 2               AMB_ENTRIES         = 16        ; Rows in AmbTable. A power of two, so a random
-000000r 2                                               ;   nibble picks one evenly with an AND
+000000r 2               AMB_ENTRIES         = 32        ; Rows in AmbTable. A power of two, so five
+000000r 2                                               ;   random bits pick one evenly with an AND.
+000000r 2                                               ;   Thirty-two rather than sixteen because it
+000000r 2                                               ;   is how often a borrowed effect comes up
+000000r 2                                               ;   that this table tunes, and halving that
+000000r 2                                               ;   without dropping any of the five means
+000000r 2                                               ;   twice the rows (tables.inc)
 000000r 2               AMB_SHIFT_RANGE     = 8         ; Semitones a sound may be pitched up by, so no
 000000r 2                                               ;   two bubbles are the same size. Every list
 000000r 2                                               ;   below is written low enough that +7 stays
@@ -5489,7 +5494,7 @@ Current file: WizardsLab.asm
 0011B3r 2               ;   same driver, at half volume and a random pitch.
 0011B3r 2               ;
 0011B3r 2               ;   That last part is what stops it sounding like a loop. There are three
-0011B3r 2               ;   cauldron sounds; there are sixteen entries in AmbTable saying how often
+0011B3r 2               ;   cauldron sounds; there are thirty-two entries in AmbTable saying how often
 0011B3r 2               ;   each of them and each of the five borrowed effects comes up; every one is
 0011B3r 2               ;   transposed by a fresh 0-7 semitones as it starts; and the quiet between
 0011B3r 2               ;   them is rolled every time. Two random bytes and a table lookup per sound.
@@ -5551,8 +5556,8 @@ Current file: WizardsLab.asm
 0011D8r 2  D0 29          bne @Done                     ; Still quiet
 0011DAr 2               
 0011DAr 2  20 rr rr       jsr RngNext
-0011DDr 2  29 0F          and #(AMB_ENTRIES - 1)        ; Sixteen entries, so a nibble picks one evenly
-0011DFr 2  AA             tax                           ;   without RngRange
+0011DDr 2  29 1F          and #(AMB_ENTRIES - 1)        ; A power-of-two table, so a masked byte picks
+0011DFr 2  AA             tax                           ;   one evenly without RngRange
 0011E0r 2  BD rr rr       lda AmbTable,x
 0011E3r 2  48             pha                           ; The sound, parked while the pitch is rolled —
 0011E4r 2                                               ;   nothing may hold a value in Tmp0-Tmp3
@@ -6415,11 +6420,18 @@ Current file: WizardsLab.asm
 000264r 2                                                           ;   the next roll deals
 000264r 2               
 000264r 2               ; --- The mix (ambience.asm) --------------------------------------------------
-000264r 2               ;   Rolled once per sound, indexed by a random nibble, so the shape of the
-000264r 2               ;   ambience is this table and nothing else: eleven bubbles of one kind or
-000264r 2               ;   another to five borrowed effects, which is roughly one thing happening in
-000264r 2               ;   the lab for every three the cauldron does. Change the balance by changing
+000264r 2               ;   Rolled once per sound, indexed by five random bits, so the shape of the
+000264r 2               ;   ambience is this table and nothing else: twenty-seven bubbles of one kind
+000264r 2               ;   or another to five borrowed effects, which is one thing happening in the
+000264r 2               ;   lab for every five or six the cauldron does. Change the balance by changing
 000264r 2               ;   the entries — there is no other knob and no code to edit.
+000264r 2               ;
+000264r 2               ;   THIRTY-TWO ROWS AND NOT SIXTEEN, which is the whole of how the borrowed
+000264r 2               ;   effects were halved after the first version came out too busy: the five of
+000264r 2               ;   them are the same five, spread over twice as many rolls. Doing it the other
+000264r 2               ;   way — dropping two or three of the five from a sixteen-row table — would
+000264r 2               ;   have changed which sounds the lab makes as well as how often it makes one,
+000264r 2               ;   and the mix among them was not the problem.
 000264r 2               ;
 000264r 2               ;   The five borrowed ones are the game's own sounds (SPEC 16), played half
 000264r 2               ;   volume and out of context: the prism's shimmer and the star's arpeggio read
@@ -6427,157 +6439,164 @@ Current file: WizardsLab.asm
 000264r 2               ;   lock's thunk as something heavy being set down, and the match chime as a
 000264r 2               ;   phial being touched. Nothing louder than those — a game-over run drifting
 000264r 2               ;   past the title screen would sound like a fault, not a laboratory.
+000264r 2               ;
+000264r 2               ;   Position means nothing here; only the counts do. Every roll is independent,
+000264r 2               ;   so the five are spread out to be read rather than to be heard that way.
 000264r 2               
 000264r 2               AmbTable:
 000264r 2  0D 0F 0D 09    .byte SFX_BUBBLE, SFX_SEETHE, SFX_BUBBLE, SFX_PRISM
-000268r 2  0E 0D 06 0D    .byte SFX_GLOOP,  SFX_BUBBLE, SFX_BOLT,   SFX_BUBBLE
-00026Cr 2  0F 0E 04 0D    .byte SFX_SEETHE, SFX_GLOOP,  SFX_MATCH,  SFX_BUBBLE
-000270r 2  0D 08 0E 03    .byte SFX_BUBBLE, SFX_STAR,   SFX_GLOOP,  SFX_LOCK
-000274r 2               
-000274r 2               
-000274r 1               .include "../src/strings.inc"
-000274r 2               ; =============================================================================
-000274r 2               ;   strings.inc — Wizards Lab, tile-encoded text
-000274r 2               ; =============================================================================
-000274r 2               ;   Strings are stored as TILE numbers, not ASCII, terminated by TEXT_END, so
-000274r 2               ;   TextDraw is a copy with no translation at run time (see text.asm). The
-000274r 2               ;   translation happens here instead, at assembly time, in TileStr.
-000274r 2               ;
-000274r 2               ;   Hand-authored, never overwritten by an editor export (D3). Included once,
-000274r 2               ;   from each platform's RODATA segment.
-000274r 2               ; =============================================================================
-000274r 2               
-000274r 2               ; -----------------------------------------------------------------------------
-000274r 2               ;   TileChar / TileStr — ASCII source, tile bytes out
-000274r 2               ;   The font is forty glyphs in one run from FONT_BASE:
-000274r 2               ;       0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ . x ! ~
-000274r 2               ;   and a space is TILE_BLANK. Anything else is not in the tileset and is an
-000274r 2               ;   assembly error rather than a wrong glyph on the screen.
-000274r 2               ; -----------------------------------------------------------------------------
-000274r 2               .macro TileChar c
-000274r 2                 .if c = ' '
-000274r 2                   .byte TILE_BLANK
-000274r 2                 .elseif (c >= '0') .and (c <= '9')
-000274r 2                   .byte FONT_DIGIT_0 + (c - '0')
-000274r 2                 .elseif (c >= 'A') .and (c <= 'Z')
-000274r 2                   .byte FONT_LETTER_A + (c - 'A')
-000274r 2                 .elseif c = '.'
-000274r 2                   .byte FONT_DOT
-000274r 2                 .elseif c = 'x'
-000274r 2                   .byte FONT_TIMES
-000274r 2                 .elseif c = '!'
-000274r 2                   .byte FONT_BANG
-000274r 2                 .elseif c = '~'
-000274r 2                   .byte FONT_TILDE
-000274r 2                 .else
-000274r 2                   .error "strings.inc: no tile for this character"
-000274r 2                 .endif
-000274r 2               .endmacro
-000274r 2               
-000274r 2               .macro TileStr s
-000274r 2                 .repeat .strlen(s), I
-000274r 2                   TileChar {.strat(s, I)}
-000274r 2                 .endrepeat
-000274r 2                 .byte TEXT_END
-000274r 2               .endmacro
-000274r 2               
-000274r 2               ; -----------------------------------------------------------------------------
-000274r 2               ;   Banners — SPEC 12.2, 13.3
-000274r 2               ;   Even length, so (PANEL_W - length) / 2 centres exactly. The band is 18
-000274r 2               ;   cells of backdrop between two shelf tiles either side, so a banner has 18
-000274r 2               ;   to play with before it starts overwriting the artwork.
-000274r 2               ;
-000274r 2               ;   MsgPaused matches the play screen image byte for byte on purpose: the
-000274r 2               ;   artwork ships with the band already reading `~~ PAUSED ~~` (see SPEC 12.1),
-000274r 2               ;   so entering play clears the band and pausing draws this straight back.
-000274r 2               ; -----------------------------------------------------------------------------
-000274r 2               MsgPaused:
-000274r 2  37 37 00 29    TileStr "~~ PAUSED ~~"                 ; 12 cells, centres at panel column 5
-000278r 2  1A 2E 2C 1E  
-00027Cr 2  1D 00 37 37  
-000281r 2               
-000281r 2               MsgLevelUp:
-000281r 2  37 37 00 25    TileStr "~~ LEVEL UP ~~"               ; 14 cells, centres at panel column 4
-000285r 2  1E 2F 1E 25  
-000289r 2  00 2E 29 00  
-000290r 2               
-000290r 2               ; `GAME OVER` is nine characters, so a symmetric ornament around it is always
-000290r 2               ; an ODD length and would sit half a cell left of centre. The bang makes it
-000290r 2               ; even and is the reason it is there; SPEC 13.4 records the wording.
-000290r 2               MsgGameOver:
-000290r 2  37 37 00 20    TileStr "~~ GAME OVER! ~~"             ; 16 cells, centres at panel column 3
-000294r 2  1A 26 1E 00  
-000298r 2  28 2F 1E 2B  
-0002A1r 2               
-0002A1r 2               ; The chain banner carries a number, and TextDraw copies bytes rather than
-0002A1r 2               ; formatting them, so the digit is a placeholder that CascadeSettle overwrites
-0002A1r 2               ; with one RenderMark at CHAIN_DIGIT_X (constants.inc). Keeping the length at
-0002A1r 2               ; MSG_CHAIN_LEN is what makes that column a constant instead of a measurement.
-0002A1r 2               MsgChain:
-0002A1r 2  37 37 00 1C    TileStr "~~ CHAIN x0 ~~"               ; 14 cells; the `0` is panel column 14
-0002A5r 2  21 1A 22 27  
-0002A9r 2  00 35 10 00  
-0002B0r 2               
-0002B0r 2               ; -----------------------------------------------------------------------------
-0002B0r 2               ;   The title screen's prompt (SPEC 13.1)
-0002B0r 2               ;   Not a banner: it is ten cells of the DRAWN title image, and the only reason
-0002B0r 2               ;   the string exists at all is that blinking it means putting it back. It must
-0002B0r 2               ;   match data/screen-title-*.bin at PROMPT_X, PROMPT_Y byte for byte, or the
-0002B0r 2               ;   first blink would redraw the screen slightly differently from the way the
-0002B0r 2               ;   artist drew it.
-0002B0r 2               ; -----------------------------------------------------------------------------
-0002B0r 2               MsgPressFire:
-0002B0r 2  29 2B 1E 2C    TileStr "PRESS FIRE"                   ; PROMPT_LEN cells (constants.inc)
-0002B4r 2  2C 00 1F 22  
-0002B8r 2  2B 1E FF     
-0002BBr 2               
-0002BBr 1               
-0002BBr 1               ; --- Sound: which oscillator a timbre uses (constants.inc) -------------------
-0002BBr 1               ;   Offsets from VIC_CRA, indexed 1..4: TIMBRE_SOFT, BUZZ, BRIGHT, NOISE.
-0002BBr 1               VicOsc:
-0002BBr 1  00 01 02 03    .byte 0, 1, 2, 3
-0002BFr 1               
-0002BFr 1               ; --- Note table: semitones above C3, C3 to C6 (NOTE_MAX) ---------------------
-0002BFr 1               ;   Register value = round(128 - phi2 / (128 * Hz)) for the ALTO oscillator,
-0002BFr 1               ;   equal temperament from A4 = 440 Hz, phi2 = 1,022,727 Hz. The bass and
-0002BFr 1               ;   soprano read the same numbers an octave down and up, which is what makes a
-0002BFr 1               ;   timbre free here (HalSfx above).
-0002BFr 1               ;
-0002BFr 1               ;   PAL clocks the chip 8% faster and every note with it, which is a uniform
-0002BFr 1               ;   1.4-semitone transposition and not a tuning error — one table, and nothing
-0002BFr 1               ;   in the sound path reads Region.
-0002BFr 1               ;
-0002BFr 1               ;   The value is 7 bits for a frequency that goes as 1/(128 - value), so the
-0002BFr 1               ;   resolution runs out at the top: above C5 consecutive semitones start
-0002BFr 1               ;   landing on the same number, which is why tables.inc writes everything
-0002BFr 1               ;   melodic inside C3-C5 and lifts it with a timbre instead.
-0002BFr 1               VicNotes:
-0002BFr 1  43 46 4A 4D    .byte  67,  70,  74,  77,  80,  82,  85,  87,  90,  92,  94,  96   ; C3-B3
-0002C3r 1  50 52 55 57  
-0002C7r 1  5A 5C 5E 60  
-0002CBr 1  61 63 65 66    .byte  97,  99, 101, 102, 104, 105, 106, 108, 109, 110, 111, 112   ; C4-B4
-0002CFr 1  68 69 6A 6C  
-0002D3r 1  6D 6E 6F 70  
-0002D7r 1  71 72 72 73    .byte 113, 114, 114, 115, 116, 117, 117, 118, 118, 119, 119, 120   ; C5-B5
-0002DBr 1  74 75 75 76  
-0002DFr 1  76 77 77 78  
-0002E3r 1  78             .byte 120                                                          ; C6
-0002E4r 1               
-0002E4r 1               ; --- Screen row start addresses ----------------------------------------------
-0002E4r 1               RowLo:
-0002E4r 1  00 16 2C 42    .repeat SCR_ROWS, i
-0002E8r 1  58 6E 84 9A  
-0002ECr 1  B0 C6 DC F2  
-0002FBr 1                   .byte <(SCREEN + i * SCR_COLS)
-0002FBr 1                 .endrepeat
-0002FBr 1               RowHi:
-0002FBr 1  1E 1E 1E 1E    .repeat SCR_ROWS, i
-0002FFr 1  1E 1E 1E 1E  
-000303r 1  1E 1E 1E 1E  
-000312r 1                   .byte >(SCREEN + i * SCR_COLS)
-000312r 1                 .endrepeat
-000312r 1               
-000312r 1               .segment "TILES"
+000268r 2  0E 0D 0D 0F    .byte SFX_GLOOP,  SFX_BUBBLE, SFX_BUBBLE, SFX_SEETHE
+00026Cr 2  0D 0E 06 0D    .byte SFX_BUBBLE, SFX_GLOOP,  SFX_BOLT,   SFX_BUBBLE
+000270r 2  0E 0F 0D 0D    .byte SFX_GLOOP,  SFX_SEETHE, SFX_BUBBLE, SFX_BUBBLE
+000274r 2  04 0D 0E 0D    .byte SFX_MATCH,  SFX_BUBBLE, SFX_GLOOP,  SFX_BUBBLE
+000278r 2  0F 0D 0E 08    .byte SFX_SEETHE, SFX_BUBBLE, SFX_GLOOP,  SFX_STAR
+00027Cr 2  0E 0D 0F 0D    .byte SFX_GLOOP,  SFX_BUBBLE, SFX_SEETHE, SFX_BUBBLE
+000280r 2  0D 03 0E 0D    .byte SFX_BUBBLE, SFX_LOCK,   SFX_GLOOP,  SFX_BUBBLE
+000284r 2               
+000284r 2               
+000284r 1               .include "../src/strings.inc"
+000284r 2               ; =============================================================================
+000284r 2               ;   strings.inc — Wizards Lab, tile-encoded text
+000284r 2               ; =============================================================================
+000284r 2               ;   Strings are stored as TILE numbers, not ASCII, terminated by TEXT_END, so
+000284r 2               ;   TextDraw is a copy with no translation at run time (see text.asm). The
+000284r 2               ;   translation happens here instead, at assembly time, in TileStr.
+000284r 2               ;
+000284r 2               ;   Hand-authored, never overwritten by an editor export (D3). Included once,
+000284r 2               ;   from each platform's RODATA segment.
+000284r 2               ; =============================================================================
+000284r 2               
+000284r 2               ; -----------------------------------------------------------------------------
+000284r 2               ;   TileChar / TileStr — ASCII source, tile bytes out
+000284r 2               ;   The font is forty glyphs in one run from FONT_BASE:
+000284r 2               ;       0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ . x ! ~
+000284r 2               ;   and a space is TILE_BLANK. Anything else is not in the tileset and is an
+000284r 2               ;   assembly error rather than a wrong glyph on the screen.
+000284r 2               ; -----------------------------------------------------------------------------
+000284r 2               .macro TileChar c
+000284r 2                 .if c = ' '
+000284r 2                   .byte TILE_BLANK
+000284r 2                 .elseif (c >= '0') .and (c <= '9')
+000284r 2                   .byte FONT_DIGIT_0 + (c - '0')
+000284r 2                 .elseif (c >= 'A') .and (c <= 'Z')
+000284r 2                   .byte FONT_LETTER_A + (c - 'A')
+000284r 2                 .elseif c = '.'
+000284r 2                   .byte FONT_DOT
+000284r 2                 .elseif c = 'x'
+000284r 2                   .byte FONT_TIMES
+000284r 2                 .elseif c = '!'
+000284r 2                   .byte FONT_BANG
+000284r 2                 .elseif c = '~'
+000284r 2                   .byte FONT_TILDE
+000284r 2                 .else
+000284r 2                   .error "strings.inc: no tile for this character"
+000284r 2                 .endif
+000284r 2               .endmacro
+000284r 2               
+000284r 2               .macro TileStr s
+000284r 2                 .repeat .strlen(s), I
+000284r 2                   TileChar {.strat(s, I)}
+000284r 2                 .endrepeat
+000284r 2                 .byte TEXT_END
+000284r 2               .endmacro
+000284r 2               
+000284r 2               ; -----------------------------------------------------------------------------
+000284r 2               ;   Banners — SPEC 12.2, 13.3
+000284r 2               ;   Even length, so (PANEL_W - length) / 2 centres exactly. The band is 18
+000284r 2               ;   cells of backdrop between two shelf tiles either side, so a banner has 18
+000284r 2               ;   to play with before it starts overwriting the artwork.
+000284r 2               ;
+000284r 2               ;   MsgPaused matches the play screen image byte for byte on purpose: the
+000284r 2               ;   artwork ships with the band already reading `~~ PAUSED ~~` (see SPEC 12.1),
+000284r 2               ;   so entering play clears the band and pausing draws this straight back.
+000284r 2               ; -----------------------------------------------------------------------------
+000284r 2               MsgPaused:
+000284r 2  37 37 00 29    TileStr "~~ PAUSED ~~"                 ; 12 cells, centres at panel column 5
+000288r 2  1A 2E 2C 1E  
+00028Cr 2  1D 00 37 37  
+000291r 2               
+000291r 2               MsgLevelUp:
+000291r 2  37 37 00 25    TileStr "~~ LEVEL UP ~~"               ; 14 cells, centres at panel column 4
+000295r 2  1E 2F 1E 25  
+000299r 2  00 2E 29 00  
+0002A0r 2               
+0002A0r 2               ; `GAME OVER` is nine characters, so a symmetric ornament around it is always
+0002A0r 2               ; an ODD length and would sit half a cell left of centre. The bang makes it
+0002A0r 2               ; even and is the reason it is there; SPEC 13.4 records the wording.
+0002A0r 2               MsgGameOver:
+0002A0r 2  37 37 00 20    TileStr "~~ GAME OVER! ~~"             ; 16 cells, centres at panel column 3
+0002A4r 2  1A 26 1E 00  
+0002A8r 2  28 2F 1E 2B  
+0002B1r 2               
+0002B1r 2               ; The chain banner carries a number, and TextDraw copies bytes rather than
+0002B1r 2               ; formatting them, so the digit is a placeholder that CascadeSettle overwrites
+0002B1r 2               ; with one RenderMark at CHAIN_DIGIT_X (constants.inc). Keeping the length at
+0002B1r 2               ; MSG_CHAIN_LEN is what makes that column a constant instead of a measurement.
+0002B1r 2               MsgChain:
+0002B1r 2  37 37 00 1C    TileStr "~~ CHAIN x0 ~~"               ; 14 cells; the `0` is panel column 14
+0002B5r 2  21 1A 22 27  
+0002B9r 2  00 35 10 00  
+0002C0r 2               
+0002C0r 2               ; -----------------------------------------------------------------------------
+0002C0r 2               ;   The title screen's prompt (SPEC 13.1)
+0002C0r 2               ;   Not a banner: it is ten cells of the DRAWN title image, and the only reason
+0002C0r 2               ;   the string exists at all is that blinking it means putting it back. It must
+0002C0r 2               ;   match data/screen-title-*.bin at PROMPT_X, PROMPT_Y byte for byte, or the
+0002C0r 2               ;   first blink would redraw the screen slightly differently from the way the
+0002C0r 2               ;   artist drew it.
+0002C0r 2               ; -----------------------------------------------------------------------------
+0002C0r 2               MsgPressFire:
+0002C0r 2  29 2B 1E 2C    TileStr "PRESS FIRE"                   ; PROMPT_LEN cells (constants.inc)
+0002C4r 2  2C 00 1F 22  
+0002C8r 2  2B 1E FF     
+0002CBr 2               
+0002CBr 1               
+0002CBr 1               ; --- Sound: which oscillator a timbre uses (constants.inc) -------------------
+0002CBr 1               ;   Offsets from VIC_CRA, indexed 1..4: TIMBRE_SOFT, BUZZ, BRIGHT, NOISE.
+0002CBr 1               VicOsc:
+0002CBr 1  00 01 02 03    .byte 0, 1, 2, 3
+0002CFr 1               
+0002CFr 1               ; --- Note table: semitones above C3, C3 to C6 (NOTE_MAX) ---------------------
+0002CFr 1               ;   Register value = round(128 - phi2 / (128 * Hz)) for the ALTO oscillator,
+0002CFr 1               ;   equal temperament from A4 = 440 Hz, phi2 = 1,022,727 Hz. The bass and
+0002CFr 1               ;   soprano read the same numbers an octave down and up, which is what makes a
+0002CFr 1               ;   timbre free here (HalSfx above).
+0002CFr 1               ;
+0002CFr 1               ;   PAL clocks the chip 8% faster and every note with it, which is a uniform
+0002CFr 1               ;   1.4-semitone transposition and not a tuning error — one table, and nothing
+0002CFr 1               ;   in the sound path reads Region.
+0002CFr 1               ;
+0002CFr 1               ;   The value is 7 bits for a frequency that goes as 1/(128 - value), so the
+0002CFr 1               ;   resolution runs out at the top: above C5 consecutive semitones start
+0002CFr 1               ;   landing on the same number, which is why tables.inc writes everything
+0002CFr 1               ;   melodic inside C3-C5 and lifts it with a timbre instead.
+0002CFr 1               VicNotes:
+0002CFr 1  43 46 4A 4D    .byte  67,  70,  74,  77,  80,  82,  85,  87,  90,  92,  94,  96   ; C3-B3
+0002D3r 1  50 52 55 57  
+0002D7r 1  5A 5C 5E 60  
+0002DBr 1  61 63 65 66    .byte  97,  99, 101, 102, 104, 105, 106, 108, 109, 110, 111, 112   ; C4-B4
+0002DFr 1  68 69 6A 6C  
+0002E3r 1  6D 6E 6F 70  
+0002E7r 1  71 72 72 73    .byte 113, 114, 114, 115, 116, 117, 117, 118, 118, 119, 119, 120   ; C5-B5
+0002EBr 1  74 75 75 76  
+0002EFr 1  76 77 77 78  
+0002F3r 1  78             .byte 120                                                          ; C6
+0002F4r 1               
+0002F4r 1               ; --- Screen row start addresses ----------------------------------------------
+0002F4r 1               RowLo:
+0002F4r 1  00 16 2C 42    .repeat SCR_ROWS, i
+0002F8r 1  58 6E 84 9A  
+0002FCr 1  B0 C6 DC F2  
+00030Br 1                   .byte <(SCREEN + i * SCR_COLS)
+00030Br 1                 .endrepeat
+00030Br 1               RowHi:
+00030Br 1  1E 1E 1E 1E    .repeat SCR_ROWS, i
+00030Fr 1  1E 1E 1E 1E  
+000313r 1  1E 1E 1E 1E  
+000322r 1                   .byte >(SCREEN + i * SCR_COLS)
+000322r 1                 .endrepeat
+000322r 1               
+000322r 1               .segment "TILES"
 000000r 1               
 000000r 1               ; --- PLACEHOLDER ART — replace via VIC-EDITOR, see data/README.md ------------
 000000r 1  00 00 00 00  Tileset:      .incbin "../data/tileset.bin"

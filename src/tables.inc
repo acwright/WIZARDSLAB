@@ -289,11 +289,18 @@ SfxSeethe:                              ; 15 — the churn under both    9 frame
                                             ;   the next roll deals
 
 ; --- The mix (ambience.asm) --------------------------------------------------
-;   Rolled once per sound, indexed by a random nibble, so the shape of the
-;   ambience is this table and nothing else: eleven bubbles of one kind or
-;   another to five borrowed effects, which is roughly one thing happening in
-;   the lab for every three the cauldron does. Change the balance by changing
+;   Rolled once per sound, indexed by five random bits, so the shape of the
+;   ambience is this table and nothing else: twenty-seven bubbles of one kind
+;   or another to five borrowed effects, which is one thing happening in the
+;   lab for every five or six the cauldron does. Change the balance by changing
 ;   the entries — there is no other knob and no code to edit.
+;
+;   THIRTY-TWO ROWS AND NOT SIXTEEN, which is the whole of how the borrowed
+;   effects were halved after the first version came out too busy: the five of
+;   them are the same five, spread over twice as many rolls. Doing it the other
+;   way — dropping two or three of the five from a sixteen-row table — would
+;   have changed which sounds the lab makes as well as how often it makes one,
+;   and the mix among them was not the problem.
 ;
 ;   The five borrowed ones are the game's own sounds (SPEC 16), played half
 ;   volume and out of context: the prism's shimmer and the star's arpeggio read
@@ -301,10 +308,17 @@ SfxSeethe:                              ; 15 — the churn under both    9 frame
 ;   lock's thunk as something heavy being set down, and the match chime as a
 ;   phial being touched. Nothing louder than those — a game-over run drifting
 ;   past the title screen would sound like a fault, not a laboratory.
+;
+;   Position means nothing here; only the counts do. Every roll is independent,
+;   so the five are spread out to be read rather than to be heard that way.
 
 AmbTable:
   .byte SFX_BUBBLE, SFX_SEETHE, SFX_BUBBLE, SFX_PRISM
-  .byte SFX_GLOOP,  SFX_BUBBLE, SFX_BOLT,   SFX_BUBBLE
-  .byte SFX_SEETHE, SFX_GLOOP,  SFX_MATCH,  SFX_BUBBLE
-  .byte SFX_BUBBLE, SFX_STAR,   SFX_GLOOP,  SFX_LOCK
+  .byte SFX_GLOOP,  SFX_BUBBLE, SFX_BUBBLE, SFX_SEETHE
+  .byte SFX_BUBBLE, SFX_GLOOP,  SFX_BOLT,   SFX_BUBBLE
+  .byte SFX_GLOOP,  SFX_SEETHE, SFX_BUBBLE, SFX_BUBBLE
+  .byte SFX_MATCH,  SFX_BUBBLE, SFX_GLOOP,  SFX_BUBBLE
+  .byte SFX_SEETHE, SFX_BUBBLE, SFX_GLOOP,  SFX_STAR
+  .byte SFX_GLOOP,  SFX_BUBBLE, SFX_SEETHE, SFX_BUBBLE
+  .byte SFX_BUBBLE, SFX_LOCK,   SFX_GLOOP,  SFX_BUBBLE
 

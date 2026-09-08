@@ -1989,7 +1989,8 @@ AMB = {"bubble": 13, "gloop": 14, "seethe": 15}
 SFX_CAULDRON = min(AMB.values())
 SFX_OFFSETS = rom("SfxOffsets", len(SFX) + len(AMB))
 SFX_BYTES = rom("SfxSteps", 250)
-AMB_TABLE = rom("AmbTable", 16)                 # The mix (src/tables.inc)
+AMB_ENTRIES = 32                                # src/constants.inc
+AMB_TABLE = rom("AmbTable", AMB_ENTRIES)        # The mix (src/tables.inc)
 TIMBRE_QUIET, TIMBRE_MASK = 0x80, 0x7F          # The level bit
 
 

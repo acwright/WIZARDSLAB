@@ -17,7 +17,7 @@
 ;   same driver, at half volume and a random pitch.
 ;
 ;   That last part is what stops it sounding like a loop. There are three
-;   cauldron sounds; there are sixteen entries in AmbTable saying how often
+;   cauldron sounds; there are thirty-two entries in AmbTable saying how often
 ;   each of them and each of the five borrowed effects comes up; every one is
 ;   transposed by a fresh 0-7 semitones as it starts; and the quiet between
 ;   them is rolled every time. Two random bytes and a table lookup per sound.
@@ -79,8 +79,8 @@ AmbienceTick:
   bne @Done                     ; Still quiet
 
   jsr RngNext
-  and #(AMB_ENTRIES - 1)        ; Sixteen entries, so a nibble picks one evenly
-  tax                           ;   without RngRange
+  and #(AMB_ENTRIES - 1)        ; A power-of-two table, so a masked byte picks
+  tax                           ;   one evenly without RngRange
   lda AmbTable,x
   pha                           ; The sound, parked while the pitch is rolled —
                                 ;   nothing may hold a value in Tmp0-Tmp3
