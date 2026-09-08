@@ -112,10 +112,32 @@ checkboxes and the "Current Status" section as work progresses.**
   already was. And **Appendix A said no board cell can hold 113–115**, which
   stopped being true the moment a prism rotated: the constraint is not that
   nothing may write a wild cell's glyph, it is that nothing may *read* one.
-- Next: **P7 — screen states.** P6 leaves it the two pieces it needs: the
-  petrify is written and wired, so P7 adds the banner, the fanfare and the
-  timeout around it, and `AnimBannerShow` is the message band's one entry
-  point. Read the P9 table below before starting.
+- **Phase P7 is done.** The arcade loop is closed. The title screen shimmers —
+  a random hatch tile into a random one of the magic field's 28 cells every
+  frame — and its prompt blinks at SPEC 14's period, blanked and put back from
+  the same ten cells the artist drew. FIRE seeds the RNG from the frame counter
+  and starts a game, and the seed is checked against the counter it was taken
+  from rather than inferred from the pieces. PAUSE covers the well with the
+  stipple and stops every clock but the frame counter's. Game over petrifies,
+  then says so, then flashes HIGH if the game earned it, then counts itself out
+  in ten seconds — all of it read frame by frame off the VDP's own name table,
+  and the ten seconds counted as 600 frames from the frame the timeout was
+  armed. `make crosscheck` now compares the message band as well, so
+  `~~ GAME OVER! ~~` is known to render identically on all three machines.
+  Work RAM is **537 bytes** against SPEC §17.1's ~570; ROM use is
+  53% / 57% / 70% of 16 KB.
+- P7 changed SPEC three times and one of them was not cosmetic. **The title
+  screen's "PRESS SPACE" variant is cut**: SPEC §13.1 wanted the Commodores to
+  say SPACE when the game was being played on the keyboard, which cannot be
+  known at the moment the prompt is read — the player has not pressed anything
+  yet, and that is the whole thing the prompt is asking them to fix. **SPEC
+  §14's title page cycle is gone** with the pages it clocked, replaced by the
+  game-over timeout. And the band's wording is `~~ GAME OVER! ~~`, because
+  banner strings are drawn even-length so the centring is exact and nine
+  letters inside a symmetric ornament never is.
+- Next: **P8 — audio.** Every event that has to make a noise already writes
+  `SfxRequest` and forgets about it; what is missing is the two drivers and
+  `AudioTick`.
 
 ---
 
@@ -233,6 +255,23 @@ Things a session working in this repository needs to know and cannot infer.
   also terminates its emulator from an `atexit` hook, because a test that
   *raises* used to leave one holding the port and take the next run down with
   it — one broken assertion, two lost runs.
+- **PAUSE needs a KEY, not a stick.** `INPUT_PAUSE` is `P` on every machine and
+  no joystick carries it (SPEC §11.2), so a test that wants to pause cannot use
+  `input.joystick`. The AC6502 emulator's debug protocol has `input.key`, whose
+  parameter is a **HID name** — `{"code": "KeyP"}`, not `"p"` and not an ASCII
+  code — and the emulated keyboard does drive the matrix encoder this cartridge
+  polls, so the key arrives exactly as a player's would. `playtest.py` wraps it
+  as `key()`.
+- **`make crosscheck` stops the Commodores on a cycle count that has to land
+  inside a WINDOW.** It used to be true that any long run ended in the same
+  place, because the game froze on the game-over screen forever. Since P7 it
+  returns to the title ten seconds later, and a run that overshoots reads the
+  title screen's rows and reports a well full of nonsense that looks exactly
+  like three machines disagreeing about the rules. The window is measured — the
+  well is stone from about 37M to about 48M cycles under VICE's default PAL —
+  and `commodore_well` now fails with one line saying so if the stop lands
+  outside it. The AC6502 does not need the number: it stops on what the game is
+  doing.
 - **BSD `sed` has no `\b`.** Use Python for word-boundary rewrites in this repo.
 - **`vic20.inc` already defines `SCREEN_COLS` and `SCREEN_ROWS`.** The game's
   own screen constants are `SCR_COLS` / `SCR_ROWS` to avoid the collision.
@@ -889,30 +928,49 @@ machine and a fireball is the cheapest way to close it, in P10.
 
 ---
 
-### Phase P7 — Screen states
+### Phase P7 — Screen states — **done**
 
 **Goal:** a complete arcade loop — title, play, pause, game over, title.
 
-- [ ] `StateTitle`: blinking prompt over the drawn screen. **No help pages** —
+- [x] `StateTitle`: blinking prompt over the drawn screen. **No help pages** —
       the controls are on the page and the rest was cut (SPEC §13.1)
-- [ ] The magic field: a random tile from `ART_BASE`..`ART_BASE + 127` into a
+- [x] The magic field: a random tile from `ART_BASE`..`ART_BASE + 127` into a
       random one of the block's 28 cells, every frame
-- [ ] RNG seeded from the frame counter at the fire press (SPEC §15)
-- [ ] `StatePause`: well washed with `TILE_WASH` so it cannot be studied,
+- [x] RNG seeded from the frame counter at the fire press (SPEC §15)
+- [x] `StatePause`: well washed with `TILE_WASH` so it cannot be studied,
       timers frozen. **Resuming inside a GLOW window loses the glow**: the
       resume is `RenderBoard`, which paints the board's own tiles back over
       it, and the glow is drawn once at the window's start rather than every
       frame. Cosmetic, six frames wide, and left for whoever rewrites this
       path — the shatter recovers on its own because it re-marks every
       `VFX_FRAMES`, and the board is authoritative throughout either way
-- [ ] `StateGameOver`: the banner, the high-score fanfare and the 10-second
+- [x] `StateGameOver`: the banner, the high-score fanfare and the 10-second
       timeout. **The petrify is done** — P6 wrote `AnimPetrifyBegin` /
       `AnimPetrifyTick` and `PlayAre` already starts it on a blocked spawn, and
       `StateGameOver` holds the input off until it finishes
 
-**Exit criteria:** the loop runs indefinitely without leaking state between
-games; two consecutive games from a cold boot deal different pieces; pausing
-hides the board; the high score survives a game and resets on power-on.
+**Exit criteria met:** the loop runs from the title through play, pause and
+game over and back without leaking anything — a second game starts on a zero
+score, level 1, an empty board, a clear band and no outstanding wash, with the
+high score still standing and unowned. Two games started at different moments
+deal different pieces, and the seed itself is checked against the frame counter
+it was taken from. Pausing covers all 96 cells with `TILE_WASH` and freezes
+every clock except the frame counter, which SPEC §13.3 says keeps running
+because it feeds the RNG. `make playtest` has 47 new assertions across the
+three screens; `make crosscheck` compares the game-over band across all three
+machines.
+
+**What P7 found.**
+
+| It turned out | So |
+|---|---|
+| A banner drawn straight over a longer one leaves the tail of the old ornament either side of it — `~~ PAUSED ~~` is two cells narrower than `~~ LEVEL UP ~~`, and pausing during a level-up is how a player meets it | `TextBanner` blanks the band **either side of** the string it is about to draw. Blanking the whole band would cost 18 marks on top of the string's, past `DIRTY_FLUSH_MAX`, and every banner in the game would take an extra frame to arrive |
+| A `GAME OVER` banner is nine letters, so a symmetric ornament around it is always an ODD width and lands half a cell left of centre | `~~ GAME OVER! ~~`. The bang is arithmetic, not emphasis, and SPEC §13.4 now says so |
+| The 10-second timeout is 600 frames, which does not fit in a byte and is not ten seconds on PAL anyway | It counts **seconds**, with `SecondFrames` counting the frames of one. `OverSecs` doubles as the phase — zero for the length of the petrify, never zero afterwards, because the frame it reaches zero is the frame the screen ends |
+| The PAUSE wash is 96 cells against a 64-entry ring, exactly like a board redraw | It **is** the board redraw: `RenderWash` sets the same cursor and one byte says which tile it is laying down (D12 again). The resume is `RenderBoard`, which clears the byte and repaints from the board |
+| `TitlePage` was allocated for help pages that SPEC §13.1 cut | Gone, and its byte spent on the prompt's blink phase. SPEC §14's "title page cycle" row went with it |
+| The title screen's "PRESS SPACE" wording cannot be decided when the prompt is read — the player has not pressed anything yet | Cut. SPEC §13.1 records why; both keys start a game either way (D15) |
+| `make crosscheck` assumed the game freezes on the game-over screen forever, so any long run landed in the same place. It does not any more | The AC6502 now stops on what the game is *doing* — game over, then the petrify finished — and the Commodores on a cycle count measured to sit inside the ten-second window, with a guard that says so in one line if it ever drifts out |
 
 ---
 
@@ -963,10 +1021,10 @@ that own it, and each is easy to get wrong by assuming the obvious:
 | **`WILD_BASE + GLYPH_GLOW` is an arrow, not a glow.** A matched prism sits out the glow phase | P5, P6 — done |
 | A matched prism blips out — 116, 117, 57, 56, 52 — rather than shattering | P6 — done |
 | A prism at rest rotates through 112–115, one frame every 8 | P6 — done, and it turned "no board cell can hold 113-115" into D21 |
-| PAUSE washes the well with tile 7; it does not blank it | P7 |
-| Game over petrifies each cell into its own shape, `120 + (tile & 7)` | P7 |
-| The title screen's magic field: random tiles from 128–255 into a 14 × 2 block, one cell a frame | P7 |
-| The title screen has no help pages. The controls are part of the image | P7 |
+| PAUSE washes the well with tile 7; it does not blank it | P7 — done |
+| Game over petrifies each cell into its own shape, `120 + (tile & 7)` | P7 — done |
+| The title screen's magic field: random tiles from 128–255 into a 14 × 2 block, one cell a frame | P7 — done |
+| The title screen has no help pages. The controls are part of the image | P7 — done, and it cost `TitlePage` and SPEC §14's title page cycle |
 
 ---
 

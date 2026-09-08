@@ -121,6 +121,16 @@ TextDigit:
 ;   string arrives already wrapped as `~~ TEXT ~~` — two FONT_TILDE, a blank,
 ;   the text, a blank, two FONT_TILDE. Centring is (PANEL_W - length) / 2,
 ;   which is why banner strings are drawn even-length.
+;
+;   THE BAND EITHER SIDE OF THE STRING IS BLANKED, and only that. Banners are
+;   not all the same width — `~~ PAUSED ~~` is two cells narrower than
+;   `~~ LEVEL UP ~~`, which is exactly what pausing during a level-up meets —
+;   so a shorter one drawn straight over a longer one would leave the tail of
+;   the old ornament sitting either side of it. Blanking the WHOLE band first
+;   would fix that too, and cost 18 marks on top of the string's: past
+;   DIRTY_FLUSH_MAX, so every banner in the game would take an extra frame to
+;   arrive. Blanking the margins costs only the cells the string is not
+;   covering — six for the narrowest banner in the game, two for the widest.
 ; -----------------------------------------------------------------------------
 TextBanner:
   ldy #0
@@ -137,29 +147,68 @@ TextBanner:
   sec
   sbc TextIdx
   lsr a                         ; (PANEL_W - length) / 2
-  tax
+  sta TextByte                  ; Where the string starts...
+  clc
+  adc TextIdx
+  sta TextSkip                  ; ...and one cell past where it ends. Neither
+                                ;   is TextCol / TextRow / TextIdx, because
+                                ;   TextClearRun below takes those
+
+  lda TextByte                  ; The band to the left of it
+  sec
+  sbc #MSG_X
+  beq @Right
+  ldx #MSG_X
+  ldy #MSG_Y
+  jsr TextClearRun
+@Right:
+  lda #(MSG_X + MSG_W)          ; ...and to the right
+  sec
+  sbc TextSkip
+  beq @Draw
+  ldx TextSkip
+  ldy #MSG_Y
+  jsr TextClearRun
+@Draw:
+  ldx TextByte
   ldy #MSG_Y
   jmp TextDraw
 
 ; -----------------------------------------------------------------------------
 ;   TextBannerClear — blank the message band back to backdrop
-;   Out: nothing.  Modifies: A, X, Y
+;   Out: nothing.  Modifies: A, X, Y, TextCol, TextRow, TextIdx
 ;
 ;   Columns MSG_X .. MSG_X + MSG_W - 1 only. The shelf tiles at either end of
 ;   the band belong to the static screen image and are never redrawn.
 ; -----------------------------------------------------------------------------
 TextBannerClear:
-  lda #MSG_X
-  sta TextCol                   ; Not X: RenderMark clobbers it
+  lda #MSG_W
+  ldx #MSG_X
+  ldy #MSG_Y
+  ; falls through
+
+; -----------------------------------------------------------------------------
+;   TextClearRun — blank a horizontal run of panel cells
+;   In:  A = width (never 0), X = panel column, Y = panel row
+;   Out: nothing.  Modifies: A, X, Y, TextCol, TextRow, TextIdx
+;
+;   Three callers wanted this loop with different numbers in it: the message
+;   band above, the HIGH field's dark half (SPEC 9.8) and the title screen's
+;   blinking prompt (SPEC 13.1). The cursor is in memory for the usual reason —
+;   RenderMark clobbers A and X and keeps only Y (D13).
+; -----------------------------------------------------------------------------
+TextClearRun:
+  sta TextIdx                   ; Cells left
+  stx TextCol
+  sty TextRow
 @Cell:
   lda #TILE_BLANK
   ldx TextCol
-  ldy #MSG_Y
+  ldy TextRow
   jsr RenderMark
   inc TextCol
-  lda TextCol
-  cmp #(MSG_X + MSG_W)
-  bcc @Cell
+  dec TextIdx
+  bne @Cell
   rts
 
 ; -----------------------------------------------------------------------------

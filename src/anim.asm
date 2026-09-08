@@ -487,6 +487,109 @@ AnimBannerChain:
   ldy #MSG_Y
   jmp RenderMark
 
+; -----------------------------------------------------------------------------
+;   AnimBannerOver — "~~ GAME OVER! ~~" (SPEC 13.4 step 3)
+;   Nothing takes it down again: StateGameOver does not call AnimBannerTick, so
+;   the band holds this until the screen itself ends and GameStart clears it.
+; -----------------------------------------------------------------------------
+AnimBannerOver:
+  lda #<MsgGameOver
+  sta Ptr1
+  lda #>MsgGameOver
+  sta Ptr1+1
+  jmp AnimBannerShow
+
+; =============================================================================
+;   The title screen (SPEC 13.1)
+; =============================================================================
+;   Two moving things over one drawn image, and between them they are the whole
+;   of the title screen: there are no help pages, because the controls are part
+;   of the artwork and a page nobody is reading teaches nothing.
+; =============================================================================
+
+; -----------------------------------------------------------------------------
+;   AnimTitleBegin — the blink starts lit, with the image the artist drew
+;   Out: nothing.  Modifies: A, X
+;   Called from the redraw, so entering the title twice in a session cannot
+;   leave the prompt dark for the first half period.
+; -----------------------------------------------------------------------------
+AnimTitleBegin:
+  ldx Region
+  lda BlinkHalf,x
+  sta TitleTimer
+  lda #0
+  sta TitlePhase                ; The drawn screen already says PRESS FIRE
+  rts
+
+; -----------------------------------------------------------------------------
+;   AnimTitleBlink — one frame of the prompt (SPEC 13.1, 14)
+;   Out: nothing.  Modifies: A, X, Y, the text cursor, TitleTimer, TitlePhase
+;
+;   SPEC 14's blink period is 30 frames NTSC and 25 PAL, and BlinkHalf is half
+;   of one — the same table and the same shape as the HIGH field's overtake
+;   flash (score.asm), which is the other thing in the game that blinks. This
+;   one free-runs instead of counting itself out.
+; -----------------------------------------------------------------------------
+AnimTitleBlink:
+  dec TitleTimer
+  bne @Done
+  ldx Region
+  lda BlinkHalf,x
+  sta TitleTimer
+  lda TitlePhase
+  eor #$01
+  sta TitlePhase
+  beq @Show
+
+  lda #PROMPT_LEN               ; The dark half
+  ldx #PROMPT_X
+  ldy #PROMPT_Y
+  jmp TextClearRun
+@Show:
+  lda #<MsgPressFire            ; ...and back, byte for byte as the title image
+  sta Ptr1                      ;   has it (strings.inc)
+  lda #>MsgPressFire
+  sta Ptr1+1
+  ldx #PROMPT_X
+  ldy #PROMPT_Y
+  jmp TextDraw
+@Done:
+  rts
+
+; -----------------------------------------------------------------------------
+;   AnimTitleField — one cell of the magic field, every frame (SPEC 13.1)
+;   Out: nothing.  Modifies: A, X, Y, Tmp0, Tmp1
+;
+;   Tiles 128-255 are one diagonal hatch in sixteen colours (SPEC Appendix A),
+;   so writing a random one of them into a random one of the block's 28 cells
+;   makes the whole block crawl. Two random bytes and one RenderMark: the
+;   cheapest animation in the game, and the reason the title screen needs no
+;   art beyond the page it is drawn on.
+;
+;   The tile is rolled BEFORE the cell and parked on the stack, because
+;   RngRange has to be the last call — nothing here may hold a value in
+;   Tmp0-Tmp3 across it (zeropage.inc).
+; -----------------------------------------------------------------------------
+AnimTitleField:
+  jsr RngNext
+  and #(ART_TILES - 1)          ; ART_BASE is 128 and so is ART_TILES, so the
+  ora #ART_BASE                 ;   range is exactly the top bit set
+  pha
+
+  lda #FIELD_CELLS
+  jsr RngRange                  ; 0 .. 27, evenly — not a modulo (rng.asm)
+  ldy #FIELD_Y
+  cmp #FIELD_W
+  bcc @Have
+  sbc #FIELD_W                  ; C is set by the CMP that got us here
+  iny                           ; The second row of the block
+@Have:
+  clc
+  adc #FIELD_X
+  tax                           ; X = panel column, Y = panel row
+  pla                           ; A = tile
+  jmp RenderMark
+
 ; =============================================================================
 ;   Game over (SPEC 13.4)
 ; =============================================================================

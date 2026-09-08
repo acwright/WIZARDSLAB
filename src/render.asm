@@ -32,6 +32,7 @@ RenderDirtyReset:
   sta DirtyCount
   sta DirtyHead
   sta DirtyTail
+  sta RedrawWash
   lda #$FF
   sta RedrawIdx
   rts
@@ -145,10 +146,30 @@ RenderFlush:
 ; -----------------------------------------------------------------------------
 RenderBoard:
   lda #0
+  sta RedrawWash                ; From the board, not the PAUSE wash
   sta RedrawIdx                 ; Board index 0 = row 0, column 0
   rts                           ; And nothing else. Falling through into the
                                 ;   step below would fill the ring here and
                                 ;   drop whatever the caller marks next.
+
+; -----------------------------------------------------------------------------
+;   RenderWash — ask for the well to be covered rather than shown
+;   In:  nothing        Out: nothing.  Modifies: A
+;   SPEC 13.3 — pausing washes all 96 cells with TILE_WASH so the board cannot
+;   be studied while the clock is stopped. A wash and not a blank: a blanked
+;   well reads as a crash, a stippled one reads as covered.
+;
+;   The same cursor as RenderBoard, because it is the same 96 cells against
+;   the same 64-entry ring, and it is undone the same way — the resume calls
+;   RenderBoard, which turns the flag off and repaints every cell from the
+;   board it never stopped being (D12).
+; -----------------------------------------------------------------------------
+RenderWash:
+  lda #TILE_WASH
+  sta RedrawWash
+  lda #0
+  sta RedrawIdx
+  rts
 
 ; -----------------------------------------------------------------------------
 ;   RenderBoardStep — queue as much of an outstanding board redraw as fits
@@ -177,8 +198,11 @@ RenderBoardStep:
   clc
   adc #WELL_ORIGIN_Y
   tay                           ; Y = panel row
+  lda RedrawWash                ; The PAUSE wash is the same walk drawing one
+  bne @Tile                     ;   tile over every cell instead (SPEC 13.3)
   lda Board,x                   ; The board byte IS the tile — empty is $00,
-  ldx RedrawCol                 ;   which is TILE_BLANK (SPEC 3.3, 4.2)
+@Tile:                          ;   which is TILE_BLANK (SPEC 3.3, 4.2)
+  ldx RedrawCol
   jsr RenderMark
 
   ldx RedrawIdx                 ; Advance, stepping over the two sentinel
@@ -367,18 +391,10 @@ RenderHigh:
 ;   box never looks empty and the flash costs seven cells of the budget.
 ; -----------------------------------------------------------------------------
 RenderHighBlank:
-  lda #HIGH_X
-  sta TextCol                   ; Not X: RenderMark clobbers it
-@Cell:
-  lda #TILE_BLANK
-  ldx TextCol
+  lda #SCORE_DIGITS
+  ldx #HIGH_X
   ldy #HIGH_Y
-  jsr RenderMark
-  inc TextCol
-  lda TextCol
-  cmp #(HIGH_X + SCORE_DIGITS)
-  bcc @Cell
-  rts
+  jmp TextClearRun
 
 RenderLevel:
   lda Level

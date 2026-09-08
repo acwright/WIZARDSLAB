@@ -1180,8 +1180,15 @@ is a potion, `▓` the hatch, `○` the FIRE button.)*
   random cell each frame makes the block crawl and shimmer. Two `NextRandom`
   bytes and one `RenderMark` per frame — it is the cheapest animation in the
   game and the only thing moving on the screen besides the prompt.
-- **"PRESS FIRE"** blinks at 30-frame intervals. On the Commodores the wording
-  is "PRESS SPACE" if the game is being played on the keyboard.
+- **"PRESS FIRE"** blinks at 30-frame intervals. It is the ten cells of the
+  drawn image at panel (6, 11), blanked and put back — the one string code
+  redraws over its own artwork, which is why `MsgPressFire` has to match the
+  screen file byte for byte. **It says FIRE on all three machines.** An earlier
+  draft had the Commodores say "PRESS SPACE" when the game was being played on
+  the keyboard, which cannot be known at the moment the prompt is read: the
+  player has not pressed anything yet, and that is what the prompt is asking
+  them to fix. Both keys work either way — SPACE folds into `UP` and the title
+  accepts `FIRE | UP` ([§11.2](#112-required-controls)) — so one wording it is.
 - **The controls are on the page.** Four glyphs and three words: arrows
   left/right for MOVE, arrow up (or the FIRE dot) for ROTATE, arrow down for
   DROP. The whole control scheme fits on the screen at once, so nothing here
@@ -1214,7 +1221,10 @@ wait for vblank
   be used to study the board. Panel and margins stay.
 - A wash rather than a blank: a blank well reads as *crashed*, a stippled one
   reads as *covered*. It is the same 96 writes either way, and the restore on
-  resume is `RenderBoard` either way.
+  resume is `RenderBoard` either way — which is why the wash is the same
+  cursor as `RenderBoard` with one byte saying which tile it is laying down.
+  96 cells do not fit the dirty ring in one go
+  ([§12.6](#126-rendering-strategy)).
 - "PAUSED" flashes in the message band.
 - All timers freeze; the frame counter keeps running (it feeds the RNG).
 
@@ -1229,9 +1239,24 @@ wait for vblank
    sets as `PETRIFY_BASE` itself**: group 15 has no wildcard, and the color has
    to be tested before the glyph or a prism caught mid-rotation
    ([§14](#14-animation--timing)) petrifies into a stone bomb.
-3. "GAME OVER" in the message band; final score stays in the SCORE field.
-4. If a new high score was set, HIGH flashes and a fanfare plays.
-5. FIRE or a 10-second timeout returns to TITLE.
+3. `~~ GAME OVER! ~~` in the message band; the final score stays in the SCORE
+   field. The bang is there for the arithmetic and not the emphasis: banner
+   strings are drawn even-length so that `(PANEL_W - length) / 2` centres them
+   exactly ([§12.2](#122-exact-regions-panel-relative-coordinates)), and nine
+   letters inside a symmetric ornament is always odd. The band is cleared
+   either side of whatever banner is up, so a shorter one never leaves the tail
+   of a longer one behind it.
+4. If a new high score was set, HIGH flashes and a fanfare plays. The flash is
+   [§9.8](#98-high-score)'s, restarted here — the overtake itself happened
+   mid-game, possibly minutes ago.
+5. FIRE or a 10-second timeout returns to TITLE. The timeout counts **seconds**
+   and not frames: 600 does not fit in a byte, and would not be ten seconds on
+   both regions if it did.
+
+The three steps above wait for step 2. Nothing is said and nothing is counted
+until the last row has set, and a press during the petrify is ignored rather
+than queued — the animation is the game telling the player it is over, and
+skipping it reads as a dropped input.
 
 ---
 
@@ -1254,7 +1279,7 @@ difference matters; where it doesn't, the same count is used on both.
 | Level-up banner | 45 | 38 | "LEVEL 04" in the message band; play continues |
 | Chain banner | 45 | 38 | "CHAIN ×3" for chain ≥ 2 |
 | Petrify (game over) | 2/row | 2/row | 16 rows = 32 frames |
-| Title page cycle | 240 | 200 | 4 seconds |
+| Game-over timeout | 600 | 500 | 10 seconds, counted as seconds ([§13.4](#134-gameover)) |
 | Blink period | 30 | 25 | "PRESS FIRE", high-score flash |
 
 A single clear step therefore costs **12 frames of animation plus gravity**
@@ -1369,16 +1394,16 @@ AC6502 and C64 share SID driver code almost verbatim (register base differs:
 | Score / High | 12 | 4 bytes BCD each, + 1 for the high score's level, + 3 for whether this game has taken it and the blink it fires ([§9.8](#98-high-score)) |
 | Level, tiles cleared, chain, stars | 6 | |
 | Timers (gravity, lock, DAS, ARE, anim) | 10 | |
-| Animation | 11 | The two windows' step and length, the flashing color, the prism's rotation frame and clock, the petrify cursor, and five bytes of walk cursors ([§14](#14-animation--timing)) |
+| Animation | 11 | The two windows' step and length, the flashing color, the prism's rotation frame and clock, the petrify cursor, the title prompt's blink clock and phase ([§13.1](#131-title)), and five bytes of walk cursors ([§14](#14-animation--timing)) |
 | Input current/previous/edge | 3 | |
 | RNG seed, frame counter | 4 | |
-| State machine, flags | 8 | |
+| State machine, flags | 8 | game state, play sub-state, region, redraw flag, the game-over screen's seconds and the frames of one ([§13.4](#134-gameover)) |
 | Audio state | 16 | |
-| **Total** | **~570 bytes** | 533 measured — 43 zero page, 490 BSS; plus row-pointer tables in ROM |
+| **Total** | **~570 bytes** | 537 measured — 43 zero page, 494 BSS; plus row-pointer tables in ROM |
 
 Fits the VIC-20's constrained RAM with room to spare, which is the whole point
 of designing to the tightest target first. In practice the whole of BSS lands
-in the 1 KB at `$1000`–`$13FF` ([C.2](#c2-vic-20)) with 534 bytes still free,
+in the 1 KB at `$1000`–`$13FF` ([C.2](#c2-vic-20)) with 530 bytes still free,
 so the `$1C00`–`$1DFF` block that table earmarks for `DIRTY` is untouched and
 is spare capacity rather than a plan.
 

@@ -50,6 +50,11 @@ FlashFrames:                            ; ...and what the window grows to when
                                         ;   are showing at once (constants.inc)
 BannerFrames:                           ; SPEC 14 — how long LEVEL UP and
   .byte 45, 38                          ;   CHAIN xN stay in the message band
+SecondFrames:                           ; One second, which is the unit the
+  .byte 60, 50                          ;   game-over timeout is counted in
+                                        ;   (SPEC 13.4). The only entry here
+                                        ;   that is not a duration out of
+                                        ;   SPEC 14 but the frame rate itself
 
 ; --- The two removal animations (SPEC 14, Appendix A.3) ----------------------
 ;   One ring, run in both directions. Indexed by AnimStep, which advances every

@@ -10,9 +10,10 @@
 ;   Pieces spawn, steer, rotate, fall and lock, runs of three or more clear,
 ;   the pile falls into the holes, chains keep going until nothing matches, all
 ;   of it scores and ramps the level, the five reagents fire and set each other
-;   off, and a clear now glows and shatters on the frame clock instead of
-;   happening between two frames (PLAN.md P2 to P6). What is left is the
-;   screens either side of play (P7) and the sound (P8).
+;   off, a clear glows and shatters on the frame clock instead of happening
+;   between two frames, and the arcade loop around all of it is closed: title,
+;   play, pause, game over, title (PLAN.md P2 to P7). What is left is the sound
+;   (P8).
 ; =============================================================================
 
 ; -----------------------------------------------------------------------------
@@ -39,7 +40,9 @@ GameInit:
   sta InputNow
   sta InputPrev
   sta InputEdge
-  sta TitlePage
+  sta TitlePhase                ; The title prompt starts lit, and the game-over
+  sta OverSecs                  ;   screen starts un-entered. Both are BSS, and
+                                ;   BSS is not cleared on all three machines.
   lda #1
   sta PrismTimer                ; A zero here would DEC to 255 and stall the
                                 ;   prism's rotation for four seconds
@@ -122,10 +125,12 @@ StateTitle:
   jsr DrawTitleScreen
   jsr RenderDirtyReset          ; A full blit went behind the renderer's back
 
+  jsr AnimTitleBegin            ; ...and the prompt blinks from lit, so it never
+                                ;   starts a second visit dark
 @Live:
-  ; TODO: blink the prompt every 30 frames, and shimmer the magic field —
-  ; one NextRandom for a cell in the 14 x 2 block, one for a tile in
-  ; ART_BASE..ART_BASE+ART_TILES-1, one RenderMark.
+  jsr AnimTitleField            ; The two things that move here, and the whole
+  jsr AnimTitleBlink            ;   of the screen's animation (SPEC 13.1)
+
   lda InputEdge
   and #(INPUT_FIRE | INPUT_UP)  ; Fire, or SPACE, which the keyboards fold
   beq @Done                     ;   into UP so it can rotate in play (D15)
@@ -162,7 +167,9 @@ GameStart:
                                 ;   against the screen that just went away
 
   jsr TextBannerClear           ; The play image ships with the band reading
-                                ;   `~~ PAUSED ~~` (SPEC 12.1); play owns it
+                                ;   `~~ PAUSED ~~` (SPEC 12.1); play owns it,
+                                ;   and so does whatever the last game left in
+                                ;   it — GAME OVER stays up until here
   jsr RenderScore               ; The panel fields are code's, not the image's
   jsr RenderHigh
   jsr RenderLevel
@@ -255,9 +262,13 @@ StatePlay:
   lda #>MsgPaused               ;   is indistinguishable from a hung one
   sta Ptr1+1
   jsr TextBanner
-  ; TODO (P7): wash the well with TILE_WASH so a pause cannot be used to study
-  ; the board (13.3). A wash, not a blank — a blanked well reads as crashed.
-  rts
+  jmp RenderWash                ; SPEC 13.3 — the well is covered, not blanked,
+                                ;   so a pause cannot be used to study the
+                                ;   board. Queued as a cursor because 96 cells
+                                ;   do not fit the ring (render.asm, D12), and
+                                ;   AFTER the banner, so the banner's marks are
+                                ;   in the ring before the wash starts filling
+                                ;   it
 
 ; -----------------------------------------------------------------------------
 ;   PlayFalling — steer the piece, and drop it a row when the timer runs out
@@ -457,7 +468,10 @@ PlayAre:
   lda #SFX_GAMEOVER
   sta SfxRequest
   jsr AnimPetrifyBegin          ; The well turns to stone from the floor up
-  lda #STATE_GAMEOVER           ;   while StateGameOver holds the input off
+  lda #0                        ;   while StateGameOver holds the input off
+  sta OverSecs                  ; The screen proper has not started yet — the
+                                ;   petrify runs first (SPEC 13.4 step 2)
+  lda #STATE_GAMEOVER
   sta GameState
   rts
 
@@ -481,8 +495,18 @@ StatePause:
   rts
 
 ; -----------------------------------------------------------------------------
-;   StateGameOver — petrify, banner, back to the title
-;   SPEC 13.4
+;   StateGameOver — petrify, banner, fanfare, back to the title
+;   SPEC 13.4, in its own order: the well sets to stone, THEN the band says so,
+;   and only then does the screen start counting itself out.
+;
+;   OverSecs is the phase as well as the count. It is zero for the length of
+;   the petrify and never zero afterwards, because the frame it would reach
+;   zero is the frame this state ends — so the one-shot in the middle needs no
+;   flag of its own.
+;
+;   Nothing here ticks the banner down (AnimBannerTick is StatePlay's), which
+;   is what leaves GAME OVER up for the whole ten seconds rather than the 45
+;   frames every other banner gets. GameStart clears the band on the way out.
 ; -----------------------------------------------------------------------------
 StateGameOver:
   jsr AnimPetrifyTick           ; SPEC 13.4 step 2, a row every PETRIFY_FRAMES
@@ -490,11 +514,45 @@ StateGameOver:
                                 ;   ignored rather than queued: the animation
                                 ;   is the game telling the player it is over
                                 ;   and skipping it reads as a dropped input.
-  ; TODO (P7): the GAME OVER banner, the high-score fanfare, and the ten
-  ; second timeout back to the title (13.4 steps 3 to 5).
+  lda OverSecs
+  bne @Waiting
+
+  jsr AnimBannerOver            ; SPEC 13.4 step 3
+  lda HighOwned                 ; Step 4 — the fanfare and the flash, but only
+  beq @Start                    ;   if THIS game took the record. HighOwned is
+                                ;   what says so, and ScoreReset clears it for
+                                ;   the next one (score.asm, SPEC 9.8)
+  lda #SFX_HIGHSCORE
+  sta SfxRequest
+  lda #HIGH_FLASH_BLINKS
+  sta HighFlash
+  ldx Region
+  lda BlinkHalf,x
+  sta HighTimer
+@Start:
+  lda #GAMEOVER_SECS
+  sta OverSecs
+  ldx Region
+  lda SecondFrames,x
+  sta OverTimer
+  rts
+
+@Waiting:
+  jsr ScoreFlashTick            ; The HIGH field blinks here for the same
+                                ;   reason it does in play — nothing else is
+                                ;   calling it now that StatePlay has stopped
+  dec OverTimer
+  bne @Input
+  ldx Region
+  lda SecondFrames,x
+  sta OverTimer
+  dec OverSecs
+  beq @ToTitle                  ; SPEC 13.4 step 5 — ten seconds, unattended
+@Input:
   lda InputEdge
   and #(INPUT_FIRE | INPUT_UP)  ; Fire, or SPACE (D15)
   beq @Done
+@ToTitle:
   lda #STATE_TITLE
   sta GameState
   lda #1

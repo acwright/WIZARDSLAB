@@ -12,9 +12,11 @@ new arrangements. Among the potions fall **arcane reagents**: fireballs, bolts,
 bombs, stars and prisms. Placed well, they set each other off, and a single
 piece can unravel half the board.
 
-> **Status: in development.** The three cartridges build, boot and draw their
-> screens. **The artwork is finished** — all 256 tiles and both screens are
-> drawn. The game logic is being written. See [PLAN.md](PLAN.md) for what is
+> **Status: in development.** The three cartridges build, boot and play.
+> **The artwork is finished** — all 256 tiles and both screens are drawn — and
+> the game is playable end to end: title, play, pause, game over and back to
+> the title, with the reagents, the scoring and the animation all in. What is
+> left is the sound and the real hardware. See [PLAN.md](PLAN.md) for what is
 > done and what is next.
 
 ---

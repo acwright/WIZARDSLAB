@@ -199,6 +199,29 @@ TINT_NONE           = $01       ; TintColor when nothing is flashing white.
                                 ;   one CMP and no separate "is anything
                                 ;   flashing at all" branch (SPEC 4.6)
 
+; --- The title screen (SPEC 13.1) --------------------------------------------
+;   Panel-relative, and every one of them is a measurement off the drawn
+;   screen rather than a choice: `make artwork` owns data/screen-title-*.bin
+;   and the numbers below have to agree with it. The magic field is the block
+;   of hatch tiles at rows 8-9 and the prompt is the ten cells that say
+;   PRESS FIRE, which is the one string code redraws over its own image.
+FIELD_X             = 4         ; The magic field, 14 x 2 (SPEC 13.1)
+FIELD_Y             = 8
+FIELD_W             = 14
+FIELD_CELLS         = FIELD_W * 2       ; 28, and one of them changes a frame
+PROMPT_X            = 6         ; `PRESS FIRE`, blinked at SPEC 14's period
+PROMPT_Y            = 11
+PROMPT_LEN          = 10
+
+; --- Game over (SPEC 13.4) ---------------------------------------------------
+GAMEOVER_SECS       = 10        ; Seconds on the game-over screen before it
+                                ;   returns to the title by itself. SECONDS,
+                                ;   not frames: 600 does not fit in a byte and
+                                ;   would not be the same wall clock on both
+                                ;   regions if it did, so the timeout counts
+                                ;   seconds and SecondFrames counts the frames
+                                ;   of one (tables.inc)
+
 ; --- Levels (SPEC 10) --------------------------------------------------------
 LEVEL_TILES         = 30        ; Tiles cleared per level
 LEVEL_SPEED_CAP     = 16        ; Speed stops improving here

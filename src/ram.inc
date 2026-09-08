@@ -51,6 +51,9 @@ PrismFrame:     .res 1                  ; Idle rotation frame, 0-3
 PrismTimer:     .res 1                  ; Frames until the next one
 PetrifyRow:     .res 1                  ; Board row the game-over petrify is
                                         ;   working up from, $FF when it is done
+TitleTimer:     .res 1                  ; Frames until the title prompt's next
+                                        ;   half-blink (SPEC 13.1, 14)
+TitlePhase:     .res 1                  ; 0 while it is lit, 1 while it is dark
 
 ; --- Render (SPEC 12.6) ------------------------------------------------------
 ;   A ring of DIRTY_ENTRIES cells waiting to be pushed to the screen, three
@@ -70,6 +73,13 @@ DirtyTail:      .res 1                  ; Byte offset the next mark goes to
 RedrawIdx:      .res 1                  ; Board index RenderBoardStep resumes
                                         ;   at, or $FF when no redraw is
                                         ;   outstanding
+RedrawWash:     .res 1                  ; TILE_WASH while the cursor above is
+                                        ;   painting the PAUSE wash rather than
+                                        ;   the board, zero otherwise. Both are
+                                        ;   96 cells against a 64-entry ring, so
+                                        ;   both have to be a cursor (D12) and
+                                        ;   one byte is cheaper than a second
+                                        ;   one (SPEC 13.3)
 
 ; --- The falling piece (SPEC 5) ----------------------------------------------
 PieceCol:       .res 1
@@ -129,7 +139,15 @@ InputEdge:      .res 1                  ; Newly pressed this frame
 ; --- State machine (SPEC 13) -------------------------------------------------
 GameState:      .res 1                  ; STATE_*
 PlayState:      .res 1                  ; PLAY_*
-TitlePage:      .res 1
+OverSecs:       .res 1                  ; Seconds left on the game-over screen,
+                                        ;   and ZERO until the petrify has
+                                        ;   finished and the banner is up. That
+                                        ;   double duty is what makes the setup
+                                        ;   a one-shot without a second flag:
+                                        ;   the count never rests at zero,
+                                        ;   because reaching it returns to the
+                                        ;   title in the same frame (SPEC 13.4)
+OverTimer:      .res 1                  ; Frames until the next second of it
 Region:         .res 1                  ; 0 = NTSC, 1 = PAL
 NeedsRedraw:    .res 1
 

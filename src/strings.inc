@@ -59,9 +59,26 @@ MsgPaused:
 MsgLevelUp:
   TileStr "~~ LEVEL UP ~~"               ; 14 cells, centres at panel column 4
 
+; `GAME OVER` is nine characters, so a symmetric ornament around it is always
+; an ODD length and would sit half a cell left of centre. The bang makes it
+; even and is the reason it is there; SPEC 13.4 records the wording.
+MsgGameOver:
+  TileStr "~~ GAME OVER! ~~"             ; 16 cells, centres at panel column 3
+
 ; The chain banner carries a number, and TextDraw copies bytes rather than
 ; formatting them, so the digit is a placeholder that CascadeSettle overwrites
 ; with one RenderMark at CHAIN_DIGIT_X (constants.inc). Keeping the length at
 ; MSG_CHAIN_LEN is what makes that column a constant instead of a measurement.
 MsgChain:
   TileStr "~~ CHAIN x0 ~~"               ; 14 cells; the `0` is panel column 14
+
+; -----------------------------------------------------------------------------
+;   The title screen's prompt (SPEC 13.1)
+;   Not a banner: it is ten cells of the DRAWN title image, and the only reason
+;   the string exists at all is that blinking it means putting it back. It must
+;   match data/screen-title-*.bin at PROMPT_X, PROMPT_Y byte for byte, or the
+;   first blink would redraw the screen slightly differently from the way the
+;   artist drew it.
+; -----------------------------------------------------------------------------
+MsgPressFire:
+  TileStr "PRESS FIRE"                   ; PROMPT_LEN cells (constants.inc)

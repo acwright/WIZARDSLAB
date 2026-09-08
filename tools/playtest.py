@@ -1146,6 +1146,7 @@ VFX_REMOVE1, VFX_REMOVE2, VFX_REMOVE3 = 56, 57, 58
 VFX_BEAM_H, VFX_BEAM_V, VFX_BEAM_CROSS = 59, 60, 61
 PRISM_BLIP, PRISM_SPIN_RATE, PRISM_SPIN_FRAMES = 0x74, 8, 4
 FONT_DOT, FONT_TILDE, FONT_TIMES, FONT_LETTER_A = 52, 55, 53, 26
+FONT_BANG = 54
 GLYPH_GLOW, PETRIFY_BASE, TINT_NONE = 6, 120, 0x01
 VRAM_COLORS = 0x2000                            # SPEC Appendix C.1
 
@@ -1407,6 +1408,8 @@ def tile_str(text):
             out.append(FONT_TILDE)
         elif ch == "x":
             out.append(FONT_TIMES)
+        elif ch == "!":
+            out.append(FONT_BANG)
         else:
             raise ValueError(ch)
     return out
@@ -1461,8 +1464,14 @@ for _ in range(400):
         break
 check("two steps cleared, and the second was the fall's doing",
       peek("ChainStep"), 3)
-frames(1)                                       # The settle queued it; this is
-                                                #   the flush that draws it
+for _ in range(4):                              # The settle queued the banner
+    frames(1)                                   #   BEHIND the last of the
+    if peek("DirtyCount") == 0:                 #   step's own removal marks,
+        break                                   #   and a frame flushes at most
+                                                #   DIRTY_FLUSH_MAX cells
+                                                #   (SPEC 12.6) — so the band
+                                                #   can land a frame after the
+                                                #   settle that asked for it
 check("the band reads CHAIN x2", band("~~ CHAIN x2 ~~"),
       tile_str("~~ CHAIN x2 ~~"))
 check("the board is empty", tiles(board()), {})
@@ -1606,6 +1615,319 @@ check("the glow goes up inside one frame", g1 - g0 < 16667, True)
 check("...and so does the shatter", g3 - g2 < 16667, True)
 while peek("PlayState") != PLAY_ARE:
     frames(1)
+
+
+# =============================================================================
+#   P7 — screen states (SPEC 13)
+# =============================================================================
+#   The loop around the game rather than the game: title, play, pause, game
+#   over, title. Everything below is read off the VDP's own name table or out
+#   of RAM, and the two screens that are mostly a drawn image are checked
+#   against that image — data/screen-title-ac6502.bin is the same file the
+#   cartridge has linked into it, so "the title screen is correct" is a byte
+#   comparison and not a description.
+#
+#   PAUSE needs a key, not a stick: INPUT_PAUSE is `P` on every machine and no
+#   joystick carries it (SPEC 11.2). The emulator's own keyboard drives the
+#   matrix encoder this cartridge polls, which is what makes it reachable here
+#   at all.
+
+STATE_TITLE, STATE_PLAY, STATE_PAUSE, STATE_GAMEOVER = 0, 1, 2, 3
+FIELD_X, FIELD_Y, FIELD_W, FIELD_CELLS = 4, 8, 14, 28   # constants.inc
+PROMPT_X, PROMPT_Y, PROMPT_LEN = 6, 11, 10
+BLINK_HALF = [15, 13]                           # tables.inc, by region
+SECOND_FRAMES = [60, 50]
+GAMEOVER_SECS = 10
+PETRIFY_FRAMES = 2
+TILE_WASH, ART_BASE, ART_TILES = 7, 128, 128
+MSG_X, MSG_W = 2, 18                            # The band's OWNED cells
+HIGH_FLASH_BLINKS = 6
+
+TITLE_IMAGE = open(os.path.join(ROOT, "data",
+                                "screen-title-ac6502.bin"), "rb").read()
+
+
+def key(name):
+    """Tap a key on the emulated keyboard, the way a player would."""
+    rpc("input.key", {"code": name})
+
+
+def screen():
+    """The whole 32 x 24 name table."""
+    return list(base64.b64decode(rpc("mem.read", {
+        "space": "vram", "address": VRAM_NAMES, "length": 32 * 24})["data"]))
+
+
+def field():
+    """The magic field's 28 cells, as the screen has them."""
+    return {(r, c): t
+            for r in range(2)
+            for c, t in enumerate(panel(FIELD_X, FIELD_Y + r, FIELD_W))}
+
+
+def image_at(col, row, width):
+    """What the drawn title screen holds across a run of panel cells."""
+    base = (PANEL_Y + row) * 32 + PANEL_X + col
+    return list(TITLE_IMAGE[base:base + width])
+
+
+def to_title():
+    """Put the machine on the title screen and let it draw itself."""
+    poke("GameState", STATE_TITLE)
+    poke("NeedsRedraw", 1)
+    frames(3)                                   # Blit, reset, first live frame
+
+
+print("\nSPEC 13.1 — the title screen IS the drawn image, plus two moving things")
+to_title()
+seen = screen()
+moving = set(range(768))
+moving -= {(PANEL_Y + FIELD_Y + r) * 32 + PANEL_X + FIELD_X + c
+           for r in range(2) for c in range(FIELD_W)}
+moving -= {(PANEL_Y + PROMPT_Y) * 32 + PANEL_X + PROMPT_X + c
+           for c in range(PROMPT_LEN)}
+check("every cell outside the field and the prompt is the artist's",
+      [i for i in sorted(moving) if seen[i] != TITLE_IMAGE[i]], [])
+check("...which is 730 of the 768", len(moving), 768 - FIELD_CELLS - PROMPT_LEN)
+check("the prompt is up, untouched, on the frame it is drawn",
+      panel(PROMPT_X, PROMPT_Y, PROMPT_LEN), image_at(PROMPT_X, PROMPT_Y,
+                                                      PROMPT_LEN))
+
+print("\n...the prompt blinks at SPEC 14's period, and comes back byte for byte")
+to_title()
+lit = image_at(PROMPT_X, PROMPT_Y, PROMPT_LEN)
+runs, dark_cells = [], set()
+for _ in range(4 * BLINK_HALF[0] + 4):
+    frames(1)
+    now = panel(PROMPT_X, PROMPT_Y, PROMPT_LEN)
+    if now != lit:
+        dark_cells |= set(now)
+    on = now == lit
+    if runs and runs[-1][0] == on:
+        runs[-1][1] += 1
+    else:
+        runs.append([on, 1])
+check("it goes dark, comes back, and goes dark again",
+      [r[0] for r in runs[:4]], [True, False, True, False])
+check(f"...each half exactly BlinkHalf ({BLINK_HALF[0]}) frames",
+      [r[1] for r in runs[1:3]], [BLINK_HALF[0]] * 2)
+check("the dark half is blank — not a second string", sorted(dark_cells), [0])
+check("what it puts back is PRESS FIRE, as the image has it",
+      lit, tile_str("PRESS FIRE"))
+
+print("\n...and the magic field crawls, one cell a frame (SPEC 13.1)")
+to_title()
+was, per_frame, touched, written = field(), [], set(), set()
+for _ in range(400):
+    frames(1)
+    now = field()
+    changed = [k for k in now if now[k] != was[k]]
+    per_frame.append(len(changed))
+    for k in changed:
+        touched.add(k)
+        written.add(now[k])
+    was = now
+check("never more than one cell in a frame", max(per_frame), 1)
+check("...and it is doing something on nearly all of them",
+      sum(per_frame) > 350, True)
+check("every tile it writes is one of the 128 hatch tiles (Appendix A)",
+      sorted(written)[0] >= ART_BASE and sorted(written)[-1] < ART_BASE
+      + ART_TILES, True)
+check("it reaches every one of the block's 28 cells", len(touched),
+      FIELD_CELLS)
+check("...and never a cell outside it",
+      [i for i in sorted(moving) if screen()[i] != TITLE_IMAGE[i]], [])
+
+print("\nSPEC 15 — the seed IS the frame counter at the press, not a constant")
+to_title()
+frames(9)
+rpc("input.joystick", {"side": "b", "buttons": ["a"]})
+rpc("exec.runTo", {"address": syms["RngSeed"], "timeout": "5s"})
+fc = peek("FrameCounter")
+rpc("exec.step", {"count": 5})                  # LDA ORA STA EOR STA, then RTS
+check("RngLo is the counter with bit 0 forced", peek("RngLo"), fc | 1)
+check("...and RngHi is the other half of the same byte", peek("RngHi"),
+      (fc | 1) ^ 0x5A)
+rpc("exec.runTo", {"address": syms["GameLoop"], "timeout": "5s"})
+frames(1)
+check("FIRE on the title starts a game", peek("GameState"), STATE_PLAY)
+
+
+def deal(wait):
+    """Start a game `wait` frames into the title screen; report what it dealt."""
+    to_title()
+    frames(wait)
+    frames(1, ["a"])                            # FIRE — a fresh edge
+    return [peek(n) for n in ("PieceA", "PieceB", "PieceC",
+                              "NextA", "NextB", "NextC")]
+
+
+print("\n...so two games from one boot are not the same game (P7 exit criteria)")
+first, second = deal(5), deal(37)
+print(f"  (first {first}, second {second})")
+check("the two deals differ", first == second, False)
+
+print("\nSPEC 13.3 — PAUSE washes the well; it does not blank it")
+PAUSED = {(15, 0): RED, (15, 1): BLUE, (14, 0): GREEN + GLYPH_BOMB,
+          (12, 4): PURPLE, (11, 4): YELLOW + GLYPH_STAR}
+quiet()
+set_board(PAUSED)
+redraw()
+poke("GameState", STATE_PLAY)
+frames(1)
+key("KeyP")
+frames(8)                                       # 96 cells at 24 a frame, and
+                                                #   the banner in front of them
+check("P pauses", peek("GameState"), STATE_PAUSE)
+check("all 96 cells of the well are the wash tile, board and empties alike",
+      sorted(set(well().values())), [TILE_WASH])
+check("the band says PAUSED (SPEC 12.2)", band("~~ PAUSED ~~"),
+      tile_str("~~ PAUSED ~~"))
+
+print("\n...and the clock stops while it is up")
+frozen = [peek(n) for n in ("AreTimer", "FrameCounter", "PrismTimer")]
+frames(60)
+after = [peek(n) for n in ("AreTimer", "FrameCounter", "PrismTimer")]
+check("the game's own timers do not move", (after[0], after[2]),
+      (frozen[0], frozen[2]))
+check("...but the frame counter does, because it feeds the RNG (SPEC 13.3)",
+      after[1] != frozen[1], True)
+check("the well is still covered a second later",
+      sorted(set(well().values())), [TILE_WASH])
+
+print("\n...and the board is still there underneath it")
+check("nothing washed the board itself, only the screen", tiles(board()),
+      PAUSED)
+frames(2)
+frames(1, ["a"])                                # FIRE resumes as well as P
+frames(8)
+check("resuming returns to play", peek("GameState"), STATE_PLAY)
+check("the band is clear again", band(" " * 18), [0] * 18)
+check("...and every cell of the well is back off the board",
+      {k: v for k, v in well().items() if v}, PAUSED)
+
+print("\nSPEC 13.4 — a blocked spawn ends the game")
+#   The real path, not a planted state: the spawn column is filled to the top
+#   and the ARE timer run out, which is the one and only way STATE_GAMEOVER is
+#   ever entered.
+SPAWN_COL = 2
+DEAD = {(r, SPAWN_COL): RED + (r & 1) for r in range(16)}
+DEAD[(15, 0)] = BLUE
+quiet()
+set_board(DEAD)
+redraw()
+poke("GameState", STATE_PLAY)
+poke("HighOwned", 0)
+poke("HighFlash", 0)
+poke("AreTimer", 1)
+frames(1)
+check("the game is over", peek("GameState"), STATE_GAMEOVER)
+check("the screen has not started counting itself out yet", peek("OverSecs"), 0)
+
+print("\n...the well sets to stone BEFORE the band says anything (13.4 steps 2-3)")
+#   One frame counter across both loops below, because the timeout is measured
+#   from the frame it was armed on and not from wherever a loop happened to
+#   start. `held` down the whole way, so the press-is-ignored check is real.
+n, said_at, stone_at, armed_at = 0, None, None, None
+while n < 48:
+    frames(1, ["a"])
+    n += 1
+    if stone_at is None and peek("PetrifyRow") == 0xFF:
+        stone_at = n
+    if armed_at is None and peek("OverSecs"):
+        armed_at = n
+    if said_at is None and band("~~ GAME OVER! ~~") == tile_str("~~ GAME OVER! ~~"):
+        said_at = n
+check("sixteen rows at PETRIFY_FRAMES is 32 frames (SPEC 14)", stone_at,
+      16 * PETRIFY_FRAMES)
+check("FIRE held through the whole petrify is ignored, not queued",
+      armed_at is not None and armed_at > stone_at, True)
+check("the banner goes up the frame after the last row sets", said_at,
+      armed_at + 1)
+check("the timeout is running now", peek("OverSecs"), GAMEOVER_SECS)
+check("no fanfare — this game did not take the high score", peek("HighFlash"), 0)
+
+print("\n...and ten seconds later it is back on the title, unattended (step 5)")
+left = None
+while n < armed_at + GAMEOVER_SECS * SECOND_FRAMES[0] + 30:
+    frames(1)
+    n += 1
+    if peek("GameState") == STATE_TITLE:
+        left = n
+        break
+check(f"{GAMEOVER_SECS} seconds is {GAMEOVER_SECS * SECOND_FRAMES[0]} frames "
+      f"of NTSC, counted from the banner", left is not None
+      and left - armed_at, GAMEOVER_SECS * SECOND_FRAMES[0])
+frames(3)                                       # The redraw the title asked for
+check("...and the title screen is up, all 768 cells of it",
+      [i for i in sorted(moving) if screen()[i] != TITLE_IMAGE[i]], [])
+
+
+def die(owned):
+    """Play a real game from the title, kill it, and see the petrify out.
+
+    From the title and not from a poked GameState, because the play screen is
+    an IMAGE the title screen has just painted over (SPEC 12.6) — GameStart is
+    the only thing that puts it back, and every check below reads a panel field
+    off it.
+    """
+    if peek("GameState") == STATE_TITLE:
+        frames(2)                               # Release, so the press is fresh
+        frames(1, ["a"])
+        frames(8)                               # GameStart's own redraw
+    quiet()
+    set_board(DEAD)
+    redraw()
+    poke("HighOwned", owned)
+    poke("HighFlash", 0)
+    poke("AreTimer", 1)
+    frames(1)
+    for _ in range(48):
+        frames(1)
+        if peek("OverSecs"):
+            return
+    raise RuntimeError("the game never reached the game-over screen")
+
+
+print("\nSPEC 13.4 step 4 — a game that took the high score gets a fanfare")
+die(owned=1)
+check("HIGH is set flashing, which is what SPEC 9.8's blink counts",
+      peek("HighFlash"), HIGH_FLASH_BLINKS)
+blanked = False
+for _ in range(4 * BLINK_HALF[0]):
+    frames(1)
+    if digits(HIGH_X, HIGH_Y, SCORE_DIGITS) is None:
+        blanked = True
+check("...and the field really does go dark and come back", blanked, True)
+frames(4 * BLINK_HALF[0])
+check("it ends lit, always (SPEC 9.8)",
+      digits(HIGH_X, HIGH_Y, SCORE_DIGITS) is not None, True)
+
+print("\n...and FIRE ends the screen early rather than waiting out the ten")
+die(owned=0)
+frames(2)
+frames(1, ["a"])
+frames(1)
+check("a press returns to the title", peek("GameState"), STATE_TITLE)
+
+print("\nthe loop leaks nothing between games (P7 exit criteria)")
+#   The high score survives a game; everything the last game earned does not.
+set_high(123400)
+poke("Level", 9)
+set_score(50000)
+frames(1)
+frames(1, ["a"])                                # Start the next game from here
+frames(6)
+check("a new game is playing", peek("GameState"), STATE_PLAY)
+check("the score is back to zero", score(), 0)
+check("the level is back to 1", peek("Level"), 1)
+check("the high score is not", high(), 123400)
+check("nothing owns it yet", peek("HighOwned"), 0)
+check("the band is clear", band(" " * 18), [0] * 18)
+check("the board is empty — the piece is not in it until it locks",
+      tiles(board()), {})
+check("...and no wash is left over from a pause two games ago",
+      peek("RedrawWash"), 0)
 
 print("\nthe effect queue drained after every cascade in this run (SPEC 7.2)")
 check(f"{len(queue_left)} cascades, all of them empty at the end",

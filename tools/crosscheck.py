@@ -53,6 +53,7 @@ WELL_X, WELL_Y = 1, 4                       # Panel-relative (SPEC 12.2)
 SCORE_X, SCORE_Y, SCORE_DIGITS = 12, 5, 7
 LEVEL_X, LEVEL_Y = 18, 17                   # Tens at LEVEL_Y, units below
 NEXT_X, NEXT_Y = 11, 16                     # Cells A, B, C at NEXT_Y, +1, +2
+MSG_X, MSG_Y, MSG_W = 2, 22, 18             # The message band's owned cells
 FONT_DIGIT_0 = 16                           # constants.inc
 PETRIFY_BASE = 120                              # constants.inc, SPEC A.3
 COLOR_MASK, GLYPH_MASK = 0xF8, 0x07         # constants.inc
@@ -60,12 +61,24 @@ WILD_BASE = 0x70
 PANEL_X = {"VIC20": 0, "C64": 9, "AC6502": 5}   # SPEC 12.4
 VRAM_NAMES = 0x1400                         # The TMS9918 name table (SPEC C.1)
 
-# Long enough for five pieces to fall thirteen rows at level 1 and for the
-# sixth spawn to be blocked. After that the game is frozen on the game-over
-# screen, so anything longer lands in the same place — the check does not
-# depend on stopping the three machines at the same instant.
-COMMODORE_CYCLES = "90000000"
-AC6502_CYCLES = 90000000                    # The same game, the same length
+# WHERE THE THREE MACHINES ARE STOPPED, and why it is not the same mechanism.
+#
+# The AC6502 is stopped by what the game is DOING: run in chunks until
+# GameState is STATE_GAMEOVER, then on until the petrify has finished and the
+# ten-second timeout is armed (SPEC 13.4). AC6502_CYCLES is only the ceiling on
+# that search.
+#
+# VICE gives no way to ask, so the Commodores are stopped by a cycle count, and
+# since P7 that count has to land INSIDE a window rather than after everything:
+# the game-over screen returns to the title by itself ten seconds later, and a
+# run that overshoots reads the title screen's rows and reports a well full of
+# nonsense. Measured on both machines under VICE's default PAL: the well is
+# stone from about 37M cycles to about 48M, so 42M sits in the middle with five
+# seconds of margin either side. If the game's timing ever changes enough to
+# move that window, the guard in commodore_well below says so in one line
+# rather than leaving three machines apparently disagreeing about the rules.
+COMMODORE_CYCLES = "42000000"
+AC6502_CYCLES = 90000000                    # A ceiling, not a stopping point
 
 
 def require_free_port(port):
@@ -127,13 +140,23 @@ def ac6502_board():
                 time.sleep(0.25)
         # In big chunks, not a frame at a time: nothing here is timing the
         # game, it only wants the frozen well at the end of it.
+        def peek(name):
+            return base64.b64decode(rpc("mem.read", {
+                "space": "cpu", "address": syms[name], "length": 1})["data"])[0]
+
         for _ in range(AC6502_CYCLES // 3000000):
             rpc("exec.runCycles", {"cycles": 3000000})
-            state = rpc("mem.read", {"space": "cpu",
-                                     "address": syms["GameState"],
-                                     "length": 1})["data"]
-            if base64.b64decode(state)[0] == 3:      # STATE_GAMEOVER
+            if peek("GameState") == 3:               # STATE_GAMEOVER
                 break
+        # ...and then on until the well has finished setting. OverSecs is zero
+        # for the length of the petrify and the timeout's count afterwards
+        # (SPEC 13.4), so a non-zero one is "the animation is over and the
+        # screen is up" — which is the state the Commodores' screenshots are
+        # taken in, and the only one where the two are comparable.
+        for _ in range(120):
+            if peek("OverSecs"):
+                break
+            rpc("exec.runCycles", {"cycles": 16667})
         state = rpc("mem.read", {"space": "cpu", "address": syms["GameState"],
                                  "length": 1})["data"]
         board = rpc("mem.read", {"space": "cpu", "address": syms["Board"],
@@ -152,8 +175,16 @@ def ac6502_board():
                    "address": VRAM_NAMES + (NEXT_Y + i) * 32
                               + PANEL_X["AC6502"] + NEXT_X,
                    "length": 1})["data"])[0] for i in range(3)]
+        # The message band, off the VDP for the same reason the NEXT box is:
+        # it is the one thing on the game-over screen that code DRAWS rather
+        # than the image carrying, and it is the same eighteen cells the
+        # Commodores can be read for (SPEC 12.2, 13.4).
+        band = list(base64.b64decode(rpc("mem.read", {
+            "space": "vram",
+            "address": VRAM_NAMES + MSG_Y * 32 + PANEL_X["AC6502"] + MSG_X,
+            "length": MSG_W})["data"]))
         return (base64.b64decode(state)[0], base64.b64decode(board),
-                base64.b64decode(score), base64.b64decode(level)[0], nxt)
+                base64.b64decode(score), base64.b64decode(level)[0], nxt, band)
     finally:
         proc.terminate()
 
@@ -189,6 +220,12 @@ def commodore_well(plat, target, shot):
     _, grid, _ = read_screen(path)
     x0 = PANEL_X[plat] + WELL_X
     well = [row[x0:x0 + BOARD_W] for row in grid[WELL_Y:WELL_Y + BOARD_H]]
+    if not any(PETRIFY_BASE <= v for row in well for v in row):
+        sys.exit(f"crosscheck: {plat} stopped with no stone in the well, so "
+                 f"{COMMODORE_CYCLES} cycles is not inside the game-over "
+                 f"screen any more — either short of it, or past the "
+                 f"ten-second timeout back to the title (SPEC 13.4). Rescan "
+                 f"the window and move COMMODORE_CYCLES.")
     panel = PANEL_X[plat]
     score = read_digits(grid, panel, SCORE_X, SCORE_Y, SCORE_DIGITS)
     level = read_digits(grid, panel, LEVEL_X, LEVEL_Y, 1)
@@ -196,7 +233,8 @@ def commodore_well(plat, target, shot):
     if level is not None and units is not None:
         level = level * 10 + units
     nxt = [grid[NEXT_Y + i][panel + NEXT_X] for i in range(3)]
-    return well, score, level, nxt
+    band = grid[MSG_Y][panel + MSG_X:panel + MSG_X + MSG_W]
+    return well, score, level, nxt, band
 
 
 def board_well(board):
@@ -211,17 +249,19 @@ def show(well):
 
 def main():
     os.chdir(ROOT)
-    state, board, score, level, nxt = ac6502_board()
+    state, board, score, level, nxt, band = ac6502_board()
     wells = {"AC6502": board_well(board)}
     scores = {"AC6502": unbcd(score)}
     levels = {"AC6502": level}
     nexts = {"AC6502": nxt}
+    bands = {"AC6502": band}
     print(f"AC6502: up to {AC6502_CYCLES} cycles, GameState {state}"
           f" ({'GAMEOVER' if state == 3 else 'still playing'}),"
           f" score {scores['AC6502']}, level {level}")
     for plat, target in (("VIC20", "WizardsLab"), ("C64", "WizardsLab")):
-        wells[plat], scores[plat], levels[plat], nexts[plat] = commodore_well(
-            plat, target, "WizardsLab-crosscheck.png")
+        (wells[plat], scores[plat], levels[plat], nexts[plat],
+         bands[plat]) = commodore_well(plat, target,
+                                       "WizardsLab-crosscheck.png")
         print(f"{plat}: {COMMODORE_CYCLES} cycles, well read off the screen,"
               f" score {scores[plat]}, level {levels[plat]}")
 
@@ -246,6 +286,9 @@ def main():
         if nexts[plat] != nexts["AC6502"]:
             fails.append(f"{plat}'s NEXT box holds {nexts[plat]}, the AC6502's "
                          f"{nexts['AC6502']} — the piece roll disagrees")
+        if list(bands[plat]) != list(bands["AC6502"]):
+            fails.append(f"{plat}'s message band holds {list(bands[plat])}, "
+                         f"the AC6502's {list(bands['AC6502'])}")
 
     tiles = sum(1 for row in wells["AC6502"] for v in row if v)
     if tiles < 9:
@@ -262,6 +305,7 @@ def main():
                 and ((v & COLOR_MASK) == WILD_BASE or (v & GLYPH_MASK))]
     stone = [v for v in cells if v >= PETRIFY_BASE]
     print(f"the NEXT box: {nexts['AC6502']}")
+    print(f"the band: {bands['AC6502']}")
     if stone:
         print(f"note: the game ended and the well is STONE — {len(stone)} of"
               f" the compared cells\n      are group 15, at the same glyph"
