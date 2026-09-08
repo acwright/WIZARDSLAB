@@ -14,9 +14,9 @@ piece can unravel half the board.
 
 > **Status: in development.** The three cartridges build, boot and play.
 > **The artwork is finished** — all 256 tiles and both screens are drawn — and
-> the game is playable end to end: title, play, pause, game over and back to
-> the title, with the reagents, the scoring and the animation all in. What is
-> left is the sound and the real hardware. See [PLAN.md](PLAN.md) for what is
+> the game is complete end to end: title, play, pause, game over and back to
+> the title, with the reagents, the scoring, the animation and the sound all
+> in. What is left is the real hardware. See [PLAN.md](PLAN.md) for what is
 > done and what is next.
 
 ---
@@ -74,6 +74,7 @@ make run-C64      # Launch one in an emulator
 make smoke        # Boot all three headless and check they come up
 make playtest     # Play it with a script and check what the game did
 make crosscheck   # Play the same game on all three and compare the wells
+make audiocheck   # Read what the Commodores' sound chips are actually told
 make artwork      # Re-import the art after drawing in TMS9918-EDITOR
 make clean
 ```
@@ -139,6 +140,12 @@ cell. The two Commodores are read off their screenshots, because a screenshot
 is all VICE offers — and the well *is* the board, since the board byte is the
 tile index.
 
+`make audiocheck` does the same for the sound. VICE's `dump` sound device
+writes one line per sound-chip register write, so a headless game leaves a
+cycle-stamped transcript of everything the game told the SID or the VIC-I —
+and every note in it is compared against the effect tables, register for
+register and frame for frame. Nothing listens to anything.
+
 ---
 
 ## Burning to a cartridge
@@ -172,11 +179,13 @@ src/               Shared game code. Identical on all three machines.
 
 artwork/           Editor projects — the drawn master; see artwork/README.md
 data/              Tileset, screens and colour tables — see data/README.md
-include/           Platform hardware definitions
+include/           Platform hardware definitions, and sid.inc — the SID
+                   register writes, shared by the two machines that have one
 tools/             import-artwork.py, the master -> data/ pipeline
                    read-screen.py, a screenshot -> the name table
                    playtest.py, a scripted game -> assertions about RAM
                    crosscheck.py, the same game on all three -> one well
+                   audiocheck.py, a Commodore's sound registers -> the notes
 
 AC6502/  VIC20/  C64/
                    Cartridge header, linker config, and each machine's HAL

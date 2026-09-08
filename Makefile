@@ -6,7 +6,8 @@
 
 PLATFORMS = AC6502 VIC20 C64
 
-.PHONY: all clean artwork artwork-check data smoke playtest crosscheck $(PLATFORMS) \
+.PHONY: all clean artwork artwork-check data smoke playtest crosscheck \
+        audiocheck $(PLATFORMS) \
         run-AC6502 run-VIC20 run-C64 \
         smoke-AC6502 smoke-VIC20 smoke-C64
 
@@ -73,6 +74,15 @@ crosscheck:
 	cd AC6502 && cl65 -t none -g --asm-define WL_DEBUG=1 -C AC6502-16K.cfg \
 	  -Wl --dbgfile,/tmp/wl.dbg -o /tmp/wl.crt WizardsLab.asm
 	python3 tools/crosscheck.py
+
+# Read what the two Commodores' sound chips are actually told. VICE's `dump`
+# sound device logs every register write with its cycle, so a headless game
+# leaves a transcript of every note the SID or the VIC-I was given — checked
+# against src/tables.inc, register for register and frame for frame. The
+# AC6502's half of SPEC 16 is in `make playtest`. See tools/audiocheck.py.
+audiocheck:
+	@$(MAKE) DEBUG=1 VIC20 C64
+	python3 tools/audiocheck.py
 
 # Regenerate the placeholder artwork from scratch. Bootstrap only — this throws
 # the real art away, and a plain run writes nothing. See data/README.md.

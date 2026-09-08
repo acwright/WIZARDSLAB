@@ -1,8 +1,9 @@
 ; =============================================================================
 ;   tables.inc — Wizards Lab, spec-derived lookup tables
 ; =============================================================================
-;   Straight out of SPEC.md sections 5.3, 9 and 10. Hand-authored, never
-;   overwritten by an editor export. Included once, from the RODATA segment.
+;   Straight out of SPEC.md sections 5.3, 9, 10, 14 and 16. Hand-authored,
+;   never overwritten by an editor export. Included once, from the RODATA
+;   segment.
 ;
 ;   Score values above 99 do not fit in a byte, so every scoring table is a
 ;   pair of parallel arrays — low BCD byte and high BCD byte — indexed by the
@@ -134,3 +135,116 @@ TriggerBonusLo:
   .byte $00, $00, $00, $00, $00, $00, $00, $00
 TriggerBonusHi:
   .byte $00, $05, $03, $03, $00, $00, $00, $00
+
+; --- The twelve sound effects (SPEC 16) --------------------------------------
+;   An effect is a list of STEPS and a step is three bytes: how many FRAMES it
+;   lasts, its TIMBRE, and its NOTE in semitones above C3 (constants.inc). A
+;   zero frame count ends the list. Nothing here is a register value: a note
+;   means the same pitch on both sound chips and each platform turns it into
+;   whatever its own hardware wants (audio.asm, hal.inc).
+;
+;   SPEC 16 gives each effect a CHARACTER and not a tune — "short blip",
+;   "dull thunk", "descending noise sweep" — and the notes below are the
+;   reading of it. What is not a choice is the range: the VIC-I's oscillator
+;   value runs out of resolution above C5, where consecutive semitones start
+;   landing on the same number, so everything melodic is WRITTEN inside C3-C5
+;   and lifted by its timbre instead. TIMBRE_BRIGHT is already an octave up.
+;
+;   SfxStepIdx is a byte offset into SfxSteps, so this table has to stay under
+;   256 bytes. It is 144.
+
+SfxOffsets:                             ; Indexed by (SFX_* id - 1)
+  .byte SfxMove     - SfxSteps
+  .byte SfxRotate   - SfxSteps
+  .byte SfxLock     - SfxSteps
+  .byte SfxMatch    - SfxSteps
+  .byte SfxFireball - SfxSteps
+  .byte SfxBolt     - SfxSteps
+  .byte SfxBomb     - SfxSteps
+  .byte SfxStar     - SfxSteps
+  .byte SfxPrism    - SfxSteps
+  .byte SfxLevelUp  - SfxSteps
+  .byte SfxHighScore- SfxSteps
+  .byte SfxGameOver - SfxSteps
+
+SfxSteps:
+
+SfxMove:                                ; 1 — short blip                2 frames
+  .byte  2, TIMBRE_BRIGHT, OCT_4 + SEMI_G
+  .byte  0
+
+SfxRotate:                              ; 2 — rising two-step           6 frames
+  .byte  3, TIMBRE_BRIGHT, OCT_4 + SEMI_C
+  .byte  3, TIMBRE_BRIGHT, OCT_4 + SEMI_G
+  .byte  0
+
+SfxLock:                                ; 3 — dull thunk                6 frames
+  .byte  2, TIMBRE_NOISE,  OCT_4 + SEMI_C
+  .byte  4, TIMBRE_SOFT,   OCT_4 + SEMI_C
+  .byte  0
+
+SfxMatch:                               ; 4 — bright chime              9 frames
+  .byte  3, TIMBRE_BRIGHT, OCT_4 + SEMI_C   ; ...and the whole thing is
+  .byte  6, TIMBRE_BRIGHT, OCT_4 + SEMI_E   ;   transposed up by the chain
+  .byte  0                                  ;   (SPEC 16, audio.asm)
+
+SfxFireball:                            ; 5 — descending noise sweep   10 frames
+  .byte  2, TIMBRE_NOISE,  OCT_6 + SEMI_C
+  .byte  2, TIMBRE_NOISE,  OCT_5 + SEMI_G
+  .byte  2, TIMBRE_NOISE,  OCT_5 + SEMI_D
+  .byte  2, TIMBRE_NOISE,  OCT_4 + SEMI_A
+  .byte  2, TIMBRE_NOISE,  OCT_4 + SEMI_E
+  .byte  0
+
+SfxBolt:                                ; 6 — fast noise crack          3 frames
+  .byte  3, TIMBRE_NOISE,  OCT_5 + SEMI_A
+  .byte  0
+
+SfxBomb:                                ; 7 — low noise thump          10 frames
+  .byte  2, TIMBRE_NOISE,  OCT_4 + SEMI_D
+  .byte  8, TIMBRE_NOISE,  OCT_3 + SEMI_E
+  .byte  0
+
+SfxStar:                                ; 8 — sparkle arpeggio          8 frames
+  .byte  2, TIMBRE_BRIGHT, OCT_4 + SEMI_C
+  .byte  2, TIMBRE_BRIGHT, OCT_4 + SEMI_E
+  .byte  2, TIMBRE_BRIGHT, OCT_4 + SEMI_G
+  .byte  2, TIMBRE_BRIGHT, OCT_5 + SEMI_C
+  .byte  0
+
+SfxPrism:                               ; 9 — shimmer                  12 frames
+  .byte  2, TIMBRE_BUZZ,   OCT_5 + SEMI_C   ; The one effect that wants an edge
+  .byte  2, TIMBRE_BUZZ,   OCT_5 + SEMI_E   ;   to it rather than a bell: a
+  .byte  2, TIMBRE_BUZZ,   OCT_5 + SEMI_C   ;   sawtooth beating between two
+  .byte  2, TIMBRE_BUZZ,   OCT_5 + SEMI_E   ;   notes six times in a fifth of
+  .byte  2, TIMBRE_BUZZ,   OCT_5 + SEMI_C   ;   a second
+  .byte  2, TIMBRE_BUZZ,   OCT_5 + SEMI_E
+  .byte  0
+
+SfxLevelUp:                             ; 10 — fanfare                 25 frames
+  .byte  5, TIMBRE_BRIGHT, OCT_4 + SEMI_C
+  .byte  5, TIMBRE_BRIGHT, OCT_4 + SEMI_E
+  .byte  5, TIMBRE_BRIGHT, OCT_4 + SEMI_G
+  .byte 10, TIMBRE_BRIGHT, OCT_5 + SEMI_C
+  .byte  0
+
+SfxHighScore:                           ; 11 — longer fanfare          40 frames
+  .byte  4, TIMBRE_BRIGHT, OCT_4 + SEMI_C
+  .byte  4, TIMBRE_BRIGHT, OCT_4 + SEMI_E
+  .byte  4, TIMBRE_BRIGHT, OCT_4 + SEMI_G
+  .byte  4, TIMBRE_BRIGHT, OCT_5 + SEMI_C
+  .byte  4, TIMBRE_BRIGHT, OCT_4 + SEMI_G
+  .byte  4, TIMBRE_BRIGHT, OCT_5 + SEMI_C
+  .byte 16, TIMBRE_BRIGHT, OCT_5 + SEMI_E
+  .byte  0
+
+SfxGameOver:                            ; 12 — descending minor run    58 frames
+  .byte  6, TIMBRE_SOFT,   OCT_4 + SEMI_A
+  .byte  6, TIMBRE_SOFT,   OCT_4 + SEMI_G
+  .byte  6, TIMBRE_SOFT,   OCT_4 + SEMI_F
+  .byte  6, TIMBRE_SOFT,   OCT_4 + SEMI_E
+  .byte  6, TIMBRE_SOFT,   OCT_4 + SEMI_D
+  .byte  6, TIMBRE_SOFT,   OCT_4 + SEMI_C
+  .byte  6, TIMBRE_SOFT,   OCT_3 + SEMI_B
+  .byte 16, TIMBRE_SOFT,   OCT_3 + SEMI_A
+  .byte  0

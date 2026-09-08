@@ -470,10 +470,17 @@ HalColorFlash:
   rts
 
 ; -----------------------------------------------------------------------------
-;   HalSfx — TODO: SID at $D400. Shares a driver with the AC6502's $9800.
+;   HalSfx — one note on the SID at $D400 (hal.inc)
+;   In:  A = TIMBRE_*, X = note.  Out: nothing.  Modifies: A, X, Y, Tmp0-Tmp2
+;
+;   Byte for byte the AC6502's, which is the whole point of include/sid.inc:
+;   the two machines differ in where the chip is and in nothing else. This one
+;   needs no presence check either — a C64 without a SID is not a C64.
 ; -----------------------------------------------------------------------------
-HalSfx:
-  rts
+SID_BASE = $D400
+.include "../include/sid.inc"
+
+HalSfx = SidSfx                 ; Not a JMP: the contract is the same routine
 
 ; =============================================================================
 ;   Data

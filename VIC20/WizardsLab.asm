@@ -456,9 +456,42 @@ HalColorFlash:
   rts
 
 ; -----------------------------------------------------------------------------
-;   HalSfx — TODO: VIC-I sound, $900A-$900E. Its own driver; no SID here.
+;   HalSfx — one note on the VIC-I, $900A-$900E (hal.inc)
+;   In:  A = TIMBRE_*, X = note.  Out: nothing.  Modifies: A, X, Y
+;
+;   No SID here and nothing shaped like one: four oscillators, one 7-bit value
+;   each, bit 7 to enable, one global volume, and no envelope at all. What it
+;   does have is the thing that makes a timbre free — bass, alto and soprano
+;   are the SAME oscillator design divided by 256, 128 and 64, so they are
+;   exactly an octave apart and TIMBRE_SOFT / BUZZ / BRIGHT are a choice of
+;   register rather than a shift of the pitch (constants.inc). The SID pays
+;   for the same octave in a 16-bit shift.
+;
+;   All four are silenced on the way in. Only one is ever meant to sound and
+;   stopping the other three costs four stores, which is cheaper than a byte
+;   remembering which one was left running.
 ; -----------------------------------------------------------------------------
 HalSfx:
+  ldy #0
+  sty VIC_CRA                   ; Bass
+  sty VIC_CRB                   ; Alto
+  sty VIC_CRC                   ; Soprano
+  sty VIC_CRD                   ; Noise
+  cmp #TIMBRE_OFF
+  beq @Done
+
+  tay                           ; Y = timbre, 1..4
+  lda VicNotes,x                ; The oscillator value for this pitch...
+  ldx VicOsc - 1,y              ;   ...and which of the four sounds it
+  ora #$80                      ; Bit 7 enables the oscillator
+  sta VIC_CRA,x                 ; $900A-$900D are contiguous
+
+  lda #$0F                      ; Volume, low nibble. The high nibble is the
+  sta VIC_CRE                   ;   auxiliary colour, which only multicolor
+                                ;   characters read and this game has none —
+                                ;   colour RAM bit 3 stays clear on every cell
+                                ;   (data/tilecolor-vic20.inc)
+@Done:
   rts
 
 ; =============================================================================
@@ -470,6 +503,31 @@ HalSfx:
 .include "../data/tilecolor-vic20.inc"
 .include "../src/tables.inc"
 .include "../src/strings.inc"
+
+; --- Sound: which oscillator a timbre uses (constants.inc) -------------------
+;   Offsets from VIC_CRA, indexed 1..4: TIMBRE_SOFT, BUZZ, BRIGHT, NOISE.
+VicOsc:
+  .byte 0, 1, 2, 3
+
+; --- Note table: semitones above C3, C3 to C6 (NOTE_MAX) ---------------------
+;   Register value = round(128 - phi2 / (128 * Hz)) for the ALTO oscillator,
+;   equal temperament from A4 = 440 Hz, phi2 = 1,022,727 Hz. The bass and
+;   soprano read the same numbers an octave down and up, which is what makes a
+;   timbre free here (HalSfx above).
+;
+;   PAL clocks the chip 8% faster and every note with it, which is a uniform
+;   1.4-semitone transposition and not a tuning error — one table, and nothing
+;   in the sound path reads Region.
+;
+;   The value is 7 bits for a frequency that goes as 1/(128 - value), so the
+;   resolution runs out at the top: above C5 consecutive semitones start
+;   landing on the same number, which is why tables.inc writes everything
+;   melodic inside C3-C5 and lifts it with a timbre instead.
+VicNotes:
+  .byte  67,  70,  74,  77,  80,  82,  85,  87,  90,  92,  94,  96   ; C3-B3
+  .byte  97,  99, 101, 102, 104, 105, 106, 108, 109, 110, 111, 112   ; C4-B4
+  .byte 113, 114, 114, 115, 116, 117, 117, 118, 118, 119, 119, 120   ; C5-B5
+  .byte 120                                                          ; C6
 
 ; --- Screen row start addresses ----------------------------------------------
 RowLo:

@@ -1355,8 +1355,9 @@ redrawn by the glow. Same visual, different mechanism, identical frame count.
 
 ## 16. Audio
 
-Out of scope for v1 gameplay, but reserve the hooks. Sound is triggered by a
-one-byte `SFX_REQUEST` written by game logic and consumed by the audio tick.
+Sound is triggered by a one-byte `SFX_REQUEST` written by game logic and
+consumed by the audio tick, which is called once a frame from the bottom of the
+main loop ([§13.2](#132-play)).
 
 | ID | Event | Character |
 |---|---|---|
@@ -1373,9 +1374,47 @@ one-byte `SFX_REQUEST` written by game logic and consumed by the audio tick.
 | 11 | New high score | longer fanfare |
 | 12 | Game over | descending minor run |
 
-AC6502 and C64 share SID driver code almost verbatim (register base differs:
-`$9800` vs `$D400`). The VIC-20 needs its own three-oscillator driver against
-`$900A-$900E`.
+**One channel, and the ID is the priority.** The table above runs from the
+quietest event to the loudest, so a request takes the channel only when its ID
+is at least the ID of whatever is already playing. That is a rule and not an
+accident of ordering: a fireball is set off by a piece the player just moved,
+and a bomb detonates in the same frame as the chime for the run that set it
+off, so more than one effect is asked for in a single frame routinely. A
+request that loses is dropped rather than queued — by the next frame the event
+it belonged to is over.
+
+**An effect is a list of steps.** A step is a duration in frames, a *timbre*
+and a *note*; a note is a count of semitones above C3 and means the same pitch
+on every machine. Nothing in the shared code is a register value.
+
+**A timbre is a voice and an octave**, which is the one abstraction that makes
+one driver serve both sound chips:
+
+| Timbre | SID | VIC-I | Octave |
+|---|---|---|---|
+| `SOFT` | triangle | bass, `$900A` | one below the written note |
+| `BUZZ` | sawtooth | alto, `$900B` | as written |
+| `BRIGHT` | pulse | soprano, `$900C` | one above |
+| `NOISE` | noise | noise, `$900D` | as written |
+
+The VIC-I's three tone oscillators are the same design divided by 256, 128 and
+64, so they are already exactly an octave apart and the octave costs nothing
+there; on a SID it is a shift of a linear frequency register. Each machine
+keeps one note table, built for its own clock. Neither is region-dependent: a
+region changes the chip's clock, which transposes every note by the same ratio
+and leaves the music in tune with itself.
+
+**The match chime rises by transposing the whole effect** — `2` semitones per
+chain link, capped at `8` — rather than by having a step list per depth.
+
+The three drivers came out one level higher than this section originally
+planned. It said the AC6502 and the C64 would share SID driver code almost
+verbatim (register base `$9800` vs `$D400`) and the VIC-20 would need its own
+three-oscillator driver, which is true of the register writes and of nothing
+else: the sequencing, the priority, the per-frame envelope and every note are
+the same on all three machines and are shared by all three. What a platform
+still owns is a note table and one routine that is handed a timbre and a note.
+The two SID machines share even that, and differ only in the base address.
 
 ---
 
@@ -1398,8 +1437,8 @@ AC6502 and C64 share SID driver code almost verbatim (register base differs:
 | Input current/previous/edge | 3 | |
 | RNG seed, frame counter | 4 | |
 | State machine, flags | 8 | game state, play sub-state, region, redraw flag, the game-over screen's seconds and the frames of one ([§13.4](#134-gameover)) |
-| Audio state | 16 | |
-| **Total** | **~570 bytes** | 537 measured — 43 zero page, 494 BSS; plus row-pointer tables in ROM |
+| Audio state | 16 | 5 measured — the effect data is a step list in ROM ([§16](#16-audio)) and the driver is a cursor into it, so RAM holds the request, the effect playing, where in its list it is, the frames left in that step and the chime's transposition |
+| **Total** | **~570 bytes** | 526 measured — 43 zero page, 483 BSS; plus row-pointer tables in ROM |
 
 Fits the VIC-20's constrained RAM with room to spare, which is the whole point
 of designing to the tightest target first. In practice the whole of BSS lands
@@ -1421,7 +1460,7 @@ piece's redraw back until any full-board redraw has gone past it.
 | Render + platform HAL | ~1500 |
 | Title / game-over screens + text | ~1500 |
 | Screen images (RLE-compressed) | ~800 |
-| Audio driver + data | ~1500 |
+| Audio driver + data | ~500 measured (~1500 estimated) |
 | Tables (speed, scoring, color, row pointers) | ~800 |
 | **Subtotal** | **~11,150** |
 | **Headroom** | **~5,200** |

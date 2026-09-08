@@ -135,9 +135,35 @@ checkboxes and the "Current Status" section as work progresses.**
   game-over timeout. And the band's wording is `~~ GAME OVER! ~~`, because
   banner strings are drawn even-length so the centring is exact and nine
   letters inside a symmetric ornament never is.
-- Next: **P8 — audio.** Every event that has to make a noise already writes
-  `SfxRequest` and forgets about it; what is missing is the two drivers and
-  `AudioTick`.
+- **Phase P8 is done.** The game makes a noise. All twelve of SPEC §16's
+  effects fire from their own events on all three machines — the blip, the
+  rotate, the thunk, the chime that rises with the chain, five reagents, two
+  fanfares and the descending run at the end — through **one channel whose
+  priority is the effect id**, so a bomb is never talked over by the chime of
+  the run that set it off. An effect is a list of steps in ROM and a step is
+  (frames, timbre, note); a note is semitones above C3 and means the same
+  pitch on every machine. Checked at three levels and none of them by ear: the
+  channel walked frame by frame in RAM against the step lists read out of the
+  cartridge, the `(timbre, note)` pairs caught in the CPU registers at
+  `HalSfx`, and — on the two Commodores — **every write their sound chips
+  received**, logged by VICE and compared register for register and frame for
+  frame (`make audiocheck`, new). `AudioTick` is **23 cycles** on an idle
+  frame and **239** on one that starts a note, against 16,667. An AC6502 with
+  no sound card fitted plays the same game in silence and writes nothing to
+  the empty slot. Work RAM is **526 bytes** against SPEC §17.1's ~570 — eleven
+  fewer than P7, because the audio state SPEC budgeted sixteen bytes for is
+  five; ROM use is 56% / 60% / 73% of 16 KB, +513 / +395 / +499 for the sound.
+- P8 changed SPEC §16 in one substantial way. It expected the AC6502 and the
+  C64 to **share a SID driver and the VIC-20 to need its own**, which is true
+  of the twenty lines that write registers and of nothing else: the
+  sequencing, the priority, the envelope across frames and every note in the
+  game are identical on all three, so they are shared by all three and
+  `HalSfx` was re-cut to take a note rather than an effect id (D22). The
+  abstraction that makes that work is **a timbre is a voice and an octave** —
+  free on the VIC-I, whose three tone oscillators are already an octave apart,
+  and a 16-bit shift on a SID.
+- Next: **P10 — hardware and release.** The game is complete and everything
+  left is a real machine.
 
 ---
 
@@ -272,6 +298,31 @@ Things a session working in this repository needs to know and cannot infer.
   and `commodore_well` now fails with one line saying so if the stop lands
   outside it. The AC6502 does not need the number: it stops on what the game is
   doing.
+- **VICE's `dump` sound device is a register transcript, and it is the only way
+  to see a Commodore make a noise.** `-sounddev dump -soundarg FILE` writes one
+  line per sound-chip register write — `cycles-since-the-last register value` —
+  and works in warp mode, so a headless game leaves a complete, cycle-stamped
+  record of everything the game told the SID or the VIC-I. Recording the AUDIO
+  instead does not work under `-warp`: with a `dummy` playback device the sound
+  buffer overflows every fragment and the WAV comes out as a 44-byte header.
+  `tools/audiocheck.py` reads the transcript.
+- **Pass `+saveres` to VICE.** Without it VICE writes every option on the
+  command line into the user's own `~/.config/vice/vicerc` when it exits, so a
+  `-sounddev dump` from a test run silences the emulator for the next person to
+  open it by hand. `audiocheck.py` does; the `smoke` and `crosscheck` targets
+  predate knowing this and should.
+- **The AC6502 emulator's watchpoint hit COUNT under-reports.** `bp.set` with
+  `kind: "write"` is reliable as a yes/no — a range that is never written shows
+  zero — but the count is not the number of stores: voice 1's volume register
+  is written once a note and showed 3 hits across eight of them. `playtest.py`
+  reads it as a yes/no, one watchpoint per register, which is also how it can
+  say the game writes voice 1 and the master volume and nothing else.
+- **A frame the game does real work in shifts where in it `AudioTick` runs.**
+  A sound started by a piece locking begins later in its frame than the steps
+  after it, because that frame also ran a match scan — about 7,000 cycles on
+  the C64. Any measurement of a step's duration must therefore skip the FIRST
+  gap of an effect and measure the ones after it, which are between two
+  ordinary frames and are exact to the cycle.
 - **BSD `sed` has no `\b`.** Use Python for word-boundary rewrites in this repo.
 - **`vic20.inc` already defines `SCREEN_COLS` and `SCREEN_ROWS`.** The game's
   own screen constants are `SCR_COLS` / `SCR_ROWS` to avoid the collision.
@@ -514,6 +565,33 @@ the implementation ones that SPEC.md does not cover.
   petrify all sit on this. P5 wrote the rule into `EffectEnqueue` a phase before
   the reason for it existed; SPEC §5.2 and Appendix A now say so as well, having
   previously claimed no board cell could hold 113-115.
+- **D22 — The audio driver is shared by three machines, not two, and
+  `HalSfx` takes a note.** SPEC §16 put the split one level lower: a SID driver
+  shared by the AC6502 and the C64, a VIC-I driver written separately, and a
+  `HalSfx` that is handed an effect id. Everything above the register writes is
+  the same on all three machines, though — which effect is playing, which step
+  of it, how long the step lasts, what pitch it is, and which request wins when
+  three arrive in one frame — so all of that is in `src/audio.asm` and the
+  platform is asked for one note in one timbre. What makes it fit two sound
+  chips with nothing in common is that **a timbre is a voice AND an octave**:
+  the VIC-I's bass, alto and soprano oscillators are the same design divided by
+  256, 128 and 64, so they are exactly an octave apart and `TIMBRE_SOFT` /
+  `BUZZ` / `BRIGHT` cost one register choice there, against a 16-bit shift on a
+  SID. The register writes the two SID machines DO share live in
+  `include/sid.inc`, which is the one file in that directory that is code
+  rather than equates: it belongs to two platforms and not to the third, so it
+  can be in neither `WizardsLab.asm` and it cannot be in `src/`, where nothing
+  touches hardware (D2).
+- **D23 — One sound at a time, and the effect id is the priority.** SPEC §16
+  lists the twelve from the quietest event to the loudest, so "is this request
+  louder than what is playing" is a `CMP`. A request that loses is dropped
+  rather than queued: by the next frame the event it belonged to is over.
+  Logic therefore goes through `SfxPlay` instead of storing into `SfxRequest`,
+  because more than one effect is asked for in a single frame routinely — a
+  lock, the chime for the run it made and the bomb inside that run are three
+  requests in one frame, and the bomb is asked for FIRST (it is resolved inside
+  `CascadeScan`, and the chime after it returns). A plain store would leave the
+  quieter of the two playing for no better reason than being written second.
 - **D9 — The whole static screen comes from the editors.** Panel frame, labels
   and margin are one name-table image per platform; code draws only the well,
   the digits, the preview and the message band over the top.
@@ -974,18 +1052,48 @@ machines.
 
 ---
 
-### Phase P8 — Audio
+### Phase P8 — Audio — **done**
 
 **Goal:** SPEC §16's twelve effects.
 
-- [ ] SID driver shared by the AC6502 (`$9800`) and the C64 (`$D400`)
-- [ ] VIC-I driver against `$900A`-`$900E`
-- [ ] `AudioTick` consuming `SfxRequest`; `HalSfx` implemented three times
-- [ ] Match chime pitch rising with `chain`
-- [ ] All twelve effects wired to their events
+- [x] SID driver shared by the AC6502 (`$9800`) and the C64 (`$D400`) —
+      `include/sid.inc`, and the two differ in `SID_BASE` and nothing else
+- [x] VIC-I driver against `$900A`-`$900E`
+- [x] `AudioTick` consuming `SfxRequest`; `HalSfx` implemented three times —
+      but taking a NOTE, not an effect id. The driver above it is shared by all
+      three machines rather than by two (D22)
+- [x] Match chime pitch rising with `chain`
+- [x] All twelve effects wired to their events
 
-**Exit criteria:** every effect in SPEC §16 fires from its event on all three
-machines; audio never delays a frame; a machine with no sound card still runs.
+**Exit criteria met.** Every effect in SPEC §16 fires from its own event, played
+by the game and not by a poke: `make playtest` shifts a piece, rotates it, drops
+it, plants a board for each of the five reagents, pushes the level over, takes
+the high score and blocks a spawn, and reads the channel after each. Audio never
+delays a frame — `AudioTick` is **23 cycles** idle and **239** on the frame a
+note starts, against 16,667, measured between `AudioTick` and the top of the
+loop. A machine with no sound card runs the same game: a second emulator with
+IO 7 emptied stacks the same pile and a watchpoint over the whole SID range
+records not one write.
+
+**How the two Commodores were checked**, since their `HalSfx` is the half the
+AC6502's emulator cannot reach. VICE's `dump` sound device is not an audio
+device: it writes one line per sound-chip register write, `cycles-since-the-last
+register value`. `make audiocheck` plays one headless game on each machine and
+compares that transcript against `src/tables.inc` — every note byte for byte
+against that platform's own note table, every step against its declared frame
+count, and the two machines against each other. It covers what a game with no
+input produces, which is the lock thunk and the game-over run: `TIMBRE_NOISE`,
+`TIMBRE_SOFT`, ten notes and both ends of the table. `BRIGHT` and `BUZZ` are the
+same lookup a row over and are covered on the AC6502 at the `HalSfx` boundary
+for all four timbres and all twelve effects. It is the same limit `make
+crosscheck` has: a clear cannot be planted through VICE.
+
+| What P8 settled | Where it lands |
+|---|---|
+| A timbre is a voice **and an octave**, which is free on the VIC-I and a shift on a SID | D22, SPEC §16 |
+| The effect id is the priority, and logic asks through `SfxPlay` rather than storing | D23, SPEC §16 |
+| The SID needs a hard restart — gate down with a zeroed envelope — or it drops attacks | `include/sid.inc` |
+| Audio state is 5 bytes, not SPEC §17.1's 16 | SPEC §17.1 |
 
 ---
 

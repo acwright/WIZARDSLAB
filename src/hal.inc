@@ -67,10 +67,28 @@
 ;                       re-marked, and the animation is already marking all of
 ;                       them (anim.asm).
 ;
-;     HalSfx            Start a sound effect. May be a bare RTS until audio
-;                       exists.
-;                       In:  A = effect id (SPEC 16)
-;                       Out: nothing
+;     HalSfx            Sound ONE note, in one timbre, until told otherwise.
+;                       In:  A = TIMBRE_* (constants.inc), X = note in
+;                            semitones above C3, 0..NOTE_MAX. TIMBRE_OFF ends
+;                            whatever is sounding and ignores X.
+;                       Out: nothing.  Modifies: A, X, Y, Tmp0-Tmp2
+;                       This is NOT "play effect 4". Which effect is playing,
+;                       which step of it, how long the step lasts and what
+;                       note it is are all shared code (audio.asm), because
+;                       none of that differs between a SID and a VIC-I; what
+;                       does differ is the register values one note comes out
+;                       as, and that is the whole of this routine. SPEC 16
+;                       expected the split one level lower — a SID driver
+;                       shared by two machines and a third written twice —
+;                       and this is the same code shared by three (D22).
+;                       A timbre is a voice AND an octave: SOFT sounds an
+;                       octave below the note it is given, BUZZ at it, BRIGHT
+;                       an octave above. On a SID that is a waveform and a
+;                       shift; on the VIC-I the three tone oscillators are
+;                       already an octave apart, so it is free.
+;                       A machine with no sound card must still return: the
+;                       AC6502's is optional hardware and the game plays
+;                       silently on one that has none.
 ;
 ;   The shared code assumes nothing about interrupts. Each platform may drive
 ;   HalWaitFrame from a raster IRQ, a timer, or a status-register poll.

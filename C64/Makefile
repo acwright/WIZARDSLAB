@@ -19,7 +19,7 @@ DEBUGSTAMP = .debug-$(DEBUG)
 debugstamp:
 	@test -f $(DEBUGSTAMP) || { rm -f .debug-* $(OUTPUTS); touch $(DEBUGSTAMP); }
 
-DEPS = ../src/*.asm ../src/*.inc ../data/*.inc ../data/*.bin ../include/c64.inc
+DEPS = ../src/*.asm ../src/*.inc ../data/*.inc ../data/*.bin ../include/c64.inc ../include/sid.inc
 
 .PHONY: all build debugstamp view run smoke clean
 
@@ -39,7 +39,7 @@ run: build
 
 # Boot headless in warp for 20M cycles and leave a screenshot to look at.
 smoke: build
-	@x64sc -console -warp -limitcycles 20000000 -cart16 $(TARGET).crt \
+	@x64sc -console +saveres -warp -limitcycles 20000000 -cart16 $(TARGET).crt \
 	  -exitscreenshot $(TARGET)-screenshot.png >/dev/null 2>&1 || true
 	@test -s $(TARGET)-screenshot.png \
 	  && echo "C64: ran 20M cycles, wrote $(TARGET)-screenshot.png" \

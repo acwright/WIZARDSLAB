@@ -210,7 +210,8 @@ def commodore_well(plat, target, shot):
     emu = {"VIC20": "xvic", "C64": "x64sc"}[plat]
     cart = ["-cartA", f"{target}-blk5.crt", "-cart6", f"{target}-blk3.crt"] \
         if plat == "VIC20" else ["-cart16", f"{target}.crt"]
-    subprocess.run([emu, "-console", "-warp", "-limitcycles", COMMODORE_CYCLES,
+    subprocess.run([emu, "-console", "+saveres", "-warp",
+                    "-limitcycles", COMMODORE_CYCLES,
                     *cart, "-exitscreenshot", shot],
                    cwd=os.path.join(ROOT, plat),
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

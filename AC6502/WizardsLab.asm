@@ -500,10 +500,29 @@ VdpPutColor:
   rts
 
 ; -----------------------------------------------------------------------------
-;   HalSfx — TODO: SID at $9800. Shares a driver with the C64's $D400.
+;   HalSfx — one note on the SID at $9800 (hal.inc)
+;   In:  A = TIMBRE_*, X = note.  Out: nothing.  Modifies: A, X, Y, Tmp0-Tmp2
+;
+;   The sound card is the one piece of this machine the game uses and cannot
+;   count on — HW_PRESENT bit 6 is set by the BIOS probe at boot, and a machine
+;   with an empty IO 7 leaves it clear. Writing to an absent card's addresses
+;   is a read of a floating bus away from being harmless, and "harmless" is not
+;   a thing to build a frame on: the guard is four cycles and the game plays
+;   through in silence without it (PLAN.md P8).
 ; -----------------------------------------------------------------------------
 HalSfx:
+  pha
+  lda HW_PRESENT
+  and #HW_SID
+  beq @None
+  pla
+  jmp SidSfx                    ; include/sid.inc, shared with the C64
+@None:
+  pla
   rts
+
+SID_BASE = $9800                ; IO 7 (ac6502.inc). The C64's is $D400 and
+.include "../include/sid.inc"   ;   nothing else about the two differs
 
 ; =============================================================================
 ;   Data

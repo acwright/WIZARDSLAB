@@ -44,7 +44,7 @@ run: build
 
 # Boot headless in warp for 20M cycles and leave a screenshot to look at.
 smoke: build
-	@xvic -console -warp -limitcycles 20000000 \
+	@xvic -console +saveres -warp -limitcycles 20000000 \
 	  -cartA $(TARGET)-blk5.crt -cart6 $(TARGET)-blk3.crt \
 	  -exitscreenshot $(TARGET)-screenshot.png >/dev/null 2>&1 || true
 	@test -s $(TARGET)-screenshot.png \

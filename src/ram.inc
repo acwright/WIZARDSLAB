@@ -152,6 +152,22 @@ Region:         .res 1                  ; 0 = NTSC, 1 = PAL
 NeedsRedraw:    .res 1
 
 ; --- Audio (SPEC 16) ---------------------------------------------------------
-SfxRequest:     .res 1                  ; Written by logic, consumed by AudioTick
-SfxTimer:       .res 1
-SfxState:       .res 14
+;   Five bytes, not the sixteen SPEC 17.1 budgeted. The effect data is a step
+;   list in ROM (tables.inc) and the driver is a cursor into it, so the only
+;   thing RAM has to hold is where in that list the one playing channel is.
+SfxRequest:     .res 1                  ; Effect asked for THIS frame, or 0.
+                                        ;   Logic writes it through SfxPlay,
+                                        ;   which keeps the loudest of several
+                                        ;   in one frame; AudioTick consumes and
+                                        ;   clears it (audio.asm)
+SfxId:          .res 1                  ; Effect playing, or 0 for silence. It
+                                        ;   is also the priority a new request
+                                        ;   has to beat (constants.inc)
+SfxStepIdx:     .res 1                  ; Byte offset into SfxSteps of the NEXT
+                                        ;   step — which is why that table has
+                                        ;   to stay under 256 bytes
+SfxTimer:       .res 1                  ; Frames left in the step now sounding
+SfxShift:       .res 1                  ; Semitones added to every note of the
+                                        ;   effect playing. Zero for eleven of
+                                        ;   the twelve; the match chime sets it
+                                        ;   from the chain (SPEC 16)

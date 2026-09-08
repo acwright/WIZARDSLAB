@@ -283,7 +283,7 @@ ScoreHighCheck:
   bne @Owned
   inc HighOwned
   lda #SFX_HIGHSCORE            ; SPEC 9.8 — a longer fanfare, once
-  sta SfxRequest
+  jsr SfxPlay
   lda #HIGH_FLASH_BLINKS
   sta HighFlash
   ldx Region
@@ -357,7 +357,7 @@ ScoreLevelCheck:
   jsr AnimBannerLevel           ; SPEC 14 — and play carries straight on; the
                                 ;   band clears itself BannerFrames later
   lda #SFX_LEVELUP
-  sta SfxRequest
+  jsr SfxPlay
   lda #<BONUS_LEVELUP           ; SPEC 9.6 — an award, not a cascade point, so
   ldx #>BONUS_LEVELUP           ;   a star in the same cascade does not double
   jsr ScoreAward                ;   it (D5)

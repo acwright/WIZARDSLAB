@@ -11,9 +11,10 @@
 ;   the pile falls into the holes, chains keep going until nothing matches, all
 ;   of it scores and ramps the level, the five reagents fire and set each other
 ;   off, a clear glows and shatters on the frame clock instead of happening
-;   between two frames, and the arcade loop around all of it is closed: title,
-;   play, pause, game over, title (PLAN.md P2 to P7). What is left is the sound
-;   (P8).
+;   between two frames, the arcade loop around all of it is closed — title,
+;   play, pause, game over, title — and every event of SPEC 16 makes a noise
+;   (PLAN.md P2 to P8). The game is complete; what is left is real hardware
+;   (P10).
 ; =============================================================================
 
 ; -----------------------------------------------------------------------------
@@ -358,6 +359,11 @@ PlayLocking:
 CascadeEnter:
   jsr CascadeScan
   bcc @Settle
+  lda #SFX_MATCH                ; SPEC 16 effect 4, and the chime is pitched by
+  jsr SfxPlay                   ;   ChainStep when AudioTick starts it. A
+                                ;   reagent that fired inside the scan has
+                                ;   already asked for a louder sound and keeps
+                                ;   the channel (audio.asm)
   jmp AnimGlowBegin             ; SPEC 8 step 5
 
 @Settle:
@@ -466,7 +472,7 @@ PlayAre:
 
 @Over:
   lda #SFX_GAMEOVER
-  sta SfxRequest
+  jsr SfxPlay
   jsr AnimPetrifyBegin          ; The well turns to stone from the floor up
   lda #0                        ;   while StateGameOver holds the input off
   sta OverSecs                  ; The screen proper has not started yet — the
@@ -523,7 +529,7 @@ StateGameOver:
                                 ;   what says so, and ScoreReset clears it for
                                 ;   the next one (score.asm, SPEC 9.8)
   lda #SFX_HIGHSCORE
-  sta SfxRequest
+  jsr SfxPlay
   lda #HIGH_FLASH_BLINKS
   sta HighFlash
   ldx Region

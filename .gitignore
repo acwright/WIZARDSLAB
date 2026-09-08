@@ -34,5 +34,8 @@ Thumbs.db
 *-crosscheck.png
 *-charset.png
 
+# VICE sound register transcripts (see tools/audiocheck.py)
+*-audio.txt
+
 # DEBUG=1 build stamps (see each platform Makefile)
 .debug-*

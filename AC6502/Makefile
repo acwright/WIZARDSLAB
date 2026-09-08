@@ -19,7 +19,7 @@ DEBUGSTAMP = .debug-$(DEBUG)
 debugstamp:
 	@test -f $(DEBUGSTAMP) || { rm -f .debug-* $(OUTPUTS); touch $(DEBUGSTAMP); }
 
-DEPS = ../src/*.asm ../src/*.inc ../data/*.inc ../data/*.bin ../include/ac6502.inc
+DEPS = ../src/*.asm ../src/*.inc ../data/*.inc ../data/*.bin ../include/ac6502.inc ../include/sid.inc
 
 .PHONY: all build debugstamp view run smoke eeprom clean
 

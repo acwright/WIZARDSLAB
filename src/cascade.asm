@@ -400,13 +400,13 @@ EffectResolve:
   beq @Bolt
 
   lda #SFX_BOMB                 ; Glyph 3 — nothing else ever reaches here
-  sta SfxRequest
+  jsr SfxPlay
   jsr EffectBomb
   jmp @Bonus
 
 @Fireball:
   lda #SFX_FIREBALL
-  sta SfxRequest
+  jsr SfxPlay
   lda Board,x
   and #COLOR_MASK               ; Its own colour, which can never be wild
   pha
@@ -420,7 +420,7 @@ EffectResolve:
 
 @Bolt:
   lda #SFX_BOLT
-  sta SfxRequest
+  jsr SfxPlay
   jsr EffectBolt
 
 @Bonus:
@@ -601,7 +601,7 @@ EffectBomb:
 EffectStar:
   inc StarCount
   lda #SFX_STAR
-  sta SfxRequest
+  jsr SfxPlay
   rts
 
 ; -----------------------------------------------------------------------------
@@ -614,7 +614,7 @@ EffectStar:
 ; -----------------------------------------------------------------------------
 EffectPrism:
   lda #SFX_PRISM
-  sta SfxRequest
+  jsr SfxPlay
   lda #<BONUS_PRISM
   ldx #>BONUS_PRISM
   jmp CascadeAdd

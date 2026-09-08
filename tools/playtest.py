@@ -1933,6 +1933,423 @@ print("\nthe effect queue drained after every cascade in this run (SPEC 7.2)")
 check(f"{len(queue_left)} cascades, all of them empty at the end",
       sorted(set(queue_left)), [0])
 
+# =============================================================================
+#   P8 — audio (SPEC 16)
+# =============================================================================
+#   Sound cannot be listened to from here, so none of this listens. The step
+#   lists are read out of the cartridge's own ROM and decoded, the channel is
+#   watched frame by frame in RAM as it walks them, the (timbre, note) pairs
+#   the driver hands the platform are caught in the CPU registers at HalSfx,
+#   and the SID is watched for writes with a watchpoint over its whole
+#   register range. What is being checked at each level is a number.
+#
+#   The one thing that is NOT checkable here is what it sounds like on a
+#   Commodore, because this emulator is the AC6502's. `make audiocheck`
+#   records VICE's own audio output to a WAV and measures the pitch that comes
+#   out of it — see tools/audiocheck.py.
+
+SFX = {"move": 1, "rotate": 2, "lock": 3, "match": 4, "fireball": 5,
+       "bolt": 6, "bomb": 7, "star": 8, "prism": 9, "levelup": 10,
+       "highscore": 11, "gameover": 12}                     # SPEC 16
+TIMBRE_OFF, TIMBRE_SOFT, TIMBRE_BUZZ = 0, 1, 2              # constants.inc
+TIMBRE_BRIGHT, TIMBRE_NOISE = 3, 4
+NOTE_MAX = 36                                               # C6
+SFX_CHAIN_SHIFT, SFX_CHAIN_MAX = 2, 8
+SFX_STEP_BYTES = 3
+
+
+def rom(name, length):
+    return list(base64.b64decode(rpc("mem.read", {
+        "space": "cpu", "address": syms[name], "length": length})["data"]))
+
+
+SFX_OFFSETS = rom("SfxOffsets", len(SFX))
+SFX_BYTES = rom("SfxSteps", 200)
+
+
+def sfx_script(effect):
+    """The step list for one effect, straight out of the cartridge's ROM."""
+    o, out = SFX_OFFSETS[effect - 1], []
+    while SFX_BYTES[o]:
+        out.append(tuple(SFX_BYTES[o:o + SFX_STEP_BYTES]))
+        o += SFX_STEP_BYTES
+    return out
+
+
+def sfx_ask(effect):
+    """Ask for an effect the way logic does, from a screen that makes no noise.
+
+    The channel is cleared first: a request only takes it when its id is at
+    least the id of whatever is playing, which is the point of half the checks
+    below and would silently swallow the other half.
+    """
+    poke("SfxId", 0)
+    poke("SfxTimer", 0)
+    poke("SfxRequest", effect)
+
+
+def sfx_settle(limit=90):
+    """Let whatever is playing finish, so the next measurement starts silent."""
+    for _ in range(limit):
+        if peek("SfxId") == 0:
+            return
+        frames(1)
+    raise RuntimeError("the channel never fell silent")
+
+
+def sfx_play(effect, limit=140):
+    """Ask for an effect and watch it play out, a frame at a time.
+
+    Returns the frames each STEP lasted, and how many frames the whole thing
+    took to fall silent. AudioTick runs at the bottom of the frame, so the
+    frame that consumes the request is also the frame the first step starts
+    sounding on.
+    """
+    sfx_ask(effect)
+    runs, silent = [], None
+    for f in range(1, limit + 1):
+        frames(1)
+        if peek("SfxId") == 0:
+            silent = f - 1                      # The frame BEFORE this one was
+            break                               #   the last one sounding
+        idx = peek("SfxStepIdx")
+        if runs and runs[-1][0] == idx:
+            runs[-1][1] += 1
+        else:
+            runs.append([idx, 1])
+    return [r[1] for r in runs], silent
+
+
+def sfx_notes(effect, limit=40):
+    """Every (timbre, note) the driver hands the platform, in order.
+
+    Caught in A and X at HalSfx, which is the boundary itself (hal.inc): what
+    is read here is what the sound chip is about to be told, not what the
+    tables say it should be. The run ends at TIMBRE_OFF, which is the driver
+    letting the channel go and is a call like any other.
+    """
+    sfx_ask(effect)
+    out = []
+    for _ in range(limit):
+        rpc("exec.runTo", {"address": syms["HalSfx"], "timeout": "5s"})
+        r = rpc("reg.get")
+        out.append((r["A"], r["X"]))
+        if r["A"] == TIMBRE_OFF:
+            break
+    return out
+
+
+print("\nSPEC 16 — twelve effects, and the cartridge carries all twelve")
+scripts = {n: sfx_script(i) for n, i in SFX.items()}
+check("every id has a step list", sorted(len(v) > 0 for v in scripts.values()),
+      [True] * len(SFX))
+check("every step names a legal timbre, and all four are used",
+      sorted({s[1] for v in scripts.values() for s in v}),
+      [TIMBRE_SOFT, TIMBRE_BUZZ, TIMBRE_BRIGHT, TIMBRE_NOISE])
+check("every note is inside both note tables",
+      max(s[2] for v in scripts.values() for s in v) <= NOTE_MAX, True)
+check("no step lasts zero frames",
+      min(s[0] for v in scripts.values() for s in v) >= 1, True)
+#   SfxStepIdx is a byte offset, so the whole table has to fit one (tables.inc)
+used = max(SFX_OFFSETS) + SFX_STEP_BYTES * len(scripts["gameover"]) + 1
+check("the step table fits a byte offset", used <= 255, True)
+print(f"  ({used} bytes of step data, 12 effects, "
+      f"{sum(len(v) for v in scripts.values())} steps)")
+
+print("\n...and each one plays its own list, step for step, on the frame clock")
+to_title()                                      # Nothing on the title screen
+frames(2)                                       #   asks for a sound of its own
+for name, i in SFX.items():
+    want = [s[0] for s in scripts[name]]
+    got, silent = sfx_play(i)
+    check(f"{name} plays {len(want)} steps of {want}", got, want)
+    check(f"...and falls silent after exactly {sum(want)} frames",
+          silent, sum(want))
+
+print("\n...and what reaches the hardware is the note the table wrote (hal.inc)")
+for name in ("lock", "star", "gameover"):
+    want = [(s[1], s[2]) for s in scripts[name]] + [(TIMBRE_OFF, 0)]
+    check(f"{name} hands over {len(want)} (timbre, note) pairs",
+          sfx_notes(SFX[name]), want)
+
+print("\nSPEC 16 effect 4 — the match chime's pitch rises with the chain")
+base = [s[2] for s in scripts["match"]]
+pitched = {}
+for chain in (1, 2, 3, 5, 9):
+    poke("ChainStep", chain)
+    pitched[chain] = [n for _, n in sfx_notes(SFX["match"])[:len(base)]]
+for chain in (1, 2, 3, 5):
+    shift = min((chain - 1) * SFX_CHAIN_SHIFT, SFX_CHAIN_MAX)
+    check(f"chain {chain} is {shift} semitones up",
+          pitched[chain], [n + shift for n in base])
+check("...and it stops rising at SFX_CHAIN_MAX rather than running away",
+      pitched[9], pitched[5])
+check("every pitched note is still inside the note table",
+      max(n for v in pitched.values() for n in v) <= NOTE_MAX, True)
+
+print("\n...and the cap really is what keeps it in the table")
+#   The transposed note is clamped as well as the shift, which is the belt to
+#   that braces: SfxStep will not index a note table off the end whatever the
+#   chain does. Proved by pushing the shift past the top note by hand.
+to_title()
+frames(2)
+poke("ChainStep", 1)
+sfx_ask(SFX["match"])
+frames(1)                                       # SfxBegin has run and set the
+poke("SfxShift", 200)                           #   shift; push it past the top
+rpc("exec.runTo", {"address": syms["HalSfx"], "timeout": "5s"})
+check("a note past C6 clamps to C6", rpc("reg.get")["X"], NOTE_MAX)
+
+print("\nthe id is the priority: a quieter event does not talk over a louder one")
+to_title()
+frames(2)
+sfx_ask(SFX["gameover"])
+frames(2)
+poke("SfxRequest", SFX["move"])
+frames(1)
+check("a move blip is dropped mid game-over run", peek("SfxId"), SFX["gameover"])
+check("...and the request is consumed, not queued for later",
+      peek("SfxRequest"), 0)
+poke("SfxRequest", SFX["bomb"])
+frames(1)
+check("...but a bomb is not louder than a game over either", peek("SfxId"),
+      SFX["gameover"])
+
+print("\n...and a louder one takes the channel off it")
+sfx_ask(SFX["move"])
+frames(1)
+poke("SfxRequest", SFX["bomb"])
+frames(1)
+check("the bomb interrupts the blip", peek("SfxId"), SFX["bomb"])
+check("...from its own first step", peek("SfxStepIdx"),
+      SFX_OFFSETS[SFX["bomb"] - 1] + SFX_STEP_BYTES)
+
+print("\nevery one of the twelve fires from its own event (P8 exit criteria)")
+#   Not from a poke: each line below plays the game into the event and reads
+#   the channel afterwards. `fired` is the whole set of ids that reached it.
+
+
+def fired(limit, held=(), before=None):
+    """Every effect the channel played over the next `limit` frames."""
+    poke("SfxId", 0)
+    poke("SfxRequest", 0)
+    if before:
+        before()
+    seen = []
+    for _ in range(limit):
+        frames(1, held)
+        i = peek("SfxId")
+        if i and (not seen or seen[-1] != i):
+            seen.append(i)
+    return seen
+
+
+def play_from(cells, chain=1, limit=200):
+    """Plant a board, kick the cascade, and collect what it sounded."""
+    set_board(cells)
+    poke("SfxId", 0)
+    poke("SfxRequest", 0)
+    kick(chain)
+    seen, used = [], 0
+    while used < limit:
+        frames(1)
+        used += 1
+        i = peek("SfxId")
+        if i and (not seen or seen[-1] != i):
+            seen.append(i)
+        if peek("PlayState") == PLAY_ARE:
+            break
+    queue_left.append(peek("EffectQTail") - peek("EffectQHead"))
+    return seen
+
+
+poke("GameState", STATE_PLAY)
+poke("PlayState", PLAY_FALLING)
+set_board({})
+redraw()
+frames(3)
+check("1 move — a shift left blips", SFX["move"] in fired(2, ["left"]), True)
+frames(3)
+check("2 rotate — UP is edge triggered and so is the sound",
+      SFX["rotate"] in fired(2, ["up"]), True)
+check("3 lock — a piece reaching the floor thunks",
+      SFX["lock"] in fired(90, ["down"]), True)
+
+check("4 match — three of a colour chime",
+      SFX["match"] in play_from({(15, 0): RED, (15, 1): RED, (15, 2): RED}),
+      True)
+check("5 fireball", SFX["fireball"] in play_from(
+      {(15, 0): RED, (15, 1): RED, (15, 2): RED + GLYPH_FIREBALL,
+       (12, 4): RED}), True)
+check("6 bolt", SFX["bolt"] in play_from(
+      {(15, 0): BLUE, (15, 1): BLUE, (15, 2): BLUE + GLYPH_BOLT,
+       (12, 4): GREEN}), True)
+check("7 bomb", SFX["bomb"] in play_from(
+      {(15, 0): BLUE, (15, 1): BLUE, (15, 2): BLUE + GLYPH_BOMB,
+       (13, 4): GREEN}), True)
+check("8 star", SFX["star"] in play_from(
+      {(15, 0): GREEN, (15, 1): GREEN, (15, 2): GREEN + GLYPH_STAR}), True)
+check("9 prism", SFX["prism"] in play_from(
+      {(15, 0): CYAN, (15, 1): WILD, (15, 2): CYAN, (15, 3): CYAN}), True)
+
+set_score(0)
+set_high(999999)
+poke("Level", 1)
+poke("TilesCleared", 28)                        # LEVEL_TILES is 30 (SPEC 10.1)
+check("10 level up", SFX["levelup"] in play_from(
+      {(15, c): RED for c in range(3)}), True)
+
+set_score(0)
+set_high(20)                                    # A run of three at chain 1 is
+poke("HighOwned", 0)                            #   60 points (SPEC 9.1, 9.3)
+check("11 new high score", SFX["highscore"] in play_from(
+      {(15, c): RED for c in range(3)}), True)
+
+set_board({(r, SPAWN_COL): RED for r in range(4)})
+poke("AreTimer", 1)
+poke("PlayState", PLAY_ARE)
+check("12 game over — a blocked spawn", SFX["gameover"] in fired(4), True)
+
+print("\n...and when several are asked for in one frame, the loudest wins")
+#   This is the whole reason logic goes through SfxPlay rather than storing
+#   into SfxRequest. A reagent is resolved INSIDE CascadeScan and the match
+#   chime is asked for AFTER it returns (cascade.asm, main.asm), so a plain
+#   store would leave the chime playing and the bomb silent — the quieter of
+#   the two, picked for no better reason than being written second.
+poke("GameState", STATE_PLAY)
+sounded = play_from({(15, 0): BLUE, (15, 1): BLUE, (15, 2): BLUE + GLYPH_BOMB,
+                     (13, 4): GREEN})
+check("the bomb is heard and the chime it arrived with is not",
+      (SFX["bomb"] in sounded, SFX["match"] in sounded[:1]), (True, False))
+
+print("\nthe writes reach the chip: a watchpoint on every SID register (SPEC C.1)")
+#   One watchpoint per register rather than one over the range, so the answer
+#   is WHICH registers a sound touches and not how many writes it made. The
+#   count is no use for the second question anyway: the emulator's hit counter
+#   under-reports badly — voice 1's volume register is written once a note and
+#   showed 3 hits across eight of them — so everything below reads it as a
+#   yes/no and never as a total (PLAN.md section 3).
+SID_BASE = 0x9800                               # ac6502.inc, SPEC C.1
+SID_VOICE1 = [0, 1, 2, 3, 4, 5, 6]              # freq, pulse width, control,
+SID_MASTER_VOL = 24                             #   attack/decay, sustain/release
+rpc("bp.clear")
+sid_bp = {off: rpc("bp.set", {"address": SID_BASE + off,
+                              "kind": "write"})["id"] for off in range(25)}
+
+
+def sid_hits():
+    live = {b["id"]: b["hits"] for b in rpc("bp.list")["breakpoints"]}
+    return {off: live[i] for off, i in sid_bp.items()}
+
+
+to_title()
+sfx_settle()
+before = sid_hits()
+frames(30)
+check("silence writes to no register at all",
+      [o for o, h in sid_hits().items() if h != before[o]], [])
+sfx_ask(SFX["gameover"])
+frames(60)
+after = sid_hits()
+check("a run of notes writes voice 1 and the master volume, and NOTHING else",
+      sorted(o for o, h in after.items() if h > before[o]),
+      SID_VOICE1 + [SID_MASTER_VOL])
+#   The gap in that list is the point as much as the list is: offsets 7-20 are
+#   voices 2 and 3 and 21-23 the filter, and the game plays one voice by design
+#   (audio.asm), so a driver that had quietly spread across three would show up
+#   here as extra offsets rather than as a sound nobody could describe.
+rpc("bp.clear")
+
+print("\naudio never delays a frame (P8 exit criteria)")
+
+
+def audio_cycles():
+    """Cycles from entering AudioTick to reaching the top of the loop."""
+    rpc("exec.runTo", {"address": syms["AudioTick"], "timeout": "5s"})
+    c0 = cycles()
+    rpc("exec.runTo", {"address": syms["GameLoop"], "timeout": "5s"})
+    return cycles() - c0
+
+
+to_title()
+sfx_settle()
+idle = max(audio_cycles() for _ in range(4))
+sfx_ask(SFX["fireball"])                        # Its steps are two frames each,
+busy = max(audio_cycles() for _ in range(10))   #   so a note starts every other
+check("an idle frame costs under 40 cycles", idle < 40, True)
+check("...and the busiest one under 400", busy < 400, True)
+print(f"  (idle {idle} cycles, a frame that starts a note {busy}, "
+      f"against a 16667-cycle frame)")
+
+# -----------------------------------------------------------------------------
+#   ...and a machine with no sound card still plays the game (P8 exit criteria)
+# -----------------------------------------------------------------------------
+#   The AC6502's sound card is optional hardware: the BIOS probe clears
+#   HW_PRESENT bit 6 when IO 7 is empty and HalSfx returns without touching a
+#   thing. That cannot be tested on the machine above, which has one fitted, so
+#   this is a second emulator with the slot emptied — the same cartridge, and
+#   the game has to reach play and stack pieces exactly as it does with sound.
+
+print("\nSPEC 16 — a machine with no sound card runs the same game in silence")
+NOSID_PORT = 8772
+require_free_port(NOSID_PORT)
+mute = subprocess.Popen(
+    ["6502", "run", "--headless", "--console", "video", "--pause",
+     "--empty", "sound", "--cart", CART,
+     "--debug", "--debug-port", str(NOSID_PORT), "--debug-token", TOKEN,
+     "--timeout", "120s", "--quiet"],
+    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+atexit.register(mute.terminate)
+
+
+def mrpc(method, params=None):
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method,
+                       "params": params or {}}).encode()
+    req = urllib.request.Request(f"http://127.0.0.1:{NOSID_PORT}/rpc", data=body,
+                                 headers={"Content-Type": "application/json",
+                                          "Authorization": f"Bearer {TOKEN}"})
+    r = json.loads(urllib.request.urlopen(req, timeout=30).read())
+    if "error" in r:
+        raise RuntimeError(f"{method}: {r['error']}")
+    return r["result"]
+
+
+for _ in range(80):
+    try:
+        mrpc("session.info")
+        break
+    except Exception:
+        time.sleep(0.25)
+
+#   The BIOS probes IO 7 before the cartridge ever runs and writes to it while
+#   deciding there is nothing there, so the watchpoint goes on AFTER boot: what
+#   is being asked is whether the GAME writes to an absent card, not whether
+#   anything ever does.
+for _ in range(30):
+    mrpc("exec.runTo", {"address": syms["GameLoop"], "timeout": "5s"})
+mrpc("bp.set", {"address": 0x9800, "end": 0x9818, "kind": "write"})
+for _ in range(24):                             # ~1400 frames, in chunks: a
+    mrpc("exec.runCycles", {"cycles": 1000000}) #   piece takes 600 to fall at
+                                                #   level 1 and the point is the
+                                                #   pile, not the frame count
+
+
+def mpeek(name, length=1):
+    return base64.b64decode(mrpc("mem.read", {
+        "space": "cpu", "address": syms[name], "length": length})["data"])
+
+
+check("HW_PRESENT says there is no sound card",
+      base64.b64decode(mrpc("mem.read", {"space": "cpu", "address": 0x030D,
+                                         "length": 1})["data"])[0] & 0x40, 0)
+check("the game is playing", mpeek("GameState")[0], STATE_PLAY)
+mute_board = mpeek("Board", 160)
+check("pieces have stacked up",
+      len([i for i in range(128) if mute_board[i] not in (0, 0xFF)]) >= 3, True)
+check("nothing was written to the empty slot",
+      mrpc("bp.list")["breakpoints"][0]["hits"], 0)
+mute.terminate()
+
 print()
 print(f"{len(fails)} FAILED: {fails}" if fails else "all checks passed")
 proc.terminate()

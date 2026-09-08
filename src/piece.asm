@@ -181,7 +181,7 @@ PieceMoveLeft:
   bne @No
   jsr RenderPieceErase
   dec PieceCol
-  jmp PieceMoved
+  jmp PieceShifted
 
 @No:
   clc
@@ -196,10 +196,22 @@ PieceMoveRight:
   bne @No
   jsr RenderPieceErase
   inc PieceCol
-  jmp PieceMoved
+  jmp PieceShifted
 @No:
   clc
   rts
+
+; -----------------------------------------------------------------------------
+;   PieceShifted — a horizontal move landed (SPEC 16 effect 1)
+;   Out: C set.  Modifies: A
+;   Separate from PieceMoved because gravity goes through THAT and a row of
+;   falling makes no noise: the blip belongs to the player's hand, not to the
+;   piece changing cells.
+; -----------------------------------------------------------------------------
+PieceShifted:
+  lda #SFX_MOVE
+  jsr SfxPlay
+  ; falls through
 
 ; -----------------------------------------------------------------------------
 ;   PieceMoved — mark the piece for redraw and report success
@@ -227,7 +239,8 @@ PieceRotate:
   sta PieceC
   lda #1
   sta PieceDirty
-  rts
+  lda #SFX_ROTATE               ; SPEC 16 effect 2 — both directions, one sound
+  jmp SfxPlay
 
 PieceRotateBack:
   lda PieceC
@@ -238,7 +251,8 @@ PieceRotateBack:
   sta PieceA
   lda #1
   sta PieceDirty
-  rts
+  lda #SFX_ROTATE
+  jmp SfxPlay
 
 ; -----------------------------------------------------------------------------
 ;   PieceCanFall — is the cell below C free?
@@ -293,7 +307,9 @@ PieceLock:
   jsr RenderPiece
   lda #0
   sta PieceDirty                ; It is board now; nothing owes it a redraw
-  rts
+  lda #SFX_LOCK                 ; SPEC 16 effect 3. A match in the same frame is
+  jmp SfxPlay                   ;   louder and takes the channel off it
+                                ;   (audio.asm)
 
 ; -----------------------------------------------------------------------------
 ;   PieceFallRate — frames per row for this frame

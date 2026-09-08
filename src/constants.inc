@@ -247,6 +247,63 @@ HIGH_INIT_MID       = $00
 HIGH_INIT_HI        = $01
 HIGH_INIT_TOP       = $00
 
+; --- Audio (SPEC 16) ---------------------------------------------------------
+;   Twelve effects, one channel. The id IS the priority: SPEC 16 lists them
+;   from the quietest event to the loudest, so a request takes the channel only
+;   when its id is at least the id of whatever is already playing, and a
+;   fireball is never talked over by the blip of the move that set it off
+;   (audio.asm).
+SFX_MOVE            = 1
+SFX_ROTATE          = 2
+SFX_LOCK            = 3
+SFX_MATCH           = 4
+SFX_FIREBALL        = 5
+SFX_BOLT            = 6
+SFX_BOMB            = 7
+SFX_STAR            = 8
+SFX_PRISM           = 9
+SFX_LEVELUP         = 10
+SFX_HIGHSCORE       = 11
+SFX_GAMEOVER        = 12
+SFX_COUNT           = 12
+
+SFX_STEP_BYTES      = 3         ; frames, timbre, note (tables.inc)
+SFX_CHAIN_SHIFT     = 2         ; Semitones the match chime rises per chain
+SFX_CHAIN_MAX       = 8         ;   link, and the most it ever rises (SPEC 16)
+
+;   A step names a TIMBRE, not a waveform, because the two sound chips have
+;   nothing in common below that level. A timbre is a voice AND an octave:
+;   SOFT sounds an octave below the written note, BUZZ at it, BRIGHT an octave
+;   above. On a SID that is a waveform plus a shift of the frequency; on the
+;   VIC-I it is a choice between three oscillators that are already an octave
+;   apart, so the octave costs nothing there at all (hal.inc).
+TIMBRE_OFF          = 0         ; Silence — the note is ignored
+TIMBRE_SOFT         = 1         ; triangle / VIC bass       — an octave down
+TIMBRE_BUZZ         = 2         ; sawtooth / VIC alto       — as written
+TIMBRE_BRIGHT       = 3         ; pulse    / VIC soprano    — an octave up
+TIMBRE_NOISE        = 4         ; noise    / VIC noise
+TIMBRE_COUNT        = 5
+
+;   A note is a count of semitones above C3, so one number means the same pitch
+;   on both sound chips and each platform keeps its own NOTE_MAX + 1 entry
+;   table to turn it into register values. Write a note as an octave plus a
+;   degree — OCT_4 + SEMI_G is G4.
+OCT_3               = 0
+OCT_4               = 12
+OCT_5               = 24
+OCT_6               = 36
+SEMI_C              = 0
+SEMI_D              = 2
+SEMI_E              = 4
+SEMI_F              = 5
+SEMI_G              = 7
+SEMI_A              = 9
+SEMI_B              = 11
+NOTE_MAX            = 36        ; C6, the top of both note tables. A chain
+                                ;   transposing the match chime past it is
+                                ;   clamped rather than allowed to index off
+                                ;   the end (audio.asm)
+
 ; --- Reagent probability, out of 256 (SPEC 5.3) ------------------------------
 PSPECIAL_BANDS      = 5
 
