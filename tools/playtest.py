@@ -1685,14 +1685,12 @@ def to_title(silent=True):
     poke("GameState", STATE_TITLE)
     poke("NeedsRedraw", 1)
     frames(3)                                   # Blit, reset, first live frame
+    poke("SfxId", 0)                            # Whatever the section before
+    poke("SfxTimer", 0)                         #   this one left sounding is
+                                                #   over, as far as the driver
+                                                #   is concerned
     if silent:
         poke("SfxLevel", 0)
-        poke("SfxId", 0)                        # ...and drop whatever bubble
-        poke("SfxTimer", 0)                     #   was already in flight —
-                                                #   AMB_GAP_MIN says there is
-                                                #   not one yet, but that is the
-                                                #   ambience's business and not
-                                                #   this helper's
 
 
 print("\nSPEC 13.1 — the title screen IS the drawn image, plus two moving things")
@@ -1985,9 +1983,13 @@ def rom(name, length):
 #   are not events (src/constants.inc). They share the table, so they count
 #   against the byte offset it has to fit in, and reading only the twelve would
 #   leave that check measuring the wrong table.
-AMB = {"bubble": 13, "gloop": 14, "seethe": 15}
+SFX_START = 13                                  # A thirteenth event, above the
+                                                #   twelve because a game that
+                                                #   just started is the loudest
+                                                #   thing that has happened yet
+AMB = {"bubble": 14, "gloop": 15, "seethe": 16}
 SFX_CAULDRON = min(AMB.values())
-SFX_OFFSETS = rom("SfxOffsets", len(SFX) + len(AMB))
+SFX_OFFSETS = rom("SfxOffsets", len(SFX) + 1 + len(AMB))
 SFX_BYTES = rom("SfxSteps", 250)
 AMB_ENTRIES = 32                                # src/constants.inc
 AMB_TABLE = rom("AmbTable", AMB_ENTRIES)        # The mix (src/tables.inc)
@@ -2078,12 +2080,13 @@ check("every note is inside both note tables",
 check("no step lasts zero frames",
       min(s[0] for v in scripts.values() for s in v) >= 1, True)
 #   SfxStepIdx is a byte offset, so the whole table has to fit one (tables.inc)
-all_scripts = dict(scripts, **{n: sfx_script(i) for n, i in AMB.items()})
+all_scripts = dict(scripts, start=sfx_script(SFX_START),
+                   **{n: sfx_script(i) for n, i in AMB.items()})
 last = max(all_scripts, key=lambda n: SFX_OFFSETS[
-    dict(SFX, **AMB)[n] - 1])
+    dict(SFX, start=SFX_START, **AMB)[n] - 1])
 used = max(SFX_OFFSETS) + SFX_STEP_BYTES * len(all_scripts[last]) + 1
 check("the step table fits a byte offset", used <= 255, True)
-print(f"  ({used} bytes of step data, 12 effects and {len(AMB)} cauldron "
+print(f"  ({used} bytes of step data, 13 effects and {len(AMB)} cauldron "
       f"sounds, {sum(len(v) for v in all_scripts.values())} steps)")
 
 print("\n...and each one plays its own list, step for step, on the frame clock")
@@ -2369,7 +2372,7 @@ check("every note it plays reaches the platform quiet",
 check("...and under the bit is one of the five timbres, a rest included",
       [a for a in sounded if a & TIMBRE_MASK >= TIMBRE_COUNT], [])
 
-print("\n...and the game starting stops it dead")
+print("\n...and the game starting stops it dead, over the top of it")
 to_title(silent=False)
 for _ in range(60):                             # Wait for it to be mid-sound,
     frames(1)                                   #   so the cut has something to
@@ -2379,8 +2382,42 @@ check("something is sounding when FIRE is pressed", peek("SfxId") != 0, True)
 frames(2, ["a"])                                # PRESS FIRE (SPEC 13.1)
 check("the game is playing", peek("GameState"), STATE_PLAY)
 check("...the channel is back to full volume", peek("SfxLevel"), 0)
-check("...and whatever was bubbling was cut rather than left to finish",
-      peek("SfxId"), 0)
+check("...and the bubble was cut, not left to finish: the run that starts a "
+      "game has the channel", peek("SfxId"), SFX_START)
+
+# =============================================================================
+#   The thirteenth effect — a game announcing itself (src/tables.inc)
+# =============================================================================
+#   SPEC 16 has twelve and none of them is the transition that matters most:
+#   the screen changes, a piece is already falling, and nothing says so. This
+#   one is the GAME-OVER RUN BACKWARDS, which is a claim about a table and can
+#   therefore be checked against the table rather than described.
+
+print("\nSPEC 16 has no start sound; this is the loss run, climbed")
+start, over = sfx_script(SFX_START), scripts["gameover"]
+check("its notes are the game-over run's, in the other order",
+      [s[2] for s in start], [s[2] for s in over][::-1])
+check("...in the other voice, so no one mistakes the two for each other",
+      ({s[1] for s in start}, {s[1] for s in over}),
+      ({TIMBRE_BRIGHT}, {TIMBRE_SOFT}))
+check("...and over quicker, because a piece is already falling under it",
+      sum(s[0] for s in start) < sum(s[0] for s in over), True)
+print(f"  ({sum(s[0] for s in start)} frames against the loss run's "
+      f"{sum(s[0] for s in over)}, same eight notes)")
+
+#   It is the top of the priority order (src/constants.inc) for one reason: the
+#   player can steer the first piece while it is still going, and a move blip
+#   cutting the game's own opening in half would be the first thing they hear.
+to_title()
+sfx_ask(SFX_START)
+frames(2)
+poke("SfxRequest", SFX["move"])
+frames(1)
+check("a move blip does not cut across it", peek("SfxId"), SFX_START)
+poke("SfxRequest", SFX["gameover"])
+frames(1)
+check("...and nothing else does either, not even a game over",
+      peek("SfxId"), SFX_START)
 
 # -----------------------------------------------------------------------------
 #   ...and a machine with no sound card still plays the game (P8 exit criteria)

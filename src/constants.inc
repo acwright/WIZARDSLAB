@@ -252,7 +252,8 @@ HIGH_INIT_TOP       = $00
 ;   from the quietest event to the loudest, so a request takes the channel only
 ;   when its id is at least the id of whatever is already playing, and a
 ;   fireball is never talked over by the blip of the move that set it off
-;   (audio.asm).
+;   (audio.asm). Two things have been added above the twelve since — read on;
+;   the ordering rule is what decides where they go and it decides it easily.
 SFX_MOVE            = 1
 SFX_ROTATE          = 2
 SFX_LOCK            = 3
@@ -265,19 +266,27 @@ SFX_PRISM           = 9
 SFX_LEVELUP         = 10
 SFX_HIGHSCORE       = 11
 SFX_GAMEOVER        = 12
-SFX_COUNT           = 12
+SFX_COUNT           = 12        ; ...which is where SPEC 16's list ends
 
-;   ...and three that are NOT events. The title screen's ambience is built out
-;   of the same step lists as everything else (tables.inc), so its sounds need
-;   ids to be indexed by, and the ids have to sit above the twelve because that
-;   is where the table has room. They are therefore the LOUDEST ids in the game,
-;   which would be exactly wrong if anything ever asked for one: nothing may.
-;   The ambience calls SfxBeginShifted directly, on a frame where the channel
-;   is already known to be silent, and never goes near SfxPlay (ambience.asm).
-SFX_BUBBLE          = 13        ; A bloop rising out of the cauldron
-SFX_GLOOP           = 14        ; ...a heavier one turning over, and falling
-SFX_SEETHE          = 15        ; ...and the churn underneath both
-SFX_CAULDRON        = 13        ; The first of the three. An id below this one
+;   A THIRTEENTH EVENT that SPEC 16 does not have: the game announcing itself.
+;   It is above the game-over run in the ordering deliberately — a game that
+;   has just started is the loudest thing that has ever happened on this
+;   machine, and nothing may talk over it, least of all the blip of the first
+;   move the player makes while it is still going.
+SFX_START           = 13
+
+;   ...and three that are NOT EVENTS AT ALL. The title screen's ambience is
+;   built out of the same step lists as everything else (tables.inc), so its
+;   sounds need ids to be indexed by, and the ids have to sit above the events
+;   because that is where the table has room. They are therefore the LOUDEST
+;   ids in the game, which would be exactly wrong if anything ever asked for
+;   one: nothing may. The ambience calls SfxBeginShifted directly, on a frame
+;   where the channel is already known to be silent, and never goes near
+;   SfxPlay (ambience.asm).
+SFX_BUBBLE          = 14        ; A bloop rising out of the cauldron
+SFX_GLOOP           = 15        ; ...a heavier one turning over, and falling
+SFX_SEETHE          = 16        ; ...and the churn underneath both
+SFX_CAULDRON        = 14        ; The first of the three. An id below this one
                                 ;   that the ambience plays was borrowed from
                                 ;   the game and earns the longer gap after it
                                 ;   (AMB_GAP_EVENT); one at or above it is the

@@ -189,6 +189,20 @@ checkboxes and the "Current Status" section as work progresses.**
   **If it stays, SPEC §13.1 and §16 need it** — §13.1 says the prompt and the
   field are the only things happening on that screen, and §16 says the twelve
   effects are all there is.
+- **...and so does starting a game**, which had no sound at all. `SFX_START` is
+  a thirteenth effect and it is the game-over run climbed rather than fallen —
+  same eight notes, opposite direction, bright instead of soft and half again
+  as quick (D25). It sits ABOVE the game-over run in the priority order so the
+  first move the player makes cannot blip through it, which pushed the three
+  ambience ids to 14-16. It also closed a real hole in `make audiocheck`: a
+  headless game now plays a `TIMBRE_BRIGHT` effect, so that timbre is checked
+  register for register on both Commodores for the first time — it used to be
+  covered on the AC6502 only. The one thing that check had to be taught is that
+  the DEBUG cartridge starts its game on the machine's first main-loop passes,
+  before the frame clock has settled, so the start run's first steps measure
+  short there; the shipped cartridge is on the title screen at that point and
+  the first sound IT makes keeps exact time. **SPEC §16 does not have a
+  thirteenth effect either.**
 - Next: **P10 — hardware and release.** The game is complete and everything
   left is a real machine.
 
@@ -676,6 +690,19 @@ the implementation ones that SPEC.md does not cover.
   going there carries the choice. Every `HalSfx` masks it off first, and the
   channel lets go at the level it was playing at — a full-volume release on a
   quiet note is a click at the end of every bubble.
+- **D25 — A game announces itself with the game-over run backwards.** SPEC §16
+  has twelve effects and none of them covers the transition that matters most:
+  the screen changes, a piece is already falling, and nothing says so.
+  `SFX_START` is the eight notes of the game-over run in the other order, and
+  the two things about it that are NOT mirrored are the point — `TIMBRE_BRIGHT`
+  rather than `SOFT`, which puts it two octaves above its twin, and three
+  frames a step rather than six, because a loss may take its time and a start
+  may not. A scale and not an arpeggio, which is what keeps it clear of the two
+  fanfares. **It is id 13, above the game-over run**, because the id is the
+  priority (D23) and the player can steer the first piece while it is still
+  playing: a move blip cutting the game's own opening in half would be the
+  first thing they ever hear. The three ambience ids moved up to 14-16 to make
+  room, which is the whole cost of the ordering being meaningful.
 - **D9 — The whole static screen comes from the editors.** Panel frame, labels
   and margin are one name-table image per platform; code draws only the well,
   the digits, the preview and the message band over the top.

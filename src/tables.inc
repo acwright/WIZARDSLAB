@@ -151,9 +151,9 @@ TriggerBonusHi:
 ;   and lifted by its timbre instead. TIMBRE_BRIGHT is already an octave up.
 ;
 ;   SfxStepIdx is a byte offset into SfxSteps, so this table has to stay under
-;   256 bytes. It is 171 — 144 for SPEC 16's twelve, and 27 for the three at
-;   the bottom that belong to the title screen's ambience rather than to the
-;   game (constants.inc, ambience.asm).
+;   256 bytes. It is 196 — 144 for SPEC 16's twelve, 25 for the thirteenth that
+;   starts a game, and 27 for the three at the bottom that belong to the title
+;   screen's ambience rather than to the game (constants.inc, ambience.asm).
 
 SfxOffsets:                             ; Indexed by (SFX_* id - 1)
   .byte SfxMove     - SfxSteps
@@ -168,7 +168,8 @@ SfxOffsets:                             ; Indexed by (SFX_* id - 1)
   .byte SfxLevelUp  - SfxSteps
   .byte SfxHighScore- SfxSteps
   .byte SfxGameOver - SfxSteps
-  .byte SfxBubble   - SfxSteps          ; 13-15 are the title screen's, and are
+  .byte SfxStart    - SfxSteps          ; 13 is an event SPEC 16 does not have
+  .byte SfxBubble   - SfxSteps          ; 14-16 are the title screen's, and are
   .byte SfxGloop    - SfxSteps          ;   not events — see the ambience at the
   .byte SfxSeethe   - SfxSteps          ;   bottom of this file
 
@@ -253,6 +254,39 @@ SfxGameOver:                            ; 12 — descending minor run    58 fram
   .byte  6, TIMBRE_SOFT,   OCT_3 + SEMI_B
   .byte 16, TIMBRE_SOFT,   OCT_3 + SEMI_A
   .byte  0
+
+; --- ...and the thirteenth, which is that one backwards ----------------------
+;   The game announcing itself (constants.inc). SPEC 16 has no such effect and
+;   the game had no sound at all for the transition that matters most: the
+;   screen changes, a piece is already falling, and nothing says so.
+;
+;   It is the GAME-OVER RUN CLIMBED — the same eight notes of A minor in the
+;   other order, so the game opens with the phrase that will close it, played
+;   backwards. Two things about it are not mirrored, and both are the point:
+;
+;     BRIGHT, not SOFT. A timbre is a voice and an octave (constants.inc), so
+;     the same written notes come out two octaves above the game-over run
+;     rather than beside it. The contour is the quotation; the colour is what
+;     says which end of the game you are at.
+;
+;     THREE FRAMES A STEP, not six. A loss is allowed to take its time because
+;     nothing is happening afterwards. A start is not: the first piece is
+;     already falling while this plays, and 33 frames is about as long as a
+;     sound can hold the top of a screen the player has started using.
+;
+;   A scale and not an arpeggio, which is what keeps it clear of the two
+;   fanfares above — those leap, this walks.
+
+SfxStart:                               ; 13 — the run, climbed       33 frames
+  .byte  3, TIMBRE_BRIGHT, OCT_3 + SEMI_A
+  .byte  3, TIMBRE_BRIGHT, OCT_3 + SEMI_B
+  .byte  3, TIMBRE_BRIGHT, OCT_4 + SEMI_C
+  .byte  3, TIMBRE_BRIGHT, OCT_4 + SEMI_D
+  .byte  3, TIMBRE_BRIGHT, OCT_4 + SEMI_E
+  .byte  3, TIMBRE_BRIGHT, OCT_4 + SEMI_F
+  .byte  3, TIMBRE_BRIGHT, OCT_4 + SEMI_G
+  .byte 12, TIMBRE_BRIGHT, OCT_4 + SEMI_A   ; ...and arrives, rather than
+  .byte  0                                  ;   stopping
 
 ; --- The cauldron (constants.inc) --------------------------------------------
 ;   Three more step lists, in the same table and read by the same driver, and

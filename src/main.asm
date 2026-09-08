@@ -153,6 +153,10 @@ GameStart:
   jsr AmbienceEnd               ; The cauldron stops HERE, mid-bubble if it has
                                 ;   to: the next noise this machine makes
                                 ;   belongs to the game (ambience.asm)
+  lda #SFX_START                ; ...and it is this one — the game-over run
+  jsr SfxPlay                   ;   climbed instead of fallen (tables.inc). The
+                                ;   loudest id there is, so the first move the
+                                ;   player makes cannot blip over it
   jsr ScoreReset
   jsr BoardClear
 

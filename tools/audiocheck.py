@@ -25,13 +25,14 @@ and must therefore have said the same thing in the same order.
 
 WHAT IT DOES NOT COVER. A headless game has no input and takes whatever the
 seed deals it, so the effects that fire are the ones that need no player: the
-lock thunk and the game-over run. Between them they exercise TIMBRE_NOISE and
-TIMBRE_SOFT, ten distinct notes and both ends of the note table, but not
-TIMBRE_BRIGHT or TIMBRE_BUZZ, which are the same table lookup with a different
-row. Those are checked on the AC6502, at the HalSfx boundary, for all four
-timbres and every effect (tools/playtest.py). This is the same limitation
-`make crosscheck` has and for the same reason: there is no way to plant a board
-through VICE.
+run that starts a game, the lock thunk, and the run that ends it. Between them
+they exercise TIMBRE_NOISE, TIMBRE_SOFT and TIMBRE_BRIGHT over eighteen
+(timbre, note) pairs — and since SOFT halves a frequency and BRIGHT doubles it,
+both ends of the range the note table can reach. What is left out is
+TIMBRE_BUZZ, which is the same lookup a row over. It is checked on the AC6502,
+at the HalSfx boundary, for all four timbres and every effect
+(tools/playtest.py). This is the same limitation `make crosscheck` has and for
+the same reason: there is no way to plant a board through VICE.
 
 Run it from the repository root. Exits non-zero if anything disagrees.
 """
@@ -53,6 +54,26 @@ CYCLES = "40000000"
 # durations below are measured, not assumed.
 FRAME_CYCLES = {"VIC20": {"NTSC": 261 * 65, "PAL": 312 * 71},
                 "C64":   {"NTSC": 263 * 65, "PAL": 312 * 63}}
+
+# Cycles at the start of a run during which a step's DURATION is not measured.
+# The DEBUG cartridge skips the title and calls GameStart from GameInit, so the
+# run that starts a game sounds on the machine's first few main-loop passes —
+# and those passes are not yet frame-locked. They are flushing the initial
+# screen redraw, and a pass that overruns vblank leaves the flag already set
+# for the next one, which then returns without waiting: three steps of the
+# start run measured 3.95, 2.76 and 2.52 frames before every step after them
+# came out exact.
+#
+# It settles by frame 24, and that is measured rather than assumed — the
+# SHIPPED cartridge sits on the title screen instead, and the first sound its
+# ambience makes there begins at frame 24.1 and keeps 2.96 / 3.00 from the
+# start. A real game begins hundreds of frames after that. So this window
+# excludes a boot artifact of the test cartridge and nothing a player can hear.
+#
+# What is NOT skipped for that effect is its register content, which is checked
+# like any other — and matters more than most, since the start run is the only
+# TIMBRE_BRIGHT a headless game produces.
+SETTLE_CYCLES = 700000                  # ~41 frames NTSC, ~31 PAL
 
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -108,9 +129,13 @@ CONST_NAMES = ({"TIMBRE_OFF", "TIMBRE_SOFT", "TIMBRE_BUZZ", "TIMBRE_BRIGHT",
                | {f"SEMI_{n}" for n in "CDEFGAB"})
 K = read_constants(os.path.join(ROOT, "src", "constants.inc"), CONST_NAMES)
 
+#   SPEC 16's twelve, plus the thirteenth that starts a game (src/tables.inc).
+#   That one matters here out of proportion to its size: a headless game plays
+#   it, and it is TIMBRE_BRIGHT, which nothing else a headless game reaches
+#   uses.
 SFX_LABELS = ["SfxMove", "SfxRotate", "SfxLock", "SfxMatch", "SfxFireball",
               "SfxBolt", "SfxBomb", "SfxStar", "SfxPrism", "SfxLevelUp",
-              "SfxHighScore", "SfxGameOver"]
+              "SfxHighScore", "SfxGameOver", "SfxStart"]
 
 TABLES = os.path.join(ROOT, "src", "tables.inc")
 SCRIPTS = {}
@@ -263,8 +288,9 @@ def examine(plat):
     played = notes(plat, transcript(plat))
     runs = split_effects(played)
 
-    heard, spans = [], []
+    heard, spans, began = [], [], []
     for cells, silent in runs:
+        began.append(cells[0][0])
         keys = [k for _, k in cells]
         name = next((n for n, want in EXPECTED[plat].items() if want == keys),
                     None)
@@ -277,9 +303,10 @@ def examine(plat):
         spans.append([(b - a) for a, b in zip([c[0] for c in cells], ends)])
 
     print(f"  heard: {', '.join(heard)}")
-    check("every sound is one of the twelve, played to its end",
+    check("every sound is one of the thirteen, played to its end",
           [n for n in heard if n.startswith("<")], [])
-    check("the game-over run is among them", "GameOver" in heard, True)
+    check("the run that starts a game and the one that ends it are both there",
+          ("Start" in heard, "GameOver" in heard), (True, True))
 
     #   The frame length the transcript itself implies, and then whether it is
     #   a real one. The FIRST step of an effect is left out of both: it starts
@@ -288,7 +315,9 @@ def examine(plat):
     #   after it is short by however long that took. Every step after it is
     #   measured between two ordinary frames and is exact.
     measured = []
-    for name, span in zip(heard, spans):
+    for name, span, at in zip(heard, spans, began):
+        if at < SETTLE_CYCLES:                  # The frame clock is still
+            continue                            #   settling — see above
         want = [s[0] for s in SCRIPTS.get(name, [])]
         for cycles, frames in list(zip(span, want))[1:]:
             measured.append(cycles / frames)
@@ -301,16 +330,19 @@ def examine(plat):
           abs(frame - FRAME_CYCLES[plat][region]) / frame < 0.01, True)
 
     off = []
-    for name, span in zip(heard, spans):
+    for name, span, at in zip(heard, spans, began):
+        if at < SETTLE_CYCLES:
+            continue
         want = [s[0] for s in SCRIPTS.get(name, [])]
         for i, (cycles, frames) in enumerate(zip(span, want)):
             if i == 0:
                 continue
             if abs(cycles / frame - frames) > 0.15:
                 off.append((name, i, round(cycles / frame, 2), frames))
-    check("every step lasts the frames tables.inc gave it", off, [])
+    check("every step lasts the frames tables.inc gave it, once the frame "
+          "clock has settled", off, [])
 
-    for name in ("Lock", "GameOver"):
+    for name in ("Start", "Lock", "GameOver"):
         if name not in heard:
             continue
         i = heard.index(name)
@@ -325,7 +357,7 @@ def examine(plat):
 
 def main():
     os.chdir(ROOT)
-    print("what the sources say the twelve effects are:")
+    print("what the sources say the thirteen effects are:")
     print(f"  {len(SCRIPTS)} effects, "
           f"{sum(len(v) for v in SCRIPTS.values())} steps, "
           f"notes {note_name(min(n for v in SCRIPTS.values() for _, _, n in v))}"
