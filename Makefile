@@ -7,7 +7,7 @@
 PLATFORMS = AC6502 VIC20 C64
 
 .PHONY: all clean artwork artwork-check data smoke playtest crosscheck \
-        audiocheck $(PLATFORMS) \
+        audiocheck screenshots $(PLATFORMS) \
         run-AC6502 run-VIC20 run-C64 \
         smoke-AC6502 smoke-VIC20 smoke-C64
 
@@ -83,6 +83,21 @@ crosscheck:
 audiocheck:
 	@$(MAKE) DEBUG=1 VIC20 C64
 	python3 tools/audiocheck.py
+
+# Retake the screenshots the README shows and check they show what it says.
+# Both shots come off the SHIPPED cartridge: the play ones are a real game,
+# played through VICE's monitor a frame at a time with the joystick held where
+# the aim says, so the well fills the way a player fills it rather than in one
+# column. The -g builds are only for the symbols that needs — they are
+# byte-for-byte the cartridges above. Unlike `make smoke`'s throwaway PNGs
+# these are committed, under names git keeps. See tools/screenshots.py.
+screenshots:
+	@$(MAKE) VIC20 C64
+	cd VIC20 && cl65 -t none -g -C VIC20-16K.cfg \
+	  -Wl --dbgfile,/tmp/wl-vic20.dbg -o /tmp/wl-vic20 WizardsLab.asm
+	cd C64 && cl65 -t none -g -C C64-16K.cfg \
+	  -Wl --dbgfile,/tmp/wl-c64.dbg -o /tmp/wl-c64.crt WizardsLab.asm
+	python3 tools/screenshots.py
 
 # Regenerate the placeholder artwork from scratch. Bootstrap only — this throws
 # the real art away, and a plain run writes nothing. See data/README.md.

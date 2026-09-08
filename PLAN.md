@@ -29,13 +29,25 @@ checkboxes and the "Current Status" section as work progresses.**
   the reason turned out not to be the one the estimate assumed. Work RAM is
   557 bytes on every platform against SPEC §17.1's ~560; ROM use is 30% / 33% /
   45% of 16 KB.
-- **Phase P9 is done, out of sequence.** All 256 tiles and both screens are
-  drawn in `artwork/WizardsLab.tms9918`; `make artwork` imports them into
-  `data/` and into the VIC-EDITOR project. SPEC Appendix A describes what is
-  there and is the authority on it. Drawing the art settled several things the
-  spec had left open, and the ones that reach code are listed under P9 below —
-  **read that table before starting P5, P6 or P7.** The only work left in P9 is
-  compression (S3), which nothing is blocked on.
+- **Phase P9 is done, out of sequence, and its last two boxes are now closed
+  too.** All 256 tiles and both screens are drawn in
+  `artwork/WizardsLab.tms9918`; `make artwork` imports them into `data/` and
+  into the VIC-EDITOR project. SPEC Appendix A describes what is there and is
+  the authority on it. Drawing the art settled several things the spec had left
+  open, and the ones that reach code are listed under P9 below — **read that
+  table before starting P5, P6 or P7.** The README now shows the game: four
+  screenshots in `docs/`, taken and *checked* by `make screenshots`. The play
+  pair is **a real game, played** — VICE's remote monitor hands the cartridge a
+  joystick a frame at a time (§3), so the well fills the way a player fills it
+  instead of in the one column a game with nothing plugged in produces, and the
+  seed is chosen to deal reagents. Both machines are dealt the same game and
+  their wells are read back off the two PNGs and compared cell for cell; the
+  title shots are stepped forward until `PRESS FIRE` is on screen rather than
+  caught on the blink's dark half. And **S3 is measured**: a byte-pair RLE takes
+  each cartridge's images from 1536 / 2024 / 4000 bytes to 904 / 728 / 1022, which
+  is real but not the "under 200 bytes each" SPEC §17.2 predicted — the margin
+  compresses to nothing, the panel's ornament does not. Nothing needs the
+  space, so nothing was implemented and the number moved to §8.
 - P0 settled three things worth carrying forward. **The AC6502's VDP needs
   register 1's interrupt-enable bit set** even though the game polls, because
   the vblank status flag does not raise without it (D7). **The VIC-20 must set
@@ -249,6 +261,15 @@ Things a session working in this repository needs to know and cannot infer.
   assertions about numbers. Joystick **side `b`** is joystick 1; side `a` is the
   port the game does not read, and pointing at the wrong one looks exactly like
   input being ignored.
+- **`tools/read-screen.py` aligns its grid to the ink, not to the screen.** The
+  origin search starts at the first inked pixel, so a screen with blank outer
+  rows or columns comes back shifted — the C64's title image leaves four columns
+  blank either side, and reads back four columns left of where it sits in
+  `data/screen-title-c64.bin`. It costs nothing on a *play* screen, which is
+  brick to both edges: `make crosscheck`'s panel-relative constants land exactly
+  where the image has them, checked against `data/screen-play-c64.bin` byte for
+  byte. It is title screens that have to be read without coordinates, which is
+  why `make screenshots` looks for the prompt's ten tiles anywhere in a row.
 - **`make playtest` counts GAME frames, not cycles.** It advances with
   `exec.runTo GameLoop`, which stops at the top of the main loop with the
   previous frame's logic finished. Running a fixed 16,666 cycles instead — which
@@ -260,9 +281,21 @@ Things a session working in this repository needs to know and cannot infer.
   wells.** It is the cross-platform half of `make playtest`, and it is slow —
   three whole games. What it proves is that the shared logic runs identically on
   the two Commodores; what it does not prove is that a *clear* looks right
-  there, because the headless game deals five pieces that happen not to match
-  and there is no way to plant a board through VICE the way the AC6502's debug
-  protocol allows. See P3 below.
+  there, because the headless game deals five pieces that happen not to match.
+  It says so because for a long time nothing could deal it anything else. That
+  is no longer true — see the next rule. See P3 below.
+- **A Commodore in VICE can be played, and written to, from outside.** P9's
+  `make screenshots` needed a well that did not look like one column, and
+  `-remotemonitor -remotemonitoraddress ip4://127.0.0.1:PORT` turns out to be a
+  plain line protocol: send a command, read back to the next `(C:$xxxx)`
+  prompt. `break` on **`HalReadInput`**, then `ret` and `r a=<mask>` on every
+  hit, hands the game a joystick a frame at a time — through its own input
+  conditioning, so DAS, the rotate edge and the lock delay all behave (SPEC
+  11) — at about 3 ms a frame in warp, which is a whole game in seconds. `>`
+  writes memory and `m` reads it, so a board can be planted there as readily as
+  through the AC6502's debug protocol, and `screenshot "f" 2` takes a PNG
+  without waiting for exit. What this opens up is in P10: the tinted clear that
+  P6 could only prove on the AC6502 no longer needs a real machine to see.
 - **A `bpl` loop over more than 128 bytes does not loop.** `BoardClear` counted
   down from 159 to a `bpl` and wrote one byte of 160 for two whole phases,
   because bit 7 of 159 is already set. Nothing noticed until the falling piece
@@ -408,14 +441,31 @@ fastest is 6 frames a row against soft drop's 3, so soft drop wins at every
 level. The guard is still in the code and SPEC §11.3 now says why it never
 fires.
 
-### S3 — How well do the screen images compress? — *blocks nothing yet*
+### S3 — How well do the screen images compress? — **settled, and nothing is done about it**
 
-SPEC §17.2 budgets 800 bytes for the six screen images RLE'd. The margin is two
-tiles (SPEC §12.5), so the images are almost entirely long runs and should beat
-that comfortably — the C64's 1000-cell images look like they should come in
-under 200 bytes each. Nobody has measured it, and nothing is waiting on it: at
-43% of 16 KB the C64 carries them raw. Take the measurement when ROM gets
-tight.
+**Well enough to be worth doing, and nowhere near as well as SPEC §17.2
+assumed.** Measured with a byte-pair RLE — a count and a value, runs capped at
+255 — over what each cartridge actually carries:
+
+| Cartridge | Raw | RLE'd | Saved |
+|---|---:|---:|---:|
+| AC6502 | 1536 | 904 | 632 |
+| VIC-20 | 2024 | 728 | 1296 |
+| C64 | 4000 | 1022 | 2978 |
+
+A title screen comes to 330 bytes and a play screen to 574 — not the "under 200
+bytes each" §17.2 predicted. The prediction's reasoning was the wrong one: the
+margin is two tiles (SPEC §12.5) and does compress to almost nothing, and so do
+the colour maps, but the panel is boxes and ornamental frames drawn a cell at a
+time and that detail is most of a play screen. SPEC §17.2 now carries the
+measurement.
+
+**Nothing is waiting on it and nothing has been implemented.** The most a
+cartridge would get back is the C64's 2978 bytes, and at 73% of 16 KB it does
+not need them; a decoder would cost some of that back, and every image would
+stop being a plain `.incbin` of a file `make artwork` writes. It stays on the
+deferred list (§8) with the number attached, so the decision can be made on
+arithmetic if ROM ever gets tight.
 
 ### S4 — Can the VIC-20 scan its keyboard without disturbing the joystick? — **settled**
 
@@ -1110,14 +1160,40 @@ phases numbered below it are still open.
       the VIC-EDITOR project (D10)
 - [x] SPEC.md carrying the drawn tile map (§12.5, §13.1, §13.3, §13.4, §14,
       Appendix A)
-- [ ] Screenshot into the README — `make smoke` writes one beside each
-      Commodore cartridge, but `*-screenshot.png` is gitignored, so a committed
-      one needs a different name
-- [ ] RLE the screen images — deferred to P10 with S3; nothing needs it yet
+- [x] Screenshots into the README — four of them, in `docs/`, from
+      `make screenshots`, and the play pair is a game *played* rather than a
+      game left to itself (`*-screenshot.png` is `make smoke`'s throwaway and
+      is gitignored, so the committed ones are named for the README instead)
+- [x] Measure how well the screen images compress (S3) — 904 / 728 / 1022 bytes
+      against 1536 / 2024 / 4000 raw. Measured, not implemented: nothing needs
+      the space, so it moves to §8 with the number attached
 
 **Exit criteria met:** every `.bin` in `data/` comes from the master,
-`make artwork-check` is clean, and all three cartridges build and boot. The two
-open boxes above are follow-on work, not part of getting the art in.
+`make artwork-check` is clean, and all three cartridges build and boot.
+
+**The play shots are played, not planted, and that is the whole reason the
+phase reopened.** A game with nothing plugged in drops every piece down the
+spawn column, and the first pair of shots were exactly that: one stripe of
+potions in an empty well, an honest picture of nothing the game is about. So
+`make screenshots` plays: VICE's monitor stops the machine on `HalReadInput`
+every frame and hands it a joystick mask on the way out (§3), aiming at the
+flattest column with a bias toward its own colour, which is enough strategy to
+keep a well alive for the 32 pieces the shot wants. **Nothing writes the board
+or the score** — the one byte of the game's memory it touches is the frame
+counter, set before FIRE so `RngSeed` deals the same game every run and on both
+machines. The seed was chosen for what it deals: `$C3` is the one the model of
+`PieceGenerateNext` in `playtest.py` says gives six reagents in eighteen
+pieces, because a picture of this game with no reagent in the well is a picture
+of the wrong game.
+
+**And the shots are checked, not just taken.** The run refuses a well under 40
+cells or with fewer than two reagents in it; it reads both play PNGs back and
+compares the wells cell for cell, so "both machines played the same game" is
+verified rather than claimed; and it looks for the ten cells the artist drew
+before committing a title shot, stepping forward by half a blink period until
+`PRESS FIRE` is on screen rather than caught on the blink's dark half. Every
+shot is written beside its destination and only moved in once it passes, so a
+run that fails leaves `docs/` alone.
 
 **What the tile map requires of code.** The constants are in
 [`src/constants.inc`](src/constants.inc); the behaviour belongs to the phases
@@ -1144,9 +1220,11 @@ that own it, and each is easy to get wrong by assuming the obvious:
 - [ ] AC6502 on real hardware: joystick and keyboard. **Not write spacing** —
       S1 settled that, and the margin is two orders of magnitude
 - [ ] Set a fireball off on each Commodore and look at it. The tinted half of
-      their `HalPlotCell` is the one thing P6 left unproven — VICE cannot be
-      handed a planted clear — and it is six instructions that either turn a
-      colour white or do not
+      their `HalPlotCell` is the one thing P6 left unproven, and it is six
+      instructions that either turn a colour white or do not. **This no longer
+      needs a real machine to start on:** P9 found that VICE's remote monitor
+      writes memory and hands the game input a frame at a time (§3), so a clear
+      can be planted or played there first — and then confirmed on hardware
 - [ ] VIC-20 on real hardware, NTSC and PAL
 - [ ] C64 on real hardware, NTSC and PAL
 - [ ] Burn instructions in the README confirmed against an actual programmer
@@ -1207,3 +1285,8 @@ Out of scope for the first release, recorded so they are not rediscovered.
 - **A fourth platform.** The HAL is eight routines; the tile format is shared
   by anything with 8 × 8 1bpp characters. The work would be a linker config, a
   cartridge header, and one new `WizardsLab.asm`.
+- **RLE the screen images.** Measured, not needed (S3): it would give the C64
+  back 2978 bytes of the 4000 its four images cost, the VIC-20 1296 and the
+  AC6502 632, less whatever the decoder costs. At 56% / 60% / 73% of 16 KB none
+  of them is short, and raw images are a plain `.incbin` of a file
+  `make artwork` writes.

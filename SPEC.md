@@ -1465,10 +1465,26 @@ piece's redraw back until any full-board redraw has gone past it.
 | **Subtotal** | **~11,150** |
 | **Headroom** | **~5,200** |
 
-Comfortable. The six screen images should be run-length encoded: the margin is
-two tiles ([§12.5](#125-the-margin)), so the images are almost entirely runs of
-brick and shelf and the C64's 1000-cell images should come down under 200 bytes
-each. The 800-byte line above is a conservative estimate.
+Comfortable — and the images are carried **raw**, because no cartridge has
+needed the space (PLAN S3). The 800-byte line above is what they would cost
+compressed, and it is now measured rather than guessed. A byte-pair RLE — a
+count and a value, runs capped at 255 — takes a title screen to about a third
+and a play screen to about half:
+
+| Cartridge | Images it carries | Raw | RLE'd |
+|---|---|---:|---:|
+| AC6502 | two 768-byte name tables | 1536 | 904 |
+| VIC-20 | two name tables + two colour maps, 506 each | 2024 | 728 |
+| C64 | two name tables + two colour maps, 1000 each | 4000 | 1022 |
+
+The colour maps are nearly free — a play screen's is 86 bytes on the C64 and 20
+on the VIC-20 — and the name tables are the cost: 330 for a title screen and 574
+for a play screen, on both the AC6502 and the C64, which draw the same image.
+
+**The margin being two tiles ([§12.5](#125-the-margin)) is not what decides
+this, and this section used to assume it was.** The margin does compress to
+almost nothing. What does not is the panel: its boxes and ornamental frames are
+drawn a cell at a time, and on a play screen that detail is most of the image.
 
 ---
 

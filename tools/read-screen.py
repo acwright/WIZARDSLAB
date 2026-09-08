@@ -13,7 +13,13 @@ platform's data/tilecolor-*.inc table.
     python3 tools/read-screen.py C64/WizardsLab-screenshot.png
     python3 tools/read-screen.py VIC20/WizardsLab-screenshot.png
 
-The grid origin is found by search, so the emulator's border does not matter.
+The grid origin is found by search, so the emulator's border does not matter —
+but the search starts at the first INKED pixel, so a screen with blank outer
+rows or columns comes back shifted by them. Play screens are brick to both edges
+and read exactly; the C64's title screen leaves four columns blank either side
+and reads four columns left of where it sits in data/screen-title-c64.bin. Read
+a title screen by looking for what you want anywhere in a row, not at a column.
+
 Run it from the repository root. Requires Pillow.
 """
 import re
@@ -117,13 +123,16 @@ def find_origin(ink, color, w, h, cols, rows, xscale, known):
     return best[1], best[2]
 
 
-def read_screen(path):
+def read_screen(path, plat=None):
     """Recover a name table from a screenshot: rows of tile numbers, -1 unknown.
 
     Also importable — tools/crosscheck.py compares the well of one machine's
-    screen against another's.
+    screen against another's. The platform is taken from the path unless the
+    caller names it, which tools/screenshots.py does because the files it
+    writes are named for the README rather than for this.
     """
-    plat = next((p for p in PLATFORMS if p in path), None)
+    if plat is None:
+        plat = next((p for p in PLATFORMS if p in path), None)
     if plat is None:
         sys.exit("read-screen: cannot tell which platform %r is; the path must "
                  "name one of %s" % (path, ", ".join(PLATFORMS)))

@@ -12,6 +12,13 @@ new arrangements. Among the potions fall **arcane reagents**: fireballs, bolts,
 bombs, stars and prisms. Placed well, they set each other off, and a single
 piece can unravel half the board.
 
+| VIC-20 | Commodore 64 |
+|---|---|
+| ![The Wizards Lab title screen on a VIC-20](docs/vic20-title.png) | ![The Wizards Lab title screen on a C64](docs/c64-title.png) |
+| ![Wizards Lab playing on a VIC-20](docs/vic20-play.png) | ![Wizards Lab playing on a C64](docs/c64-play.png) |
+
+*The title screen, and a game 32 pieces in.*
+
 > **Status: in development.** The three cartridges build, boot and play.
 > **The artwork is finished** — all 256 tiles and both screens are drawn — and
 > the game is complete end to end: title, play, pause, game over and back to
@@ -76,6 +83,7 @@ make playtest     # Play it with a script and check what the game did
 make crosscheck   # Play the same game on all three and compare the wells
 make audiocheck   # Read what the Commodores' sound chips are actually told
 make artwork      # Re-import the art after drawing in TMS9918-EDITOR
+make screenshots  # Retake the four screenshots at the top of this file
 make clean
 ```
 
@@ -125,6 +133,19 @@ rather than reaching its main loop, and leaves a screenshot beside each
 Commodore image. It is the fastest way to tell whether a change to the
 platform layer broke a boot.
 
+`make screenshots` retakes the four pictures at the top of this file — those
+PNGs are throwaway and gitignored, these are committed. **The play shots are a
+real game, played.** Left alone the game drops every piece down the spawn
+column, so the tool drives it the way a player does: VICE's remote monitor
+stops the machine on `HalReadInput` every frame and hands the game a joystick
+mask on the way out, so the auto-repeat, the rotate edge and the lock delay all
+see a stick being held. Nothing writes the board or the score. Both machines
+are dealt the same game — the frame counter the seed is taken from is set
+before FIRE — and play it identically, which the run checks by reading both
+wells back off the two PNGs and comparing them cell for cell. The title shots
+are stepped forward until the blinking prompt is on screen rather than caught
+on its dark half. There are no AC6502 shots because its emulator writes no PNG.
+
 `make playtest` goes further: it boots the AC6502 build paused and advances it
 a game frame at a time with the joystick held wherever the test wants it,
 reading the piece's column, row and contents straight out of RAM after each
@@ -136,9 +157,8 @@ chip to prove that what the game believes is also what is on the screen.
 
 `make crosscheck` is the cross-platform half of it: one headless game on each
 of the three machines, played to game over, with the wells compared cell by
-cell. The two Commodores are read off their screenshots, because a screenshot
-is all VICE offers — and the well *is* the board, since the board byte is the
-tile index.
+cell. The two Commodores are read off their screenshots — and the well *is* the
+board, since the board byte is the tile index.
 
 `make audiocheck` does the same for the sound. VICE's `dump` sound device
 writes one line per sound-chip register write, so a headless game leaves a
@@ -179,6 +199,7 @@ src/               Shared game code. Identical on all three machines.
 
 artwork/           Editor projects — the drawn master; see artwork/README.md
 data/              Tileset, screens and colour tables — see data/README.md
+docs/              The screenshots at the top of this file; make screenshots
 include/           Platform hardware definitions, and sid.inc — the SID
                    register writes, shared by the two machines that have one
 tools/             import-artwork.py, the master -> data/ pipeline
@@ -186,6 +207,8 @@ tools/             import-artwork.py, the master -> data/ pipeline
                    playtest.py, a scripted game -> assertions about RAM
                    crosscheck.py, the same game on all three -> one well
                    audiocheck.py, a Commodore's sound registers -> the notes
+                   screenshots.py, a game played through VICE's monitor
+                   -> the pictures in docs/
 
 AC6502/  VIC20/  C64/
                    Cartridge header, linker config, and each machine's HAL
