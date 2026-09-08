@@ -267,9 +267,42 @@ SFX_HIGHSCORE       = 11
 SFX_GAMEOVER        = 12
 SFX_COUNT           = 12
 
+;   ...and three that are NOT events. The title screen's ambience is built out
+;   of the same step lists as everything else (tables.inc), so its sounds need
+;   ids to be indexed by, and the ids have to sit above the twelve because that
+;   is where the table has room. They are therefore the LOUDEST ids in the game,
+;   which would be exactly wrong if anything ever asked for one: nothing may.
+;   The ambience calls SfxBeginShifted directly, on a frame where the channel
+;   is already known to be silent, and never goes near SfxPlay (ambience.asm).
+SFX_BUBBLE          = 13        ; A bloop rising out of the cauldron
+SFX_GLOOP           = 14        ; ...a heavier one turning over, and falling
+SFX_SEETHE          = 15        ; ...and the churn underneath both
+SFX_CAULDRON        = 13        ; The first of the three. An id below this one
+                                ;   that the ambience plays was borrowed from
+                                ;   the game and earns the longer gap after it
+                                ;   (AMB_GAP_EVENT); one at or above it is the
+                                ;   cauldron and does not
+
 SFX_STEP_BYTES      = 3         ; frames, timbre, note (tables.inc)
 SFX_CHAIN_SHIFT     = 2         ; Semitones the match chime rises per chain
 SFX_CHAIN_MAX       = 8         ;   link, and the most it ever rises (SPEC 16)
+
+; --- The title screen's ambience ---------------------------------------------
+;   Sounds of the lab rather than a tune: a cauldron bubbling away under the
+;   title, and every so often one of the game's own effects drifting past at
+;   half volume, as though an experiment two benches over just went off.
+;   ambience.asm sequences it; AmbTable (tables.inc) is the mix.
+AMB_ENTRIES         = 16        ; Rows in AmbTable. A power of two, so a random
+                                ;   nibble picks one evenly with an AND
+AMB_SHIFT_RANGE     = 8         ; Semitones a sound may be pitched up by, so no
+                                ;   two bubbles are the same size. Every list
+                                ;   below is written low enough that +7 stays
+                                ;   inside NOTE_MAX.
+AMB_GAP_MIN         = 7         ; Frames of quiet between one sound and the
+AMB_GAP_RANGE       = 26        ;   next: 7 to 32, rolled every time
+AMB_GAP_EVENT       = 40        ; ...and this much more after a borrowed game
+                                ;   effect, so the lab goes back to simmering
+                                ;   instead of chattering
 
 ;   A step names a TIMBRE, not a waveform, because the two sound chips have
 ;   nothing in common below that level. A timbre is a voice AND an octave:
@@ -283,6 +316,17 @@ TIMBRE_BUZZ         = 2         ; sawtooth / VIC alto       — as written
 TIMBRE_BRIGHT       = 3         ; pulse    / VIC soprano    — an octave up
 TIMBRE_NOISE        = 4         ; noise    / VIC noise
 TIMBRE_COUNT        = 5
+
+;   Bit 7 of the same byte is a LEVEL and not a voice. Both sound chips have
+;   one master volume and no per-voice one, so "quieter" cannot be a property
+;   of a note — it is a register the platform writes on its way past, and the
+;   cheapest place to carry the choice is the byte already going there. It is
+;   set for everything the title screen plays and clear for everything the game
+;   plays (audio.asm, hal.inc), which is the whole of its use.
+TIMBRE_QUIET        = $80       ; ...OR it into a timbre
+TIMBRE_MASK         = $7F       ; ...and AND it back off, which every HalSfx
+                                ;   does first, so a quiet TIMBRE_OFF is still
+                                ;   silence and not a fifth voice
 
 ;   A note is a count of semitones above C3, so one number means the same pitch
 ;   on both sound chips and each platform keeps its own NOTE_MAX + 1 entry

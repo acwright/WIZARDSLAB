@@ -66,6 +66,7 @@ CartReset:
 .include "../src/render.asm"
 .include "../src/text.asm"
 .include "../src/audio.asm"
+.include "../src/ambience.asm"
 
 ; =============================================================================
 ;   HAL — TMS9918 Graphics Mode I

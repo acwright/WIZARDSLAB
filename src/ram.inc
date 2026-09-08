@@ -152,9 +152,10 @@ Region:         .res 1                  ; 0 = NTSC, 1 = PAL
 NeedsRedraw:    .res 1
 
 ; --- Audio (SPEC 16) ---------------------------------------------------------
-;   Five bytes, not the sixteen SPEC 17.1 budgeted. The effect data is a step
-;   list in ROM (tables.inc) and the driver is a cursor into it, so the only
-;   thing RAM has to hold is where in that list the one playing channel is.
+;   Seven bytes, not the sixteen SPEC 17.1 budgeted — five for SPEC 16's
+;   channel and two more for the title screen's ambience. The effect data is a
+;   step list in ROM (tables.inc) and the driver is a cursor into it, so the
+;   only thing RAM has to hold is where in that list the one playing channel is.
 SfxRequest:     .res 1                  ; Effect asked for THIS frame, or 0.
                                         ;   Logic writes it through SfxPlay,
                                         ;   which keeps the loudest of several
@@ -171,3 +172,18 @@ SfxShift:       .res 1                  ; Semitones added to every note of the
                                         ;   effect playing. Zero for eleven of
                                         ;   the twelve; the match chime sets it
                                         ;   from the chain (SPEC 16)
+SfxLevel:       .res 1                  ; TIMBRE_QUIET while the title screen
+                                        ;   owns the channel, 0 while the game
+                                        ;   does. ORed into every timbre on its
+                                        ;   way to the platform (audio.asm), and
+                                        ;   it doubles as the flag that says the
+                                        ;   ambience is running at all — the two
+                                        ;   are the same fact, because the title
+                                        ;   screen is the only thing that turns
+                                        ;   the volume down and the only thing
+                                        ;   that bubbles (ambience.asm)
+AmbTimer:       .res 1                  ; Frames of quiet left before the lab
+                                        ;   makes its next noise. Counted only
+                                        ;   on frames where nothing is sounding,
+                                        ;   so a long effect does not eat the gap
+                                        ;   that follows it

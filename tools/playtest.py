@@ -1671,11 +1671,28 @@ def image_at(col, row, width):
     return list(TITLE_IMAGE[base:base + width])
 
 
-def to_title():
-    """Put the machine on the title screen and let it draw itself."""
+def to_title(silent=True):
+    """Put the machine on the title screen and let it draw itself.
+
+    ...and then SILENCE it. The title screen's redraw starts the lab's ambience
+    (src/ambience.asm), which takes the sound channel on any frame nothing else
+    is using it — which is every frame of every audio check below, all of which
+    are run from here because it is the screen that asks for nothing of its
+    own. SfxLevel is the ambience's on switch as well as its volume, so
+    clearing it hands the channel back. `silent=False` leaves it running, for
+    the one section that is about the ambience itself.
+    """
     poke("GameState", STATE_TITLE)
     poke("NeedsRedraw", 1)
     frames(3)                                   # Blit, reset, first live frame
+    if silent:
+        poke("SfxLevel", 0)
+        poke("SfxId", 0)                        # ...and drop whatever bubble
+        poke("SfxTimer", 0)                     #   was already in flight —
+                                                #   AMB_GAP_MIN says there is
+                                                #   not one yet, but that is the
+                                                #   ambience's business and not
+                                                #   this helper's
 
 
 print("\nSPEC 13.1 — the title screen IS the drawn image, plus two moving things")
@@ -1953,6 +1970,7 @@ SFX = {"move": 1, "rotate": 2, "lock": 3, "match": 4, "fireball": 5,
        "highscore": 11, "gameover": 12}                     # SPEC 16
 TIMBRE_OFF, TIMBRE_SOFT, TIMBRE_BUZZ = 0, 1, 2              # constants.inc
 TIMBRE_BRIGHT, TIMBRE_NOISE = 3, 4
+TIMBRE_COUNT = 5
 NOTE_MAX = 36                                               # C6
 SFX_CHAIN_SHIFT, SFX_CHAIN_MAX = 2, 8
 SFX_STEP_BYTES = 3
@@ -1963,8 +1981,16 @@ def rom(name, length):
         "space": "cpu", "address": syms[name], "length": length})["data"]))
 
 
-SFX_OFFSETS = rom("SfxOffsets", len(SFX))
-SFX_BYTES = rom("SfxSteps", 200)
+#   Fifteen offsets, not twelve: ids 13-15 are the title screen's cauldron and
+#   are not events (src/constants.inc). They share the table, so they count
+#   against the byte offset it has to fit in, and reading only the twelve would
+#   leave that check measuring the wrong table.
+AMB = {"bubble": 13, "gloop": 14, "seethe": 15}
+SFX_CAULDRON = min(AMB.values())
+SFX_OFFSETS = rom("SfxOffsets", len(SFX) + len(AMB))
+SFX_BYTES = rom("SfxSteps", 250)
+AMB_TABLE = rom("AmbTable", 16)                 # The mix (src/tables.inc)
+TIMBRE_QUIET, TIMBRE_MASK = 0x80, 0x7F          # The level bit
 
 
 def sfx_script(effect):
@@ -2051,14 +2077,18 @@ check("every note is inside both note tables",
 check("no step lasts zero frames",
       min(s[0] for v in scripts.values() for s in v) >= 1, True)
 #   SfxStepIdx is a byte offset, so the whole table has to fit one (tables.inc)
-used = max(SFX_OFFSETS) + SFX_STEP_BYTES * len(scripts["gameover"]) + 1
+all_scripts = dict(scripts, **{n: sfx_script(i) for n, i in AMB.items()})
+last = max(all_scripts, key=lambda n: SFX_OFFSETS[
+    dict(SFX, **AMB)[n] - 1])
+used = max(SFX_OFFSETS) + SFX_STEP_BYTES * len(all_scripts[last]) + 1
 check("the step table fits a byte offset", used <= 255, True)
-print(f"  ({used} bytes of step data, 12 effects, "
-      f"{sum(len(v) for v in scripts.values())} steps)")
+print(f"  ({used} bytes of step data, 12 effects and {len(AMB)} cauldron "
+      f"sounds, {sum(len(v) for v in all_scripts.values())} steps)")
 
 print("\n...and each one plays its own list, step for step, on the frame clock")
-to_title()                                      # Nothing on the title screen
-frames(2)                                       #   asks for a sound of its own
+to_title()                                      # The one screen that asks for no
+frames(2)                                       #   sound of its own, and whose
+                                                #   ambience to_title turns off
 for name, i in SFX.items():
     want = [s[0] for s in scripts[name]]
     got, silent = sfx_play(i)
@@ -2280,6 +2310,76 @@ check("an idle frame costs under 40 cycles", idle < 40, True)
 check("...and the busiest one under 400", busy < 400, True)
 print(f"  (idle {idle} cycles, a frame that starts a note {busy}, "
       f"against a 16667-cycle frame)")
+
+# =============================================================================
+#   The title screen's ambience (src/ambience.asm)
+# =============================================================================
+#   Not a SPEC 16 effect and not music: the twelve put to a second use, plus
+#   three cauldron sounds, played at half volume in the gaps of a channel
+#   nothing else is using. Sound still cannot be listened to from here, so what
+#   is checked is what the driver DOES — which sounds it picks, from what
+#   table, at what pitch, and with which bit set on the byte that reaches the
+#   platform.
+
+print("\nthe title screen bubbles, out of AmbTable and nothing else")
+check("the three cauldron sounds have step lists of their own",
+      [len(sfx_script(i)) > 0 for i in AMB.values()], [True] * 3)
+check("every entry in the mix is either the cauldron's or one of the twelve",
+      [i for i in AMB_TABLE if not (i in AMB.values() or i in SFX.values())],
+      [])
+#   SPEC 16's ids run quietest to loudest, and a level-up fanfare or a game-over
+#   run drifting past the title screen would read as a fault rather than as a
+#   laboratory. The mix may borrow the prism and everything under it.
+check("...and nothing it borrows from the game is louder than the prism",
+      [i for i in AMB_TABLE if i < SFX_CAULDRON and i > SFX["prism"]], [])
+
+to_title(silent=False)
+check("entering the title turns the channel down", peek("SfxLevel"),
+      TIMBRE_QUIET)
+
+heard, shifts, last = [], set(), 0
+for _ in range(420):                            # Seven seconds of it
+    frames(1)
+    i = peek("SfxId")
+    if i and i != last:
+        heard.append(i)
+        shifts.add(peek("SfxShift"))
+    last = i
+check("it makes a noise on its own, with nothing asked of it", heard != [], True)
+check("...every one of them out of the mix", sorted(set(heard) - set(AMB_TABLE)),
+      [])
+check("...and more than one kind of them", len(set(heard)) >= 3, True)
+check("...each pitched by its own roll rather than always as written",
+      len(shifts) > 1, True)
+check("...never further up than the shift range allows", max(shifts) <= 7, True)
+print(f"  ({len(heard)} sounds in 7 seconds, {sorted(set(heard))}, "
+      f"shifted {sorted(shifts)})")
+
+#   The level is bit 7 of the timbre and the platform masks it off (hal.inc),
+#   so the boundary is where it can be read. A call arriving as a plain 0 is
+#   the driver letting the channel go at the end of an effect and carries no
+#   level; everything else must carry the quiet one.
+sounded = []
+for _ in range(30):
+    rpc("exec.runTo", {"address": syms["HalSfx"], "timeout": "5s"})
+    sounded.append(rpc("reg.get")["A"])
+check("every note it plays reaches the platform quiet",
+      [a for a in sounded if a and not a & TIMBRE_QUIET], [])
+check("...and under the bit is one of the five timbres, a rest included",
+      [a for a in sounded if a & TIMBRE_MASK >= TIMBRE_COUNT], [])
+
+print("\n...and the game starting stops it dead")
+to_title(silent=False)
+for _ in range(60):                             # Wait for it to be mid-sound,
+    frames(1)                                   #   so the cut has something to
+    if peek("SfxId"):                           #   cut
+        break
+check("something is sounding when FIRE is pressed", peek("SfxId") != 0, True)
+frames(2, ["a"])                                # PRESS FIRE (SPEC 13.1)
+check("the game is playing", peek("GameState"), STATE_PLAY)
+check("...the channel is back to full volume", peek("SfxLevel"), 0)
+check("...and whatever was bubbling was cut rather than left to finish",
+      peek("SfxId"), 0)
 
 # -----------------------------------------------------------------------------
 #   ...and a machine with no sound card still plays the game (P8 exit criteria)

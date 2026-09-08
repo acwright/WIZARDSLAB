@@ -151,7 +151,9 @@ TriggerBonusHi:
 ;   and lifted by its timbre instead. TIMBRE_BRIGHT is already an octave up.
 ;
 ;   SfxStepIdx is a byte offset into SfxSteps, so this table has to stay under
-;   256 bytes. It is 144.
+;   256 bytes. It is 171 — 144 for SPEC 16's twelve, and 27 for the three at
+;   the bottom that belong to the title screen's ambience rather than to the
+;   game (constants.inc, ambience.asm).
 
 SfxOffsets:                             ; Indexed by (SFX_* id - 1)
   .byte SfxMove     - SfxSteps
@@ -166,6 +168,9 @@ SfxOffsets:                             ; Indexed by (SFX_* id - 1)
   .byte SfxLevelUp  - SfxSteps
   .byte SfxHighScore- SfxSteps
   .byte SfxGameOver - SfxSteps
+  .byte SfxBubble   - SfxSteps          ; 13-15 are the title screen's, and are
+  .byte SfxGloop    - SfxSteps          ;   not events — see the ambience at the
+  .byte SfxSeethe   - SfxSteps          ;   bottom of this file
 
 SfxSteps:
 
@@ -248,3 +253,58 @@ SfxGameOver:                            ; 12 — descending minor run    58 fram
   .byte  6, TIMBRE_SOFT,   OCT_3 + SEMI_B
   .byte 16, TIMBRE_SOFT,   OCT_3 + SEMI_A
   .byte  0
+
+; --- The cauldron (constants.inc) --------------------------------------------
+;   Three more step lists, in the same table and read by the same driver, and
+;   the only things about them that are not effects are that no event asks for
+;   one and that the ambience pitches each one up by a random 0-7 semitones
+;   before it plays. That transposition is what turns three lists into a boil:
+;   a bubble is a bubble whatever size it is, and a cauldron of one size sounds
+;   like a machine.
+;
+;   All three are TIMBRE_SOFT or TIMBRE_NOISE and all three are written in the
+;   bottom octave and a half, because everything up here has to sit UNDER the
+;   title screen rather than on top of it. Nothing bright bubbles.
+
+SfxBubble:                              ; 13 — a bloop, rising      8 frames
+  .byte  3, TIMBRE_SOFT,   OCT_4 + SEMI_C   ; TIMBRE_SOFT sounds an octave
+  .byte  3, TIMBRE_SOFT,   OCT_4 + SEMI_G   ;   below what is written, so this
+  .byte  2, TIMBRE_SOFT,   OCT_5 + SEMI_C   ;   is C3 to C4 (constants.inc)
+  .byte  0
+
+SfxGloop:                               ; 14 — a heavier one, falling  6 frames
+  .byte  2, TIMBRE_SOFT,   OCT_4 + SEMI_G
+  .byte  4, TIMBRE_SOFT,   OCT_4 + SEMI_C
+  .byte  0
+
+SfxSeethe:                              ; 15 — the churn under both    9 frames
+  .byte  3, TIMBRE_NOISE,  OCT_3 + SEMI_G   ; Low noise, dropping: the sound a
+  .byte  4, TIMBRE_NOISE,  OCT_3 + SEMI_C   ;   pot makes between bubbles
+  .byte  2, TIMBRE_OFF,    0                ; A REST, and a legal step — the
+  .byte  0                                  ;   driver hands TIMBRE_OFF to the
+                                            ;   platform like any other timbre
+                                            ;   and gets silence for a beat,
+                                            ;   which keeps the churn from
+                                            ;   running straight into whatever
+                                            ;   the next roll deals
+
+; --- The mix (ambience.asm) --------------------------------------------------
+;   Rolled once per sound, indexed by a random nibble, so the shape of the
+;   ambience is this table and nothing else: eleven bubbles of one kind or
+;   another to five borrowed effects, which is roughly one thing happening in
+;   the lab for every three the cauldron does. Change the balance by changing
+;   the entries — there is no other knob and no code to edit.
+;
+;   The five borrowed ones are the game's own sounds (SPEC 16), played half
+;   volume and out of context: the prism's shimmer and the star's arpeggio read
+;   as apparatus, the bolt's crack as a spark somewhere off to the side, the
+;   lock's thunk as something heavy being set down, and the match chime as a
+;   phial being touched. Nothing louder than those — a game-over run drifting
+;   past the title screen would sound like a fault, not a laboratory.
+
+AmbTable:
+  .byte SFX_BUBBLE, SFX_SEETHE, SFX_BUBBLE, SFX_PRISM
+  .byte SFX_GLOOP,  SFX_BUBBLE, SFX_BOLT,   SFX_BUBBLE
+  .byte SFX_SEETHE, SFX_GLOOP,  SFX_MATCH,  SFX_BUBBLE
+  .byte SFX_BUBBLE, SFX_STAR,   SFX_GLOOP,  SFX_LOCK
+

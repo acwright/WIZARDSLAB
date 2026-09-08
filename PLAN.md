@@ -174,6 +174,21 @@ checkboxes and the "Current Status" section as work progresses.**
   abstraction that makes that work is **a timbre is a voice and an octave** —
   free on the VIC-I, whose three tone oscillators are already an octave apart,
   and a 16-bit shift on a SID.
+- **The title screen now makes a noise** — added between P9 and P10, and not in
+  SPEC.md yet. Not music: a cauldron bubbling under the page, with the prism,
+  the star, the bolt, the match chime and the lock thunk drifting past at half
+  volume as though something is happening two benches over (D24, and
+  `src/ambience.asm`, which is the only new file). It reuses the P8 driver
+  whole — the bubbles are three more step lists in `SfxSteps`, played through
+  `SfxBeginShifted` at a random transposition, and the only new machinery
+  anywhere is one bit of the timbre byte meaning *quiet* and two bytes of RAM.
+  Checked the same way P8 was: `make playtest` reads what it picks, from what
+  table, at what pitch and with which bit set at the `HalSfx` boundary, and the
+  two Commodores' own chips were watched writing `$06` to their master volume
+  114 times over twenty seconds of title screen and `$0F` once, at boot.
+  **If it stays, SPEC §13.1 and §16 need it** — §13.1 says the prompt and the
+  field are the only things happening on that screen, and §16 says the twelve
+  effects are all there is.
 - Next: **P10 — hardware and release.** The game is complete and everything
   left is a real machine.
 
@@ -642,6 +657,25 @@ the implementation ones that SPEC.md does not cover.
   requests in one frame, and the bomb is asked for FIRST (it is resolved inside
   `CascadeScan`, and the chime after it returns). A plain store would leave the
   quieter of the two playing for no better reason than being written second.
+- **D24 — The title screen has an ambience, built out of the twelve effects.**
+  SPEC §13.1 gives it two moving things and no sound; this is a third, and it
+  is the sounds of the lab rather than music — a cauldron bubbling under the
+  page and one of the game's own effects drifting past every so often at half
+  volume. It is not a music driver and does not mix, because one channel
+  cannot: `AmbienceTick` hangs off the SILENT branch of `AudioTick`, so it
+  fills the gaps rather than sharing them, and a bubble is an effect out of
+  `SfxSteps` like any other — three more step lists, ids 13-15, begun through
+  `SfxBeginShifted` with a fresh random transposition. `AmbTable`'s sixteen
+  entries are the entire mix; changing the balance is changing that table.
+  Two consequences worth naming. **The ids above `SFX_COUNT` are not events**
+  and nothing may ask for one through `SfxPlay`, because they sit above a game
+  over in a scheme where the id is the priority (D23) — the ambience takes the
+  channel outright, on a frame it already knows is silent. And **bit 7 of the
+  timbre is a LEVEL**: neither chip has a per-voice volume, so "quieter" is a
+  master register the platform writes on its way past, and the byte already
+  going there carries the choice. Every `HalSfx` masks it off first, and the
+  channel lets go at the level it was playing at — a full-volume release on a
+  quiet note is a click at the end of every bubble.
 - **D9 — The whole static screen comes from the editors.** Panel frame, labels
   and margin are one name-table image per platform; code draws only the well,
   the digits, the preview and the message band over the top.

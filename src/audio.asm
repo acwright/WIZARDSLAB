@@ -22,6 +22,13 @@
 ;   all be requested in ONE frame, and last-write-wins would pick whichever
 ;   the code happened to reach last.
 ;
+;   AND ONE LEVEL. Neither sound chip has a per-voice volume, so "quieter"
+;   cannot be a property of a note: it is a master register the platform writes
+;   on its way past, and the byte that carries the choice to it is the timbre,
+;   bit 7 (constants.inc). Nothing the GAME plays ever sets it. It exists for
+;   the title screen, which plays the same twelve effects at half volume
+;   underneath a cauldron (ambience.asm).
+;
 ;   Nothing here waits, loops over cells, or touches the screen. AudioTick is
 ;   fifteen cycles on a frame where nothing changes and a step's worth of
 ;   register writes on a frame where something does, so it cannot delay a
@@ -39,6 +46,8 @@ AudioInit:
   sta SfxTimer
   sta SfxShift
   sta SfxStepIdx
+  sta SfxLevel                  ; Full volume, and no ambience — the title
+                                ;   screen turns both on for itself
   ldx #0
   lda #TIMBRE_OFF
   jmp HalSfx
@@ -76,12 +85,16 @@ AudioTick:
 
 @Advance:
   lda SfxId
-  beq @Done                     ; Silent
+  beq @Idle                     ; Silent...
   dec SfxTimer
   bne @Done                     ; The step still has frames left in it
   jmp SfxStep                   ; ...and when it does not, the next one starts
 @Done:
   rts
+
+@Idle:                          ; ...and silence is where the title screen puts
+  jmp AmbienceTick              ;   its cauldron. Nine cycles and an RTS in
+                                ;   play, where the ambience is off
 
 ; -----------------------------------------------------------------------------
 ;   SfxBegin — start an effect from its first step
@@ -90,16 +103,18 @@ AudioTick:
 ;
 ;   Eleven of the twelve play at the pitch tables.inc wrote them at. The match
 ;   chime is the one SPEC 16 says rises with the chain, and it rises by
-;   transposing the whole effect rather than by having a step list per depth.
+;   transposing the whole effect rather than by having a step list per depth —
+;   which is the whole of what this routine does before it hands over to
+;   SfxBeginShifted below.
 ; -----------------------------------------------------------------------------
 SfxBegin:
-  sta SfxId
   ldx #0
   cmp #SFX_MATCH
-  bne @Shift
+  bne SfxBeginShifted
 
+  pha                           ; The id; SfxBeginShifted wants it in A
   lda ChainStep                 ; 1 on the first step of a cascade (SPEC 8)
-  beq @Shift                    ; Never zero in practice; X is already 0
+  beq @Flat                     ; Never zero in practice; X is already 0
   sec
   sbc #1
   asl a                         ; SFX_CHAIN_SHIFT semitones a link
@@ -108,8 +123,24 @@ SfxBegin:
   lda #SFX_CHAIN_MAX
 @Capped:
   tax
+@Flat:
+  pla
+  ; falls through
 
-@Shift:
+; -----------------------------------------------------------------------------
+;   SfxBeginShifted — start an effect transposed by a given number of semitones
+;   In:  A = SFX_* id, X = semitones to add to every note of it
+;   Out: nothing.  Modifies: A, X, Y
+;
+;   Split out of SfxBegin for the title screen's ambience, which pitches every
+;   bubble by a fresh random amount and would otherwise have to write SfxShift
+;   after SfxBegin had already played the first step at the wrong pitch
+;   (ambience.asm). It takes the channel unconditionally and is not a request:
+;   the only caller outside SfxBegin knows the channel is silent because it is
+;   only reached on a frame where it was.
+; -----------------------------------------------------------------------------
+SfxBeginShifted:
+  sta SfxId
   stx SfxShift
   ldx SfxId
   lda SfxOffsets - 1,x          ; The id is 1-based; the table is not
@@ -136,7 +167,14 @@ SfxStep:
   lda #NOTE_MAX                 ; Both note tables stop at C6 and a chain deep
 @Note:                          ;   enough to push past it clamps rather than
   tay                           ;   reading off the end of one
-  lda SfxSteps + 1,x            ; The timbre
+  lda SfxSteps + 1,x            ; The timbre...
+  ora SfxLevel                  ;   ...and how loud, which is bit 7 of the same
+                                ;   byte and is zero for everything the game
+                                ;   itself plays (constants.inc). A step whose
+                                ;   timbre is TIMBRE_OFF — a rest — comes out of
+                                ;   here as $80, and every HalSfx masks the bit
+                                ;   off before it looks, so a quiet rest is
+                                ;   still a rest
   pha
   txa
   clc
@@ -151,5 +189,12 @@ SfxStep:
   lda #0
   sta SfxId
   ldx #0
-  lda #TIMBRE_OFF
+  lda SfxLevel                  ; TIMBRE_OFF at the level the channel is AT, and
+                                ;   TIMBRE_OFF is zero, so the level is the
+                                ;   whole byte. Letting go at full volume
+                                ;   instead would put the master register back
+                                ;   up before the SID's release tail of a quiet
+                                ;   note had finished, and every bubble on the
+                                ;   title screen would end in a click
+                                ;   (include/sid.inc)
   jmp HalSfx

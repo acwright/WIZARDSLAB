@@ -80,6 +80,7 @@ ColdStart:
 .include "../src/render.asm"
 .include "../src/text.asm"
 .include "../src/audio.asm"
+.include "../src/ambience.asm"
 
 ; =============================================================================
 ;   HAL — VIC-II, standard text mode

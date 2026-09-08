@@ -117,6 +117,10 @@ GameLoop:
 ;   StateTitle — blinking prompt over the drawn screen, and the magic field
 ;   SPEC 13.1. There are no help pages: the controls are part of the screen
 ;   image, so the only things moving here are the prompt and the field.
+;
+;   Nothing below ticks the sound. The title screen's ambience hangs off the
+;   silent branch of AudioTick instead, because what it is filling is the gaps
+;   between sounds and this routine cannot see them (ambience.asm).
 ; -----------------------------------------------------------------------------
 StateTitle:
   lda NeedsRedraw
@@ -128,6 +132,7 @@ StateTitle:
 
   jsr AnimTitleBegin            ; ...and the prompt blinks from lit, so it never
                                 ;   starts a second visit dark
+  jsr AmbienceBegin             ; ...and the lab starts murmuring under it
 @Live:
   jsr AnimTitleField            ; The two things that move here, and the whole
   jsr AnimTitleBlink            ;   of the screen's animation (SPEC 13.1)
@@ -145,6 +150,9 @@ StateTitle:
 ;   GameStart — enter play from the title screen
 ; -----------------------------------------------------------------------------
 GameStart:
+  jsr AmbienceEnd               ; The cauldron stops HERE, mid-bubble if it has
+                                ;   to: the next noise this machine makes
+                                ;   belongs to the game (ambience.asm)
   jsr ScoreReset
   jsr BoardClear
 

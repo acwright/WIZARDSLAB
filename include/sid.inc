@@ -34,13 +34,32 @@ SID_AD              = 5
 SID_SR              = 6
 SID_VOL             = 24        ; Master volume, low nibble
 
+; --- The two levels (constants.inc) ------------------------------------------
+;   A SID has no per-voice volume, so this register is the only place a
+;   "quieter" can live. The game plays at full; the title screen's ambience
+;   plays under it (ambience.asm).
+SID_VOL_FULL        = $0F
+SID_VOL_QUIET       = $06
+
 ; -----------------------------------------------------------------------------
 ;   SidSfx — HalSfx for a SID (hal.inc)
-;   In:  A = TIMBRE_*, X = note (semitones above C3; ignored when A is
-;        TIMBRE_OFF)
+;   In:  A = TIMBRE_*, optionally + TIMBRE_QUIET; X = note (semitones above C3;
+;        ignored when A is TIMBRE_OFF)
 ;   Out: nothing.  Modifies: A, X, Y, Tmp0-Tmp2
 ; -----------------------------------------------------------------------------
 SidSfx:
+  ; --- the level, which is bit 7 of the timbre and not a voice --------------
+  ;   Written before the note rather than with it, so the volume is already
+  ;   where it belongs when the gate comes up. Masked off first and on every
+  ;   path, which is what makes a QUIET TIMBRE_OFF ($80) still silence.
+  ldy #SID_VOL_FULL
+  cmp #TIMBRE_QUIET
+  bcc @Level
+  and #TIMBRE_MASK
+  ldy #SID_VOL_QUIET
+@Level:
+  sty SID_BASE + SID_VOL
+
   cmp #TIMBRE_OFF
   beq SidGateOff
 
@@ -92,10 +111,6 @@ SidSfx:
   lda SidSR - 1,y
   sta SID_BASE + SID_SR
 
-  lda #$0F                      ; Master volume, every note. Nothing else in
-  sta SID_BASE + SID_VOL        ;   the game writes it and one store is
-                                ;   cheaper than a byte remembering whether
-                                ;   it has been written once already
   lda SidWave - 1,y
   sta SID_BASE + SID_CTRL       ; Waveform and GATE — the note starts here
   rts

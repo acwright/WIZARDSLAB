@@ -71,6 +71,7 @@ ColdStart:
 .include "../src/render.asm"
 .include "../src/text.asm"
 .include "../src/audio.asm"
+.include "../src/ambience.asm"
 
 ; =============================================================================
 ;   HAL — VIC-I, hi-res text
@@ -457,7 +458,8 @@ HalColorFlash:
 
 ; -----------------------------------------------------------------------------
 ;   HalSfx — one note on the VIC-I, $900A-$900E (hal.inc)
-;   In:  A = TIMBRE_*, X = note.  Out: nothing.  Modifies: A, X, Y
+;   In:  A = TIMBRE_*, optionally + TIMBRE_QUIET; X = note.
+;   Out: nothing.  Modifies: A, X, Y
 ;
 ;   No SID here and nothing shaped like one: four oscillators, one 7-bit value
 ;   each, bit 7 to enable, one global volume, and no envelope at all. What it
@@ -471,12 +473,32 @@ HalColorFlash:
 ;   stopping the other three costs four stores, which is cheaper than a byte
 ;   remembering which one was left running.
 ; -----------------------------------------------------------------------------
+VIC_VOL_FULL = $0F              ; The two levels (src/constants.inc). $900E's
+VIC_VOL_QUIET = $06             ;   high nibble is the auxiliary colour and
+                                ;   both of these leave it clear
+
 HalSfx:
   ldy #0
   sty VIC_CRA                   ; Bass
   sty VIC_CRB                   ; Alto
   sty VIC_CRC                   ; Soprano
   sty VIC_CRD                   ; Noise
+
+  ; --- the level, which is bit 7 of the timbre and not a voice --------------
+  ;   The VIC-I has no per-oscillator volume either, so quiet is this register
+  ;   and nothing else. Masked off first and on every path, so a QUIET
+  ;   TIMBRE_OFF ($80) is still silence (constants.inc, src/ambience.asm).
+  ldy #VIC_VOL_FULL
+  cmp #TIMBRE_QUIET
+  bcc @Level
+  and #TIMBRE_MASK
+  ldy #VIC_VOL_QUIET
+@Level:
+  sty VIC_CRE                   ; Volume, low nibble. The high nibble is the
+                                ;   auxiliary colour, which only multicolor
+                                ;   characters read and this game has none —
+                                ;   colour RAM bit 3 stays clear on every cell
+                                ;   (data/tilecolor-vic20.inc)
   cmp #TIMBRE_OFF
   beq @Done
 
@@ -485,12 +507,6 @@ HalSfx:
   ldx VicOsc - 1,y              ;   ...and which of the four sounds it
   ora #$80                      ; Bit 7 enables the oscillator
   sta VIC_CRA,x                 ; $900A-$900D are contiguous
-
-  lda #$0F                      ; Volume, low nibble. The high nibble is the
-  sta VIC_CRE                   ;   auxiliary colour, which only multicolor
-                                ;   characters read and this game has none —
-                                ;   colour RAM bit 3 stays clear on every cell
-                                ;   (data/tilecolor-vic20.inc)
 @Done:
   rts
 

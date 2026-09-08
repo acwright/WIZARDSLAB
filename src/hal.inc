@@ -67,10 +67,12 @@
 ;                       re-marked, and the animation is already marking all of
 ;                       them (anim.asm).
 ;
-;     HalSfx            Sound ONE note, in one timbre, until told otherwise.
-;                       In:  A = TIMBRE_* (constants.inc), X = note in
-;                            semitones above C3, 0..NOTE_MAX. TIMBRE_OFF ends
-;                            whatever is sounding and ignores X.
+;     HalSfx            Sound ONE note, in one timbre, at one of two levels,
+;                       until told otherwise.
+;                       In:  A = TIMBRE_* (constants.inc), optionally with
+;                            TIMBRE_QUIET (bit 7) set; X = note in semitones
+;                            above C3, 0..NOTE_MAX. TIMBRE_OFF ends whatever is
+;                            sounding and ignores X.
 ;                       Out: nothing.  Modifies: A, X, Y, Tmp0-Tmp2
 ;                       This is NOT "play effect 4". Which effect is playing,
 ;                       which step of it, how long the step lasts and what
@@ -86,6 +88,12 @@
 ;                       an octave above. On a SID that is a waveform and a
 ;                       shift; on the VIC-I the three tone oscillators are
 ;                       already an octave apart, so it is free.
+;                       Bit 7 is neither. It is a LEVEL — quiet, for the title
+;                       screen's ambience (src/ambience.asm) — and both chips
+;                       have only a master volume to put it in, so every
+;                       implementation must MASK IT OFF (TIMBRE_MASK) before it
+;                       compares or indexes anything. A quiet TIMBRE_OFF is
+;                       silence, not a fifth voice.
 ;                       A machine with no sound card must still return: the
 ;                       AC6502's is optional hardware and the game plays
 ;                       silently on one that has none.
