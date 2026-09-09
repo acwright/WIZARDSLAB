@@ -56,6 +56,11 @@ Release status
     matches the GitHub release, which is v1.0.0 and not a pre-release: if real
     hardware turns something up, that is a patch release, not a demotion.
 
+    Both Commodores have since run on real hardware — an NTSC VIC-20 off an
+    sd2iec, and a C64 on a C64 Ultimate. PAL is untested on either, for want
+    of a PAL machine; the region tables are exercised in VICE's PAL mode and
+    nowhere else. Worth saying in a devlog, not on the store page.
+
     README.md's status block still calls the project in development. That is
     the one place left saying otherwise.
 
@@ -102,8 +107,8 @@ Community
 Visibility & access
     Draft while you set it up, then Public.
 
-    Restricted, with the secret URL, if you want someone with real hardware to
-    try it first.
+    Restricted, with the secret URL, if you want more hardware under it first
+    — a PAL machine especially, which is the one region nobody here can test.
 
 Metadata — the "More information" table on the finished page
     Average session ......... A few minutes         (level 16 arrives ~10 min)
@@ -404,6 +409,8 @@ and the cover changes with it. There is no second copy of the artwork.
   [ ] Check the GitHub release with the matching tag holds the same four ROMs.
       README.md sends people there rather than here, so the two download
       routes have to agree — same version, same bytes.
-  [ ] Post the first devlog only once someone has run it on real hardware.
-      That is the news this page is actually waiting on, and it is worth more
-      than a launch post.
+  [ ] Post the first devlog: it has run on real hardware. An NTSC VIC-20 with
+      its original 6560 and a C64 on a C64 Ultimate, both from the SD card,
+      title and play correct. That is the news this page was waiting on and it
+      is worth more than a launch post. Say plainly that PAL is untested, and
+      that a PAL report is the thing being asked for.

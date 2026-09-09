@@ -23,10 +23,13 @@ piece can unravel half the board.
 > **The artwork is finished** — all 256 tiles and both screens are drawn — and
 > the game is complete end to end: title, play, pause, game over and back to
 > the title, with the reagents, the scoring, the animation and the sound all
-> in. **It has now run on a real VIC-20** — a gold-label NTSC machine, loaded
-> off an sd2iec as `WizardsLab-VIC20.prg`. What is left is the rest of the
-> hardware: the VIC-20 in PAL, the C64 and the AC6502. See [PLAN.md](PLAN.md)
-> for what is done and what is next.
+> in. **Both Commodores have run on real hardware** — a gold-label NTSC VIC-20
+> with its original MOS 6560, loaded off an sd2iec as `WizardsLab-VIC20.prg`,
+> and a C64 on a **C64 Ultimate** with the `.crt` picked off the SD card.
+> **PAL is untested on both**, for want of a PAL machine rather than for want
+> of trying — the region tables run correctly under VICE in PAL mode, and that
+> is as far as it goes here. What is left is the AC6502 on real hardware. See
+> [PLAN.md](PLAN.md) for what is done and what is next.
 
 ---
 

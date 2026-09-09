@@ -203,8 +203,13 @@ checkboxes and the "Current Status" section as work progresses.**
   short there; the shipped cartridge is on the title screen at that point and
   the first sound IT makes keeps exact time. **SPEC §16 does not have a
   thirteenth effect either.**
-- Next: **P10 — hardware and release.** The game is complete and everything
-  left is a real machine.
+- **P10 has both Commodores on real hardware.** The VIC-20 ran first — a
+  gold-label NTSC machine with its original MOS 6560, 35K expanded, loaded off
+  an sd2iec as `run/WizardsLab-VIC20.prg` — and the C64 followed on a **C64
+  Ultimate**, the `.crt` picked straight off the SD card. Title screen and play
+  both correct on both. **PAL is marked untested rather than left open:** there
+  is no PAL machine here, so it is not work waiting to be done. What is left is
+  the AC6502 on real hardware, and the tinted half of `HalPlotCell`.
 
 ---
 
@@ -399,7 +404,8 @@ Things a session working in this repository needs to know and cannot infer.
 ## 4. Open questions
 
 Things that need measuring, not deciding. Each one blocks the phase named.
-S1, S2 and S4 are settled; S3 and S5 are what is left.
+S1 through S4 are settled; S5 is answered on NTSC and cannot be asked on PAL
+here.
 
 ### S1 — What is the real per-cell cost of a VDP write? — **settled**
 
@@ -527,10 +533,18 @@ The **AC6502** has no matrix at all — two encoders hand over one ASCII byte pe
 keystroke and there is no key-up event, so a key there is a one-frame pulse and
 DAS never engages from it. SPEC §11.4 now says all of this.
 
-### S5 — Does a real machine agree with the region detection? — *blocks P10*
+### S5 — Does a real machine agree with the region detection? — *NTSC: yes*
 
-`HalDetectRegion` samples the raster counter on both Commodores. It has only
-been run against VICE, which is not evidence about a real 6560 or 6561.
+`HalDetectRegion` samples the raster counter on both Commodores. **The NTSC
+side is now answered on hardware:** a gold-label VIC-20 with an original MOS
+6560 comes up NTSC and plays at NTSC speed, and so does a C64 Ultimate. The
+Ultimate is an FPGA recreation rather than a real 6567, so it is good evidence
+and not proof about that chip; the VIC's 6560 is the real thing.
+
+**PAL is unanswered and will stay that way here** — there is no PAL machine to
+sample a 6561 or a PAL 6567 with. What rides on it is the region branch and
+the `SpeedPAL` side of the timing tables, both of which run correctly under
+VICE in PAL mode. Marked untested rather than open.
 
 ---
 
@@ -1285,7 +1299,10 @@ that own it, and each is easy to get wrong by assuming the obvious:
 
 **Goal:** it runs on the real machines.
 
-- [ ] S5 measured on a real 6560 and 6561
+- [x] S5 measured on a real 6560 — the NTSC VIC came up NTSC and ran at the
+      right speed, which is `HalDetectRegion` answering correctly off a real
+      chip rather than off VICE. **A real 6561 is out of reach**, so the PAL
+      half of S5 stays unmeasured; see the PAL note below
 - [ ] AC6502 on real hardware: joystick and keyboard. **Not write spacing** —
       S1 settled that, and the margin is two orders of magnitude
 - [ ] Set a fireball off on each Commodore and look at it. The tinted half of
@@ -1300,13 +1317,24 @@ that own it, and each is easy to get wrong by assuming the obvious:
       what `tools/prg.py` exists for: a `.crt` is meaningless to a disk drive,
       which is what a real VIC-20 usually has attached, so the cartridge had to
       be reachable as a program before any of this could be tried at all
-- [ ] VIC-20 on real hardware, **PAL**
-- [ ] C64 on real hardware, NTSC and PAL
+- [x] C64 on real hardware, **NTSC** — a **C64 Ultimate**, the cartridge picked
+      off the SD card as `run/WizardsLab-C64.crt`. Title screen and play both
+      correct, which is the whole point of shipping a `.crt` container rather
+      than a bare ROM: the load address is inside the file, so the machine
+      needs telling nothing
+- [x] **PAL on either Commodore: untested, and marked untested rather than
+      left open.** There is no PAL machine here to test on, so this is not
+      work waiting to be done — it is hardware nobody here has. What PAL
+      changes is the timing tables and nothing else: `SpeedPAL` against
+      `SpeedNTSC`, the lock delay and DAS constants, and the region check that
+      picks between them (SPEC §10, §14 and Appendix C). All of it is
+      arithmetic that VICE runs in PAL mode, which is where it has been
+      exercised. If a PAL machine reports otherwise, that is a patch release
 - [ ] Burn instructions in the README confirmed against an actual programmer
 - [ ] SPEC.md reconciled with whatever the hardware changed
 
-**Exit criteria:** a full game played to game over on each real machine, on
-both regions where the machine has both.
+**Exit criteria:** a full game played to game over on each real machine, in
+NTSC. PAL stays untested for want of a PAL machine, not for want of trying.
 
 ---
 
