@@ -31,29 +31,34 @@ piece can unravel half the board.
 ## Download and play
 
 **[Get the cartridge images from the latest release.](https://github.com/acwright/WIZARDSLAB/releases/latest)**
-No toolchain needed — they are ready to run.
+No toolchain needed — they are ready to run. **One file per machine**, in
+`run/`:
 
 | You have | Download | Then |
 |---|---|---|
 | An AC6502 | `WizardsLab-AC6502.crt` | `6502 run --cart WizardsLab-AC6502.crt` |
-| A Commodore 64 | `WizardsLab-C64.crt` | `x64sc -cart16 WizardsLab-C64.crt` |
-| A VIC-20 | **both** `WizardsLab-VIC20-blk5.crt` and `-blk3.crt` | `xvic -cartA WizardsLab-VIC20-blk5.crt -cart6 WizardsLab-VIC20-blk3.crt` |
+| A Commodore 64 | `WizardsLab-C64.crt` | `x64sc -cartcrt WizardsLab-C64.crt` |
+| A VIC-20 | `WizardsLab-VIC20.crt` | `xvic -cartcrt WizardsLab-VIC20.crt` |
 
-The VIC-20 needs both files. Its 16 KB is two 8 KB blocks at different
-addresses, so it ships as two ROMs — BLK5 holds the code, BLK3 the artwork,
-and the game will not boot without either.
+Or drag the `.crt` onto a running VICE window. On a **C64 Ultimate**, an
+**Ultimate II+** or a VIC-20 **Final Expansion 3**, copy `run/` to the SD card
+and pick the `.crt` from the file browser.
 
-`x64sc` and `xvic` are [VICE](https://vice-emu.sourceforge.io/); `6502` is the
-[AC6502 emulator](https://github.com/acwright/6502-EMULATOR). For real hardware
-see [Burning to a cartridge](#burning-to-a-cartridge) — the same files go
-straight to an EPROM.
+The two Commodore files are proper VICE `.crt` containers, which is what makes
+that work: the load address is inside the file, so nothing has to be told where
+the ROM belongs. **The VIC-20 is one file too** — its 16 KB is two 8 KB blocks
+at different addresses, BLK5 at `$A000` for the code and BLK3 at `$6000` for
+the artwork, and the container holds both. The AC6502's image is raw by that
+platform's convention; its emulator takes it as it is.
 
-> **These are raw ROM images, despite the `.crt` extension** — not VICE `.crt`
-> container files. VICE reads them fine with the `-cart16` / `-cartA` flags
-> above, which say what to do with them; **dragging one onto a VICE window
-> instead will fail**, because that path expects the container format. Convert
-> with `cartconv` if you need one:
-> `cartconv -t normal -i WizardsLab-C64.crt -o WizardsLab-vice.crt`
+The download's other half is `eprom/` — the same game as raw ROM images, named
+for their size and load address, for anyone burning a real cartridge. See
+[Burning to a cartridge](#burning-to-a-cartridge).
+
+> The cartridges this repository *builds* are the raw images, under each
+> platform directory, and they keep the `.crt` extension the sibling projects
+> use. `make dist` is what turns them into the loadable containers above — see
+> [The download](#the-download).
 
 ---
 
@@ -112,6 +117,7 @@ make smoke        # Boot all three headless and check they come up
 make playtest     # Play it with a script and check what the game did
 make crosscheck   # Play the same game on all three and compare the wells
 make audiocheck   # Read what the Commodores' sound chips are actually told
+make dist         # Build the download: .crt containers, ROMs, README, zip
 make artwork      # Re-import the art after drawing in TMS9918-EDITOR
 make screenshots  # Retake the four screenshots at the top of this file
 make clean
@@ -139,13 +145,51 @@ files: BLK5 (`$A000`) holds the autostart header and the code, BLK3 (`$6000`)
 holds the tileset and screen images.
 
 > **These `.crt` files are raw ROM images, not VICE `.crt` container files.**
-> The extension follows the convention in the sibling repositories. See
-> [Download and play](#download-and-play) for how to load them and how to
-> convert one if you need the container format.
+> The extension follows the convention in the sibling repositories. `make dist`
+> is what turns them into the loadable containers below.
+
+### The download
+
+`make dist` builds what the release and the itch.io page both serve, into
+`dist/`. It is the raw images above, packaged twice, because **a cartridge
+image and an EPROM image are not the same file**:
+
+```
+run/     WizardsLab-C64.crt              .crt container, 16 KB at $8000
+         WizardsLab-VIC20.crt            .crt container, BOTH blocks
+         WizardsLab-AC6502.crt           raw, the AC6502's own convention
+eprom/   WizardsLab-C64-16k-8000.bin
+         WizardsLab-VIC20-blk5-8k-a000.bin
+         WizardsLab-VIC20-blk3-8k-6000.bin
+         WizardsLab-AC6502-32k-8000.bin
+```
+
+A raw image is the right thing to burn and the wrong thing to hand somebody
+with a flash cart, because nothing in it says where in the address map it
+belongs — VICE will not take one by drag and drop and an Ultimate II+ will not
+list it. A `.crt` carries the load address inside it, and the VIC-20's carries
+both of its blocks, so every machine becomes one file to load.
+
+The containers are built with VICE's own `cartconv`, except for the one thing
+`cartconv` cannot say. A VIC-20 `.crt` holds a CHIP packet per block, each with
+its own load address — exactly this cartridge's shape — but `cartconv`'s `-l`
+is one global setting rather than one per input: pass two `-i` and two `-l` and
+**both** packets come out at whichever address was named last, and it reports
+success. So each block is converted alone and the packets joined, and the
+result is read back and checked packet by packet.
+
+**Then every container is booted.** `make dist` attaches each one to a headless
+emulator and requires it to come up before the zip is written. A cartridge
+image that does not load is the failure the whole target exists to prevent, and
+it is not one you can see by looking at the file.
 
 ---
 
 ## Running in an emulator
+
+These are the raw build outputs, so VICE has to be told where each one goes.
+For the containers that carry their own load address, see
+[Download and play](#download-and-play).
 
 ```bash
 # AC6502 — https://github.com/acwright/6502-EMULATOR
@@ -208,7 +252,9 @@ register and frame for frame. Nothing listens to anything.
 
 The AC6502 target is the only one wired up in the Makefiles, because it is the
 only one whose programmer command is unambiguous. For the Commodores, feed the
-raw image to whatever your programmer expects.
+raw image to whatever your programmer expects — that is what `eprom/` in the
+[download](#the-download) is, named for size and load address, and it is the
+build output under each platform directory unchanged.
 
 ---
 
@@ -239,6 +285,15 @@ tools/             import-artwork.py, the master -> data/ pipeline
                    audiocheck.py, a Commodore's sound registers -> the notes
                    screenshots.py, a game played through VICE's monitor
                    -> the pictures in docs/
+                   package.py, the raw ROMs -> loadable .crt containers,
+                   burnable images and the zip, in dist/
+                   itch.py, the tileset -> the itch.io page's cover and
+                   gallery, in itch/images/
+
+itch/              The itch.io page. ITCH-PAGE.txt is every field of the form,
+                   hand-written; images/ is generated. See ITCH-PAGE.txt
+dist/              The download; make dist. Gitignored — every file in it is
+                   already tracked somewhere else
 
 AC6502/  VIC20/  C64/
                    Cartridge header, linker config, and each machine's HAL

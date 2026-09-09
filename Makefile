@@ -7,7 +7,7 @@
 PLATFORMS = AC6502 VIC20 C64
 
 .PHONY: all clean artwork artwork-check data smoke playtest crosscheck \
-        audiocheck screenshots itch $(PLATFORMS) \
+        audiocheck screenshots dist itch $(PLATFORMS) \
         run-AC6502 run-VIC20 run-C64 \
         smoke-AC6502 smoke-VIC20 smoke-C64
 
@@ -99,6 +99,17 @@ screenshots:
 	  -Wl --dbgfile,/tmp/wl-c64.dbg -o /tmp/wl-c64.crt WizardsLab.asm
 	python3 tools/screenshots.py
 
+# Build the download into dist/: a .crt container per machine for anyone
+# loading the game, and the raw ROMs for anyone burning one. The linker writes
+# raw images, which are the right thing to burn and the wrong thing to hand a
+# C64 Ultimate — nothing in a raw image says where it belongs in the address
+# map, and the VIC-20's is two files besides. Every container built here is
+# attached to a headless emulator and has to come up before the zip is
+# written. One zip serves both the GitHub release and the itch.io page.
+dist:
+	@$(MAKE) all
+	python3 tools/package.py $(VERSION)
+
 # Build the itch.io page kit into itch/: the cover art and the gallery images,
 # and the zip that is the page's download. The cover is not a drawing of the
 # game, it is made OF the game — tools/itch.py blits data/tileset.bin through
@@ -106,9 +117,8 @@ screenshots:
 # there is no second copy of the artwork to keep in sync. The zip is built from
 # the cartridges as they stand, so build them first. itch/ITCH-PAGE.txt is the
 # hand-written half and this never touches it.
-itch:
-	@$(MAKE) all
-	python3 tools/itch.py $(VERSION)
+itch: dist
+	python3 tools/itch.py
 
 # Regenerate the placeholder artwork from scratch. Bootstrap only — this throws
 # the real art away, and a plain run writes nothing. See data/README.md.

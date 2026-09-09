@@ -2,9 +2,10 @@ WIZARDS LAB — the itch.io page, field by field
 ==============================================
 
 Everything needed to fill in https://itch.io/game/new, plus the theme colours
-and what each image in images/ is for. The images and the zip are generated —
-`make itch` rebuilds them from the current cartridges and the current artwork.
-This file is hand-written and is not overwritten by that.
+and what each image in images/ is for. The images here and the download in
+dist/ are both generated — `make itch` rebuilds the lot from the current
+cartridges and the current artwork. This file is hand-written and is not
+overwritten by that.
 
 itch moves fields between sections from time to time and some are only shown
 once the project kind is set, so this is grouped by what the field *is* rather
@@ -66,7 +67,7 @@ Pricing
     honest shape of it.
 
 Uploads
-    WizardsLab-cartridges-v1.0.0.zip                     (in this directory)
+    dist/WizardsLab-cartridges-v1.0.0.zip        (`make dist` builds it)
 
     Leave EVERY platform checkbox unticked — Windows, macOS, Linux, Android.
     These are ROM images; ticking one makes itch offer the file to the itch
@@ -74,7 +75,7 @@ Uploads
     upload downloads from the web page on any machine, which is what you want.
 
     Display name for the file:
-        Cartridge images — AC6502, VIC-20, C64  (4 ROMs + README)
+        Cartridge images — AC6502, VIC-20, C64  (.crt + ROMs, 35 KB)
 
 Genre
     Puzzle
@@ -141,9 +142,11 @@ Wizards Lab is a 16 KB cartridge for three 8-bit machines — the Commodore 64,
 the Commodore VIC-20 and the AC6502 — written in 6502 assembly. Same playfield,
 same tiles, same timing, on all three.
 
-This is a cartridge, not a browser game. The download is four ROM images: run
-them in VICE or the AC6502 emulator, or burn one to an EPROM and play it on
-the real thing.
+This is a cartridge, not a browser game — but it is one file per machine and
+it loads like anything else. Drag the .crt onto VICE, or drop it on the SD card
+of a C64 Ultimate, an Ultimate II+ or a VIC-20 Final Expansion 3 and pick it
+from the file browser. Raw ROM images are in the same download for anyone
+burning an EPROM.
 
 >>H<< The one rule worth knowing
 
@@ -172,22 +175,34 @@ Start — fire, or SPACE, or RETURN
 
 Joysticks are Atari 2600 compatible — port 2 on the C64.
 
+>>H<< What is in the download
+
+run/ — load these. One file per machine, the load address carried inside it.
+
+- WizardsLab-C64.crt — Commodore 64
+- WizardsLab-VIC20.crt — VIC-20, both blocks in the one file
+- WizardsLab-AC6502.crt — AC6502
+
+eprom/ — burn these. Raw ROM images, named for their size and load address, for
+a 27C128, a pair of 27C64s or a 28C256.
+
 >>H<< Running it
 
-Commodore 64 — x64sc -cart16 WizardsLab-C64.crt
+Drag the .crt onto a running VICE window, or:
 
-VIC-20 — xvic -cartA WizardsLab-VIC20-blk5.crt -cart6 WizardsLab-VIC20-blk3.crt
+Commodore 64 — x64sc -cartcrt WizardsLab-C64.crt
+
+VIC-20 — xvic -cartcrt WizardsLab-VIC20.crt
 
 AC6502 — 6502 run --cart WizardsLab-AC6502.crt
 
-The VIC-20 needs both of its files. Its 16 KB is two 8 KB blocks at different
-addresses, so it ships as two ROMs — BLK5 holds the code, BLK3 the artwork, and
-the game will not boot without either.
+On a C64 Ultimate, an Ultimate II+ or a VIC-20 Final Expansion 3, copy run/ to
+the SD card and pick the .crt from the file browser.
 
-These are raw ROM images despite the .crt extension, not VICE .crt container
-files. The flags above tell VICE what to do with them; dragging one onto a VICE
-window instead will fail. Full instructions, and how to burn a cartridge, are
-in the README inside the zip.
+One file per machine, including the VIC-20. Its 16 KB is two 8 KB blocks at
+different addresses — BLK5 at $A000 holds the code, BLK3 at $6000 the artwork —
+and both are inside the one .crt. They are separate files only in eprom/, where
+they are two separate chips.
 
 x64sc and xvic are VICE — https://vice-emu.sourceforge.io/
 The AC6502 emulator — https://github.com/acwright/6502-EMULATOR
@@ -323,19 +338,32 @@ and the cover changes with it. There is no second copy of the artwork.
 5. THE DOWNLOAD
 -------------------------------------------------------------------------------
 
-    WizardsLab-cartridges-v1.0.0.zip                          18 KB
+    dist/WizardsLab-cartridges-v1.0.0.zip                      35 KB
 
-        WizardsLab-AC6502.crt          32 KB   AC6502
-        WizardsLab-C64.crt             16 KB   Commodore 64
-        WizardsLab-VIC20-blk5.crt       8 KB   VIC-20, code
-        WizardsLab-VIC20-blk3.crt       8 KB   VIC-20, artwork
-        README.txt                             running it, burning it, the
-                                               controls, and the rules
-        LICENSE.txt                            MIT
+        run/WizardsLab-C64.crt            .crt container, 16K at $8000
+        run/WizardsLab-VIC20.crt          .crt container, both blocks
+        run/WizardsLab-AC6502.crt         raw 32K, the AC6502's own convention
+        eprom/WizardsLab-C64-16k-8000.bin
+        eprom/WizardsLab-VIC20-blk5-8k-a000.bin
+        eprom/WizardsLab-VIC20-blk3-8k-6000.bin
+        eprom/WizardsLab-AC6502-32k-8000.bin
+        README.txt                        loading it, burning it, controls,
+                                          and the rules
+        LICENSE.txt                       MIT
 
-    Rebuild it against the current cartridges with `make itch`, or under
-    another version with `make VERSION=v1.1.0 itch`. It is not committed —
-    every file in it already is.
+    TWO DIRECTORIES, BECAUSE A CARTRIDGE IMAGE AND AN EPROM IMAGE ARE NOT THE
+    SAME FILE. What the linker writes is raw — the bytes that go on the chip,
+    nothing around them — which is right for a programmer and wrong for
+    everyone else, because nothing in a raw image says where in the address map
+    it belongs. VICE will not take one by drag and drop and an Ultimate II+
+    will not list it. The .crt files in run/ carry the load address inside
+    them, and the VIC-20's carries both of its blocks, so every machine is one
+    file to load.
+
+    Rebuild it against the current cartridges with `make dist`, or under
+    another version with `make VERSION=v1.1.0 dist`. It is not committed —
+    every file in it already is. dist/ also holds the same tree unzipped, if
+    you would rather upload the files loose.
 
     THE VERSION IN THE FILENAME IS THE GIT TAG. v1.0.0 here is the tag v1.0.0
     is the GitHub release v1.0.0, so a zip somebody downloaded a year ago can
@@ -353,11 +381,13 @@ and the cover changes with it. There is no second copy of the artwork.
 6. BEFORE YOU HIT PUBLISH
 -------------------------------------------------------------------------------
 
-  [ ] `make` then `make itch`, so the zip holds the cartridges you mean to
-      ship rather than whatever was last built.
-  [ ] Download your own zip off the draft page and run all three from it.
-      A zip that was assembled correctly and a zip that plays are not the
-      same claim.
+  [ ] `make itch`, which builds the cartridges and the download before the
+      images, so the zip holds what you mean to ship rather than whatever was
+      last built. It boots both .crt containers in a headless emulator on the
+      way past and stops if either does not come up.
+  [ ] Download your own zip off the draft page and run all three from it. A
+      zip that was assembled correctly and a zip that plays are not the same
+      claim, and the build only checks the two Commodores.
   [ ] Look at the page at phone width. The cover and the reagent card were
       set at sizes that survive it; the screenshots have small type in them
       and will not.

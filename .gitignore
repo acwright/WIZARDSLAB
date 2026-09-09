@@ -37,8 +37,10 @@ Thumbs.db
 # VICE sound register transcripts (see tools/audiocheck.py)
 *-audio.txt
 
-# The itch.io download (tools/itch.py). Every file in it is already tracked
-# somewhere else, and it would churn on every build.
+# The download (tools/package.py) and the zip that used to sit beside the itch
+# page kit. Every file in them is already tracked somewhere else, and they
+# would churn on every build.
+dist/
 itch/*.zip
 
 # DEBUG=1 build stamps (see each platform Makefile)

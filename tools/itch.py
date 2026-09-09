@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the itch.io page kit: the cover art, the gallery images and the zip.
+"""Build the itch.io page kit: the cover art and the gallery images.
 
     make itch
 
@@ -24,9 +24,10 @@ Outputs, all under itch/:
                                character grid and scaled to each machine's
                                true pixel aspect
     images/reagent-card.png    what the five reagents do, in the game's font
-    WizardsLab-cartridges.zip  the four ROMs, a README and the licence
 
-itch/ITCH-PAGE.txt — every field of the itch.io form, the theme colours and
+The download is not built here — tools/package.py makes it, into dist/, because
+the GitHub release and the itch.io page serve the same file and neither owns
+it. itch/ITCH-PAGE.txt — every field of the itch.io form, the theme colours and
 what each image is for — sits beside them and is hand-written. Nothing here
 overwrites it.
 
@@ -35,15 +36,8 @@ Run from the repository root. Needs Pillow.
 import os
 import re
 import sys
-import zipfile
 
 from PIL import Image
-
-# The version the download is named for. Kept in step with the git tag and the
-# GitHub release, so a zip someone downloaded a year ago can be traced back to
-# the commit that built it: v1.0.0 here is the tag v1.0.0 is the release
-# v1.0.0. Override with `make VERSION=v1.1.0 itch`.
-VERSION = "v1.0.0"
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "itch")
@@ -353,149 +347,10 @@ def screenshots():
     return out
 
 
-# -----------------------------------------------------------------------------
-#   The download
-# -----------------------------------------------------------------------------
-CARTS = [
-    ("AC6502/WizardsLab.crt",       "WizardsLab-AC6502.crt"),
-    ("C64/WizardsLab.crt",          "WizardsLab-C64.crt"),
-    ("VIC20/WizardsLab-blk5.crt",   "WizardsLab-VIC20-blk5.crt"),
-    ("VIC20/WizardsLab-blk3.crt",   "WizardsLab-VIC20-blk3.crt"),
-]
-
-ZIP_README = """\
-WIZARDS LAB
-===========
-
-A falling-block match-three game for the AC6502, the Commodore VIC-20 and the
-Commodore 64. One game, three 16 KB cartridges, written in 6502 assembly.
-
-    https://github.com/acwright/WIZARDSLAB
-
-
-WHAT IS IN THIS ZIP
--------------------
-
-    WizardsLab-AC6502.crt        32 KB   AC6502
-    WizardsLab-C64.crt           16 KB   Commodore 64
-    WizardsLab-VIC20-blk5.crt     8 KB   Commodore VIC-20, code
-    WizardsLab-VIC20-blk3.crt     8 KB   Commodore VIC-20, artwork
-
-The VIC-20 needs BOTH of its files. Its 16 KB is two 8 KB blocks at different
-addresses, so it ships as two ROMs -- BLK5 holds the code, BLK3 the artwork,
-and the game will not boot without either.
-
-These are RAW ROM IMAGES despite the .crt extension -- not VICE .crt container
-files. VICE reads them fine with the flags below, which say what to do with
-them. Dragging one onto a VICE window instead will fail, because that path
-expects the container format. Convert with cartconv if you need one:
-
-    cartconv -t normal -i WizardsLab-C64.crt -o WizardsLab-vice.crt
-
-
-RUNNING IT
-----------
-
-VICE is at https://vice-emu.sourceforge.io/ ; the AC6502 emulator is at
-https://github.com/acwright/6502-EMULATOR
-
-    Commodore 64    x64sc -cart16 WizardsLab-C64.crt
-    Commodore VIC-20    xvic -cartA WizardsLab-VIC20-blk5.crt \\
-                             -cart6 WizardsLab-VIC20-blk3.crt
-    AC6502          6502 run --cart WizardsLab-AC6502.crt
-
-
-BURNING IT
-----------
-
-    AC6502      28C256 EEPROM or 27C256 EPROM
-    VIC-20      two 27C64s, or one 27C128. One ROM per block: BLK5 at $A000,
-                BLK3 at $6000. Most VIC-20 cartridge boards socket the two
-                separately.
-    C64         27C128 (16 KB). Pull EXROM and GAME both low so ROML $8000
-                and ROMH $A000 map together.
-
-
-CONTROLS
---------
-
-                    Joystick        Keyboard
-    Rotate          Up              W  or  cursor up
-    Soft drop       Down            S  or  cursor down
-    Move            Left / Right    A / D  or  cursor left / right
-    Rotate back     Fire            Q  or  SPACE
-    Pause           --              P
-    Start           Fire            SPACE  or  RETURN
-
-Joysticks are Atari 2600 compatible -- port 2 on the C64.
-
-
-HOW IT PLAYS
-------------
-
-Pieces are vertical stacks of three vials in six colours. Steer them into the
-well, rotate to reorder the three colours, and line up three or more of a
-colour -- horizontally, vertically or diagonally. They react and vanish, and
-whatever sat above them drops into new arrangements.
-
-Among the potions fall the arcane reagents. THE ONE RULE WORTH KNOWING is that
-tiles match on COLOUR, and the glyph on a tile only decides what happens when
-it clears. A red potion, a red fireball and a red star are all "red" -- so
-every reagent is aimed exactly like the potion it resembles, and you choose
-when to set it off.
-
-    FIREBALL    destroys every tile of its own colour, board wide
-    BOLT        clears its whole row and column, up to 21 cells
-    BOMB        clears the 3 x 3 around it
-    STAR        doubles the whole cascade's score, up to x8
-    PRISM       wildcard -- matches any colour
-
-A reagent caught in another reagent's blast goes off too. That is where the
-game lives.
-
-Every 30 tiles removed advances a level; the fall speed ramps to level 16 and
-holds. High score lives in RAM for the session -- it is a cartridge, so power
-off is the end of it.
-
-
-LICENCE
--------
-
-MIT. See LICENSE. Source, and the full design document, at
-https://github.com/acwright/WIZARDSLAB
-"""
-
-
-def zip_carts(version):
-    name = f"WizardsLab-cartridges-{version}.zip"
-    path = os.path.join(OUT, name)
-
-    # Clear out any earlier version first. This directory exists to be uploaded
-    # from, and two near-identical zips sitting in it is how the wrong one gets
-    # picked — a stale build is worse here than a missing one, because nothing
-    # about the file itself says which cartridges are inside it.
-    for stale in sorted(os.listdir(OUT)):
-        if stale.startswith("WizardsLab-cartridges-") and stale != name:
-            os.remove(os.path.join(OUT, stale))
-            print(f"  removed stale itch/{stale}")
-
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
-        for src, dst in CARTS:
-            z.write(os.path.join(ROOT, src), dst)
-        z.writestr("README.txt", ZIP_README)
-        z.write(os.path.join(ROOT, "LICENSE"), "LICENSE.txt")
-    return name, os.path.getsize(path)
-
-
 def main():
     os.makedirs(IMAGES, exist_ok=True)
-    version = (sys.argv[1] if len(sys.argv) > 1 else VERSION)
-
-    made = [cover(), background(), reagent_card()] + screenshots()
-    for name, size in made:
+    for name, size in [cover(), background(), reagent_card()] + screenshots():
         print(f"  itch/images/{name:32} {size[0]} x {size[1]}")
-    name, size = zip_carts(version)
-    print(f"  itch/{name:39} {size:,} bytes")
 
 
 if __name__ == "__main__":
