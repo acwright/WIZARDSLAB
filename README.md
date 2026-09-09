@@ -28,6 +28,35 @@ piece can unravel half the board.
 
 ---
 
+## Download and play
+
+**[Get the cartridge images from the latest release.](https://github.com/acwright/WIZARDSLAB/releases/latest)**
+No toolchain needed — they are ready to run.
+
+| You have | Download | Then |
+|---|---|---|
+| An AC6502 | `WizardsLab-AC6502.crt` | `6502 run --cart WizardsLab-AC6502.crt` |
+| A Commodore 64 | `WizardsLab-C64.crt` | `x64sc -cart16 WizardsLab-C64.crt` |
+| A VIC-20 | **both** `WizardsLab-VIC20-blk5.crt` and `-blk3.crt` | `xvic -cartA WizardsLab-VIC20-blk5.crt -cart6 WizardsLab-VIC20-blk3.crt` |
+
+The VIC-20 needs both files. Its 16 KB is two 8 KB blocks at different
+addresses, so it ships as two ROMs — BLK5 holds the code, BLK3 the artwork,
+and the game will not boot without either.
+
+`x64sc` and `xvic` are [VICE](https://vice-emu.sourceforge.io/); `6502` is the
+[AC6502 emulator](https://github.com/acwright/6502-EMULATOR). For real hardware
+see [Burning to a cartridge](#burning-to-a-cartridge) — the same files go
+straight to an EPROM.
+
+> **These are raw ROM images, despite the `.crt` extension** — not VICE `.crt`
+> container files. VICE reads them fine with the `-cart16` / `-cartA` flags
+> above, which say what to do with them; **dragging one onto a VICE window
+> instead will fail**, because that path expects the container format. Convert
+> with `cartconv` if you need one:
+> `cartconv -t normal -i WizardsLab-C64.crt -o WizardsLab-vice.crt`
+
+---
+
 ## How it plays
 
 Pieces are vertical stacks of three vials. Steer them into the well, rotate to
@@ -110,9 +139,9 @@ files: BLK5 (`$A000`) holds the autostart header and the code, BLK3 (`$6000`)
 holds the tileset and screen images.
 
 > **These `.crt` files are raw ROM images, not VICE `.crt` container files.**
-> The extension follows the convention in the sibling repositories. Use
-> `cartconv` if you need the container format for a flash cartridge:
-> `cartconv -t normal -i WizardsLab.crt -o WizardsLab-vice.crt`
+> The extension follows the convention in the sibling repositories. See
+> [Download and play](#download-and-play) for how to load them and how to
+> convert one if you need the container format.
 
 ---
 
