@@ -588,12 +588,20 @@ the implementation ones that SPEC.md does not cover.
   drawn *before* the redraw reaches that cell and is then painted over. One
   byte of BSS buys the guarantee; the alternative is a piece that disappears
   for four frames after every unpause.
-- **D15 — SPACE is `UP`, and confirm accepts either bit.** One key cannot be
-  both rotate-forward and rotate-reverse, so SPACE folds into `INPUT_UP` with
-  `W` and cursor-up, while `RETURN` and `Q` fold into `INPUT_FIRE`. The title
-  and game-over screens therefore test `INPUT_FIRE | INPUT_UP`, which also
-  means joystick up starts a game. Nothing in play is ambiguous. SPEC §11.2
-  records it.
+- **D15 — SPACE is `FIRE`, and confirm accepts either bit.** One key cannot be
+  both rotate-forward and rotate-reverse, so SPACE has to fold into one of
+  them; it folds into `INPUT_FIRE` with `RETURN` and `Q`, leaving `W` and
+  cursor-up to carry rotate. The title and game-over screens therefore test
+  `INPUT_FIRE | INPUT_UP`, which also means joystick up starts a game.
+  Nothing in play is ambiguous. SPEC §11.2 records it.
+
+  It went the other way first — SPACE as `INPUT_UP` — on the reasoning that a
+  Commodore's shifted cursor pairs are awkward enough that a keyboard player
+  might never find rotate otherwise. Then the AC6502 gained its cursor keys,
+  which are four plain codes and not awkward at all, and holding the old rule
+  would have meant SPACE doing one thing on one machine and the opposite on
+  the other two. One game, one control scheme; the divergence is not worth
+  what it bought.
 - **D16 — A row of falling is a cursor, like a board redraw.** D12 says
   anything bigger than the ring is a cursor; gravity is the second thing that
   is. Six full columns dropping one row changes 84 cells and the ring holds 64,

@@ -35,11 +35,12 @@ reorder the three colours, and match.
 
 | | Joystick | Keyboard |
 |---|---|---|
-| Rotate | Up | `W` · Cursor Up · `SPACE` |
+| Rotate | Up | `W` · Cursor Up |
 | Soft drop | Down | `S` · Cursor Down |
 | Move | Left / Right | `A` / `D` · Cursor Left / Right |
-| Rotate back | Fire | `Q` |
+| Rotate back | Fire | `Q` · `SPACE` |
 | Pause | — | `P` |
+| Start | Fire | `SPACE` · `RETURN` |
 
 Joysticks are Atari 2600 compatible — port 2 on the C64.
 

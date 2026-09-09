@@ -138,8 +138,8 @@ StateTitle:
   jsr AnimTitleBlink            ;   of the screen's animation (SPEC 13.1)
 
   lda InputEdge
-  and #(INPUT_FIRE | INPUT_UP)  ; Fire, or SPACE, which the keyboards fold
-  beq @Done                     ;   into UP so it can rotate in play (D15)
+  and #(INPUT_FIRE | INPUT_UP)  ; Fire or SPACE, and joystick up too, so no
+  beq @Done                     ;   one has to hunt for the start key (D15)
 
   jsr RngSeed                   ; SPEC 15 — seed from reaction time, not a constant
   jsr GameStart

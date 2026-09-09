@@ -391,19 +391,17 @@ ScanKeys:
 ;   In:  A = character      Out: A = INPUT_* bit, or 0 for anything else
 ;   SPEC 11.2. Two control schemes, either one whole on its own:
 ;
-;     WASD   W rotate, S drop, A/D move, Q rotate back, SPACE start
-;     Arrows cursor keys move and rotate, SPACE rotate back and start
+;     WASD    W rotate, S drop, A/D move
+;     Arrows  cursor up rotate, down drop, left/right move
+;
+;   and SPACE under both of them, as rotate-back and as start (D15). That is
+;   the same scheme all three machines read — a key does the same thing on
+;   every one of them, and this file is not the place to be interesting.
 ;
 ;   The encoders DO define codes for the arrow keys — the C0 four nobody
 ;   else uses, $1C left, $1D right, $1E up, $1F down — and send them from
 ;   the matrix keyboard and the PS/2 port alike. They are matched before the
 ;   case fold below, which would otherwise turn them into punctuation.
-;
-;   SPACE is FIRE here and not UP, which is where this machine parts company
-;   with the Commodores (SPEC 11.2, D15). There, SPACE has to be rotate so a
-;   keyboard player has one at all; here the cursor keys carry rotate and
-;   SPACE is free to be the thumb button next to them — and FIRE confirms in
-;   every menu that UP does, so PRESS FIRE still starts a game.
 ; -----------------------------------------------------------------------------
 KeyBit:
   cmp #$1C                      ; Cursor left

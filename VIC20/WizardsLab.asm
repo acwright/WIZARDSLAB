@@ -400,7 +400,7 @@ KeyTable:
   .byte %11111011, %00000100, INPUT_RIGHT   ; D        row 2, col 2
   .byte %10111111, %00000001, INPUT_FIRE    ; Q        row 6, col 0
   .byte %11111101, %00100000, INPUT_PAUSE   ; P        row 1, col 5
-  .byte %11101111, %00000001, INPUT_UP      ; SPACE    row 4, col 0
+  .byte %11101111, %00000001, INPUT_FIRE    ; SPACE    row 4, col 0
   .byte %11111101, %10000000, INPUT_FIRE    ; RETURN   row 1, col 7
   .byte %11110111, %00000010, KEY_SHIFT     ; LSHIFT   row 3, col 1
   .byte %11101111, %01000000, KEY_SHIFT     ; RSHIFT   row 4, col 6

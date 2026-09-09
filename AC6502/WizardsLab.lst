@@ -1899,8 +1899,8 @@ Current file: WizardsLab.asm
 00009Fr 2  20 rr rr       jsr AnimTitleBlink            ;   of the screen's animation (SPEC 13.1)
 0000A2r 2               
 0000A2r 2  AD rr rr       lda InputEdge
-0000A5r 2  29 11          and #(INPUT_FIRE | INPUT_UP)  ; Fire, or SPACE, which the keyboards fold
-0000A7r 2  F0 06          beq @Done                     ;   into UP so it can rotate in play (D15)
+0000A5r 2  29 11          and #(INPUT_FIRE | INPUT_UP)  ; Fire or SPACE, and joystick up too, so no
+0000A7r 2  F0 06          beq @Done                     ;   one has to hunt for the start key (D15)
 0000A9r 2               
 0000A9r 2  20 rr rr       jsr RngSeed                   ; SPEC 15 — seed from reaction time, not a constant
 0000ACr 2  20 rr rr       jsr GameStart
@@ -6527,19 +6527,17 @@ Current file: WizardsLab.asm
 001389r 1               ;   In:  A = character      Out: A = INPUT_* bit, or 0 for anything else
 001389r 1               ;   SPEC 11.2. Two control schemes, either one whole on its own:
 001389r 1               ;
-001389r 1               ;     WASD   W rotate, S drop, A/D move, Q rotate back, SPACE start
-001389r 1               ;     Arrows cursor keys move and rotate, SPACE rotate back and start
+001389r 1               ;     WASD    W rotate, S drop, A/D move
+001389r 1               ;     Arrows  cursor up rotate, down drop, left/right move
+001389r 1               ;
+001389r 1               ;   and SPACE under both of them, as rotate-back and as start (D15). That is
+001389r 1               ;   the same scheme all three machines read — a key does the same thing on
+001389r 1               ;   every one of them, and this file is not the place to be interesting.
 001389r 1               ;
 001389r 1               ;   The encoders DO define codes for the arrow keys — the C0 four nobody
 001389r 1               ;   else uses, $1C left, $1D right, $1E up, $1F down — and send them from
 001389r 1               ;   the matrix keyboard and the PS/2 port alike. They are matched before the
 001389r 1               ;   case fold below, which would otherwise turn them into punctuation.
-001389r 1               ;
-001389r 1               ;   SPACE is FIRE here and not UP, which is where this machine parts company
-001389r 1               ;   with the Commodores (SPEC 11.2, D15). There, SPACE has to be rotate so a
-001389r 1               ;   keyboard player has one at all; here the cursor keys carry rotate and
-001389r 1               ;   SPACE is free to be the thumb button next to them — and FIRE confirms in
-001389r 1               ;   every menu that UP does, so PRESS FIRE still starts a game.
 001389r 1               ; -----------------------------------------------------------------------------
 001389r 1               KeyBit:
 001389r 1  C9 1C          cmp #$1C                      ; Cursor left
