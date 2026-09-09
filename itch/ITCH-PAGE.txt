@@ -64,7 +64,7 @@ Pricing
     honest shape of it.
 
 Uploads
-    WizardsLab-cartridges-v1.0.zip                       (in this directory)
+    WizardsLab-cartridges-v1.0.0.zip                     (in this directory)
 
     Leave EVERY platform checkbox unticked — Windows, macOS, Linux, Android.
     These are ROM images; ticking one makes itch offer the file to the itch
@@ -321,7 +321,7 @@ and the cover changes with it. There is no second copy of the artwork.
 5. THE DOWNLOAD
 -------------------------------------------------------------------------------
 
-    WizardsLab-cartridges-v1.0.zip                            18 KB
+    WizardsLab-cartridges-v1.0.0.zip                          18 KB
 
         WizardsLab-AC6502.crt          32 KB   AC6502
         WizardsLab-C64.crt             16 KB   Commodore 64
@@ -332,8 +332,14 @@ and the cover changes with it. There is no second copy of the artwork.
         LICENSE.txt                            MIT
 
     Rebuild it against the current cartridges with `make itch`, or under
-    another version with `python3 tools/itch.py v1.1`. It is not committed —
+    another version with `make VERSION=v1.1.0 itch`. It is not committed —
     every file in it already is.
+
+    THE VERSION IN THE FILENAME IS THE GIT TAG. v1.0.0 here is the tag v1.0.0
+    is the GitHub release v1.0.0, so a zip somebody downloaded a year ago can
+    be traced back to the commit that built it, and the two download pages
+    cannot quietly drift apart. Bump all three together or none of them; the
+    default lives in tools/itch.py.
 
     The README inside is written for someone who downloaded a zip and has
     never seen the repository, so it repeats the emulator commands, the
@@ -353,8 +359,9 @@ and the cover changes with it. There is no second copy of the artwork.
   [ ] Look at the page at phone width. The cover and the reagent card were
       set at sizes that survive it; the screenshots have small type in them
       and will not.
-  [ ] Tag a GitHub release with the same four files, so the two places do not
-      drift. README.md points at the latest release for downloads.
+  [ ] Check the GitHub release with the matching tag holds the same four ROMs.
+      README.md sends people there rather than here, so the two download
+      routes have to agree — same version, same bytes.
   [ ] Post the first devlog only once someone has run it on real hardware.
       That is the news this page is actually waiting on, and it is worth more
       than a launch post.

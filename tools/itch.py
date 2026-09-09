@@ -39,6 +39,12 @@ import zipfile
 
 from PIL import Image
 
+# The version the download is named for. Kept in step with the git tag and the
+# GitHub release, so a zip someone downloaded a year ago can be traced back to
+# the commit that built it: v1.0.0 here is the tag v1.0.0 is the release
+# v1.0.0. Override with `make VERSION=v1.1.0 itch`.
+VERSION = "v1.0.0"
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "itch")
 IMAGES = os.path.join(OUT, "images")
@@ -274,6 +280,9 @@ def reagent_card():
 SCALE = (3, 4)
 BORDER_CELLS = 1
 
+# Where the grid is measured, per platform. See grid_origin().
+ANCHOR = {"C64": "c64-play.png", "VIC20": "vic20-play.png"}
+
 SHOTS = [
     ("c64-play.png",    "screenshot-1-c64-play.png",    "C64"),
     ("c64-title.png",   "screenshot-2-c64-title.png",   "C64"),
@@ -282,26 +291,60 @@ SHOTS = [
 ]
 
 
+def grid_origin(read_screen, plat):
+    """Where the character grid starts in this machine's captured frame.
+
+    Measured on the PLAY shot and used for both of that machine's shots.
+    read-screen.py finds the origin by fitting the tileset outward from the
+    first inked pixel, which needs ink at the edges of the SCREEN to land on
+    the right cell. The play screens have it — the brick margin runs into all
+    four corners. The title screens do not: they are black almost everywhere,
+    the first ink is the panel's own frame several cells in, and the fit comes
+    back four columns and a row out on the C64.
+
+    Measuring the play shot instead is not a workaround for that, it is the
+    right place to ask. The origin is a property of the emulator's captured
+    frame — how much border VICE puts around the screen — and not of the
+    picture inside it, and both of a machine's shots come off the same
+    emulator in the same run of tools/screenshots.py.
+    """
+    return read_screen.read_screen(
+        os.path.join(ROOT, "docs", ANCHOR[plat]), plat)[2]
+
+
 def screenshots():
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     read_screen = __import__("importlib").import_module("read-screen")
+    origin = {plat: grid_origin(read_screen, plat) for plat in ANCHOR}
 
     out = []
     for src, dst, plat in SHOTS:
         cfg = read_screen.PLATFORMS[plat]
-        path = os.path.join(ROOT, "docs", src)
-        _, _, (ox, oy) = read_screen.read_screen(path, plat)
+        ox, oy = origin[plat]
 
         cw = 8 * cfg["xscale"]
+        gw, gh = cfg["cols"] * cw, cfg["rows"] * 8
         bx, by = BORDER_CELLS * cw, BORDER_CELLS * 8
-        w, h = cfg["cols"] * cw + 2 * bx, cfg["rows"] * 8 + 2 * by
+        w, h = gw + 2 * bx, gh + 2 * by
 
         # Paste rather than crop, so a frame that runs off the edge of the
         # emulator's own picture is padded with backdrop instead of shifting
         # the grid back off centre.
-        im = Image.open(path).convert("RGB")
+        im = Image.open(os.path.join(ROOT, "docs", src)).convert("RGB")
         framed = Image.new("RGB", (w, h), PALETTE[0])
         framed.paste(im, (bx - ox, by - oy))
+
+        # The border this leaves is one cell of the machine's own backdrop,
+        # which is black on both (SPEC 4.3). So if any of it is not black, the
+        # grid is not where the origin says and the screen has bled into its
+        # own frame — which is exactly the failure a title shot produced when
+        # its origin was fitted from itself.
+        ring = framed.copy()
+        ring.paste(PALETTE[0], (bx, by, bx + gw, by + gh))
+        if ring.getbbox():
+            sys.exit(f"itch: {src} is not on the grid at ({ox}, {oy}) — the "
+                     f"screen bleeds into its border. Has the emulator's "
+                     f"captured frame changed? Re-run `make screenshots`.")
 
         sx, sy = SCALE
         framed = framed.resize((w * sx, h * sy), Image.NEAREST)
@@ -436,7 +479,7 @@ def zip_carts(version):
 
 def main():
     os.makedirs(IMAGES, exist_ok=True)
-    version = (sys.argv[1] if len(sys.argv) > 1 else "v1.0")
+    version = (sys.argv[1] if len(sys.argv) > 1 else VERSION)
 
     made = [cover(), background(), reagent_card()] + screenshots()
     for name, size in made:
