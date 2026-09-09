@@ -51,10 +51,12 @@ Release status
 
     The three cartridges build, boot and play end to end — title, play, pause,
     game over — so from a player's side it is finished, and "In development"
-    would put a work-in-progress banner over a game that is not one. README.md
-    still says in development because real hardware is untested; if you would
-    rather the two match, pick "In development" instead. It is one click either
-    way and the page is otherwise identical.
+    would put a work-in-progress banner over a game that is not one. This
+    matches the GitHub release, which is v1.0.0 and not a pre-release: if real
+    hardware turns something up, that is a patch release, not a demotion.
+
+    README.md's status block still calls the project in development. That is
+    the one place left saying otherwise.
 
 Pricing
     No payments — free
