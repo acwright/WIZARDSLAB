@@ -469,6 +469,16 @@ https://github.com/acwright/WIZARDSLAB
 def zip_carts(version):
     name = f"WizardsLab-cartridges-{version}.zip"
     path = os.path.join(OUT, name)
+
+    # Clear out any earlier version first. This directory exists to be uploaded
+    # from, and two near-identical zips sitting in it is how the wrong one gets
+    # picked — a stale build is worse here than a missing one, because nothing
+    # about the file itself says which cartridges are inside it.
+    for stale in sorted(os.listdir(OUT)):
+        if stale.startswith("WizardsLab-cartridges-") and stale != name:
+            os.remove(os.path.join(OUT, stale))
+            print(f"  removed stale itch/{stale}")
+
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         for src, dst in CARTS:
             z.write(os.path.join(ROOT, src), dst)
