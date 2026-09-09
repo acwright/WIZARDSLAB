@@ -1,0 +1,360 @@
+WIZARDS LAB — the itch.io page, field by field
+==============================================
+
+Everything needed to fill in https://itch.io/game/new, plus the theme colours
+and what each image in images/ is for. The images and the zip are generated —
+`make itch` rebuilds them from the current cartridges and the current artwork.
+This file is hand-written and is not overwritten by that.
+
+itch moves fields between sections from time to time and some are only shown
+once the project kind is set, so this is grouped by what the field *is* rather
+than by where it sits on the page today. Nothing here needs a paid account.
+
+  1. The form
+  2. The description, paste-ready
+  3. The theme
+  4. The images
+  5. The download
+  6. Before you hit publish
+
+
+-------------------------------------------------------------------------------
+1. THE FORM
+-------------------------------------------------------------------------------
+
+Title
+    Wizards Lab
+
+Project URL
+    wizards-lab
+    -> https://acwright.itch.io/wizards-lab
+
+Short description / tagline               (shown under the title, ~140 chars)
+    Match potions by colour, set the reagents off. One 16 KB cartridge for
+    the C64, the VIC-20 and the AC6502.
+
+    That is 118 characters. Two shorter alternates if it wraps badly:
+      Falling-block match-three in 6502 assembly, on three 8-bit machines.
+      Three of a colour, any direction — then the reagents go off.
+
+Classification
+    Games
+
+Kind of project
+    Downloadable
+
+    NOT "HTML" — there is no browser build. This matters more than it looks:
+    it decides whether itch shows a Play button or a Download button.
+
+Release status
+    Released
+
+    The three cartridges build, boot and play end to end — title, play, pause,
+    game over — so from a player's side it is finished, and "In development"
+    would put a work-in-progress banner over a game that is not one. README.md
+    still says in development because real hardware is untested; if you would
+    rather the two match, pick "In development" instead. It is one click either
+    way and the page is otherwise identical.
+
+Pricing
+    No payments — free
+    Tick "Allow donations", suggested $3
+
+    The source is MIT and the ROMs are 40 KB. Donations on, price off, is the
+    honest shape of it.
+
+Uploads
+    WizardsLab-cartridges-v1.0.zip                       (in this directory)
+
+    Leave EVERY platform checkbox unticked — Windows, macOS, Linux, Android.
+    These are ROM images; ticking one makes itch offer the file to the itch
+    app as if it were an executable for that OS, and it is not. An untagged
+    upload downloads from the web page on any machine, which is what you want.
+
+    Display name for the file:
+        Cartridge images — AC6502, VIC-20, C64  (4 ROMs + README)
+
+Genre
+    Puzzle
+
+Tags                                                   (itch allows up to 10)
+    commodore-64, vic-20, 6502, assembly, retro, 8-bit, match-3, pixel-art,
+    homebrew, singleplayer
+
+    Type them lower case with hyphens and take itch's autocomplete suggestion
+    where it offers one — a tag nobody else uses is a tag nobody browses. Do
+    not add "puzzle": the genre field already carries it and itch asks you not
+    to repeat it.
+
+Custom noun
+    (leave blank — "game" is right)
+
+Community
+    Comments
+
+    A comment thread is where the "it boots on my real VIC" reports will land,
+    and that is the feedback this project is actually short of. A full board
+    is more than the traffic warrants.
+
+Visibility & access
+    Draft while you set it up, then Public.
+
+    Restricted, with the secret URL, if you want someone with real hardware to
+    try it first.
+
+Metadata — the "More information" table on the finished page
+    Average session ......... A few minutes         (level 16 arrives ~10 min)
+    Languages ............... English
+    Inputs .................. Keyboard, Joystick / Gamepad (any)
+    Multiplayer ............. no — leave unticked
+    Player count ............ Single player
+    Accessibility ........... leave blank; nothing here is configurable, and
+                              the six potion colours are the game, so do not
+                              claim colour-blind friendliness
+
+    There is no field for a source-code link. The GitHub URL is in the
+    description body below, twice, which is where itch expects it.
+
+
+-------------------------------------------------------------------------------
+2. THE DESCRIPTION, PASTE-READY
+-------------------------------------------------------------------------------
+
+Paste the block between the rules into itch's description editor. The lines
+marked >>H<< are headings — style them as such after pasting and delete the
+marker. Bullets are the ones marked with a dash.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+Potions rain down from the shelves of a wizard's laboratory in vials of six
+colours. Line up three or more of a colour — horizontally, vertically or
+diagonally — and they react and vanish, dropping whatever sat above them into
+new arrangements.
+
+Among the potions fall the arcane reagents: fireballs, bolts, bombs, stars and
+prisms. Placed well, they set each other off, and a single piece can unravel
+half the board.
+
+Wizards Lab is a 16 KB cartridge for three 8-bit machines — the Commodore 64,
+the Commodore VIC-20 and the AC6502 — written in 6502 assembly. Same playfield,
+same tiles, same timing, on all three.
+
+This is a cartridge, not a browser game. The download is four ROM images: run
+them in VICE or the AC6502 emulator, or burn one to an EPROM and play it on
+the real thing.
+
+>>H<< The one rule worth knowing
+
+Tiles match on colour. The glyph on a tile decides what happens when it clears.
+
+A red potion, a red fireball and a red star are all "red" — so every reagent is
+aimed exactly like the potion it resembles, and you choose when to set it off.
+
+- Fireball — destroys every tile of its own colour, board wide
+- Bolt — clears its whole row and column, up to 21 cells
+- Bomb — clears the 3 × 3 around it
+- Star — doubles the whole cascade's score, up to ×8
+- Prism — wildcard, matches any colour
+
+A reagent caught in another reagent's blast goes off too. That is where the
+game lives.
+
+>>H<< Controls
+
+Rotate — joystick up, or W, or cursor up
+Move — joystick left and right, or A and D, or the cursor keys
+Soft drop — joystick down, or S, or cursor down
+Rotate back — fire, or Q, or SPACE
+Pause — P
+Start — fire, or SPACE, or RETURN
+
+Joysticks are Atari 2600 compatible — port 2 on the C64.
+
+>>H<< Running it
+
+Commodore 64 — x64sc -cart16 WizardsLab-C64.crt
+
+VIC-20 — xvic -cartA WizardsLab-VIC20-blk5.crt -cart6 WizardsLab-VIC20-blk3.crt
+
+AC6502 — 6502 run --cart WizardsLab-AC6502.crt
+
+The VIC-20 needs both of its files. Its 16 KB is two 8 KB blocks at different
+addresses, so it ships as two ROMs — BLK5 holds the code, BLK3 the artwork, and
+the game will not boot without either.
+
+These are raw ROM images despite the .crt extension, not VICE .crt container
+files. The flags above tell VICE what to do with them; dragging one onto a VICE
+window instead will fail. Full instructions, and how to burn a cartridge, are
+in the README inside the zip.
+
+x64sc and xvic are VICE — https://vice-emu.sourceforge.io/
+The AC6502 emulator — https://github.com/acwright/6502-EMULATOR
+
+>>H<< How it was made
+
+One source tree, three cartridges. Everything the game does is shared code;
+the only things that differ are four constants and seven routines behind a
+platform contract, so no game logic anywhere knows which machine it is on.
+
+The VIC-20 set the shape of it. Its 22 columns are the playfield all three
+machines draw, its eight hi-res colours capped the palette at six potions plus
+white, and its ~1 KB of usable RAM is what the whole 557-byte memory layout was
+designed against. Designing for the tightest machine first is why the other two
+needed no compromises.
+
+Source, and the full design document — every rule, scoring table and level
+speed — at https://github.com/acwright/WIZARDSLAB
+
+MIT licensed.
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+
+-------------------------------------------------------------------------------
+3. THE THEME
+-------------------------------------------------------------------------------
+
+Edit theme, from the toolbar on your own page. The colours below are the
+game's own, sampled from the committed screenshots, so the page and the
+pictures on it are made of the same eight colours instead of nearly the same.
+
+    Background .............. #000000
+    Background image ........ images/background.png, TILED / repeat both axes
+    Text .................... #CDCDCD
+    Link .................... #FFF88D          the yellow potion
+    Link hover .............. #FFFFFF
+    Button / accent ......... #A94764          the laboratory's brick
+    Button text ............. #FFFFFF
+    Border .................. #A94764
+
+If your theme editor shows fewer boxes than that, it has grouped some — set
+the ones it does show and the rest inherit. The two that matter most are the
+black background and the yellow link: black because every screenshot is 90%
+black and a pale page makes them look like holes, yellow because it is the one
+colour on the page that is not already carrying meaning in the artwork.
+
+    Font .................... whatever itch's default sans is
+
+    Do not hunt for a pixel font. All four images already carry the game's own
+    letterforms at 8 × 8, and a pixel font in the body text next to them reads
+    as an imitation of the real thing sitting right above it. Plain type is the
+    quieter and better choice — and it is legible at paragraph length, which
+    the game's font is not.
+
+    Cover / screenshot borders ... off, if offered
+
+    The cover already has a brick frame and the screenshots already have an
+    emulator border. A third frame around those is one too many.
+
+Layout
+    Default, with the cover image showing. Put the screenshots in this order —
+    itch shows the first one largest and it should be the game being played,
+    not its title screen:
+
+        1. screenshot-1-c64-play.png
+        2. screenshot-3-vic20-play.png
+        3. reagent-card.png
+        4. screenshot-2-c64-title.png
+        5. screenshot-4-vic20-title.png
+
+
+-------------------------------------------------------------------------------
+4. THE IMAGES
+-------------------------------------------------------------------------------
+
+All of them in images/, all generated by `make itch` (tools/itch.py). The
+cover and the reagent card are drawn by blitting data/tileset.bin through
+data/tilecolor-c64.inc — the same two files the C64 cartridge includes — so
+the letters on the cover are the game's letters and the six potion colours are
+the six the machine actually draws. Redraw a tile, `make artwork`, `make itch`,
+and the cover changes with it. There is no second copy of the artwork.
+
+  cover.png                      630 × 500
+      The cover image field. 630 × 500 is exactly what itch asks for, so it is
+      used uncropped. Title, one glyph of every kind in one of every colour,
+      and the three machines. Legible at the 315 × 250 the browse pages use,
+      which is what the type size is set by.
+
+  screenshot-1-c64-play.png     1008 × 864      C64, a real game 32 pieces in
+  screenshot-2-c64-title.png    1008 × 864      C64, title
+  screenshot-3-vic20-play.png   1152 × 800      VIC-20, the same game
+  screenshot-4-vic20-title.png  1152 × 800      VIC-20, title
+
+      The four committed screenshots from docs/, recentred, aspect-corrected
+      and upscaled. Nearest neighbour and integer factors, so 8 × 8 tiles still
+      look like 8 × 8 tiles. The two play shots are the same dealt game on both
+      machines.
+
+      They are RECENTRED because what VICE writes is its whole visible frame,
+      and the machine's screen does not sit in the middle of it — the VIC-20's
+      is up and to the left with the border eating the rest. So the frame here
+      is taken from the character grid outward: the grid, plus exactly one cell
+      of border on all four sides. Centred by construction, on both machines.
+
+      They are ASPECT-CORRECTED because neither machine has square pixels, and
+      the VIC-20's are the further off. Its dot clock is 4 × the system clock
+      and the C64's is 8 ×, so a VIC-20 pixel is exactly twice as wide as a C64
+      pixel — and a C64 pixel is itself 0.75 as wide as it is tall on a 4:3
+      set. Both are scaled 3 × across and 4 × down, which lands each machine on
+      its own true aspect and leaves the two at a common scale: an 8 × 8 cell
+      comes out 24 × 32 on the C64 and 48 × 32 on the VIC-20. That is the real
+      difference between the two screens — 22 fat columns against 40 thin ones
+      — and it is the thing a pair of square-pixel shots hides.
+
+      There are no AC6502 shots. Its emulator writes no PNG.
+
+  reagent-card.png               960 × 640
+      Not a screenshot — the five reagents and what each one does, set in the
+      game's own font and colours. It goes in the gallery third, after the two
+      play shots: the reagents are the reason to play and a still of a full
+      well does not explain them. Reads fine as the page's only text image if
+      someone never scrolls to the description.
+
+  background.png                 96 × 96
+      The page background, in the theme editor. A seamless brick — the game's
+      own margin tile — knocked back 55% toward black so it is texture behind
+      the text rather than a wall in front of it. Tiles in both axes at any
+      page size.
+
+
+-------------------------------------------------------------------------------
+5. THE DOWNLOAD
+-------------------------------------------------------------------------------
+
+    WizardsLab-cartridges-v1.0.zip                            18 KB
+
+        WizardsLab-AC6502.crt          32 KB   AC6502
+        WizardsLab-C64.crt             16 KB   Commodore 64
+        WizardsLab-VIC20-blk5.crt       8 KB   VIC-20, code
+        WizardsLab-VIC20-blk3.crt       8 KB   VIC-20, artwork
+        README.txt                             running it, burning it, the
+                                               controls, and the rules
+        LICENSE.txt                            MIT
+
+    Rebuild it against the current cartridges with `make itch`, or under
+    another version with `python3 tools/itch.py v1.1`. It is not committed —
+    every file in it already is.
+
+    The README inside is written for someone who downloaded a zip and has
+    never seen the repository, so it repeats the emulator commands, the
+    two-file VIC-20 rule, the raw-versus-container .crt warning, and the
+    reagents. That repetition is the point: the zip has to stand alone.
+
+
+-------------------------------------------------------------------------------
+6. BEFORE YOU HIT PUBLISH
+-------------------------------------------------------------------------------
+
+  [ ] `make` then `make itch`, so the zip holds the cartridges you mean to
+      ship rather than whatever was last built.
+  [ ] Download your own zip off the draft page and run all three from it.
+      A zip that was assembled correctly and a zip that plays are not the
+      same claim.
+  [ ] Look at the page at phone width. The cover and the reagent card were
+      set at sizes that survive it; the screenshots have small type in them
+      and will not.
+  [ ] Tag a GitHub release with the same four files, so the two places do not
+      drift. README.md points at the latest release for downloads.
+  [ ] Post the first devlog only once someone has run it on real hardware.
+      That is the news this page is actually waiting on, and it is worth more
+      than a launch post.

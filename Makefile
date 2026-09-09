@@ -7,7 +7,7 @@
 PLATFORMS = AC6502 VIC20 C64
 
 .PHONY: all clean artwork artwork-check data smoke playtest crosscheck \
-        audiocheck screenshots $(PLATFORMS) \
+        audiocheck screenshots itch $(PLATFORMS) \
         run-AC6502 run-VIC20 run-C64 \
         smoke-AC6502 smoke-VIC20 smoke-C64
 
@@ -98,6 +98,17 @@ screenshots:
 	cd C64 && cl65 -t none -g -C C64-16K.cfg \
 	  -Wl --dbgfile,/tmp/wl-c64.dbg -o /tmp/wl-c64.crt WizardsLab.asm
 	python3 tools/screenshots.py
+
+# Build the itch.io page kit into itch/: the cover art and the gallery images,
+# and the zip that is the page's download. The cover is not a drawing of the
+# game, it is made OF the game — tools/itch.py blits data/tileset.bin through
+# data/tilecolor-c64.inc, the same two files the C64 cartridge includes, so
+# there is no second copy of the artwork to keep in sync. The zip is built from
+# the cartridges as they stand, so build them first. itch/ITCH-PAGE.txt is the
+# hand-written half and this never touches it.
+itch:
+	@$(MAKE) all
+	python3 tools/itch.py $(VERSION)
 
 # Regenerate the placeholder artwork from scratch. Bootstrap only — this throws
 # the real art away, and a plain run writes nothing. See data/README.md.
