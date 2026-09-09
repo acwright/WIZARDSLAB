@@ -6525,273 +6525,294 @@ Current file: WizardsLab.asm
 001389r 1               ; -----------------------------------------------------------------------------
 001389r 1               ;   KeyBit — one ASCII byte to one input bit
 001389r 1               ;   In:  A = character      Out: A = INPUT_* bit, or 0 for anything else
-001389r 1               ;   SPEC 11.2. The arrow keys are not here: the encoders define no code for
-001389r 1               ;   them, so WASD is the whole of the keyboard control scheme on this machine.
+001389r 1               ;   SPEC 11.2. Two control schemes, either one whole on its own:
+001389r 1               ;
+001389r 1               ;     WASD   W rotate, S drop, A/D move, Q rotate back, SPACE start
+001389r 1               ;     Arrows cursor keys move and rotate, SPACE rotate back and start
+001389r 1               ;
+001389r 1               ;   The encoders DO define codes for the arrow keys — the C0 four nobody
+001389r 1               ;   else uses, $1C left, $1D right, $1E up, $1F down — and send them from
+001389r 1               ;   the matrix keyboard and the PS/2 port alike. They are matched before the
+001389r 1               ;   case fold below, which would otherwise turn them into punctuation.
+001389r 1               ;
+001389r 1               ;   SPACE is FIRE here and not UP, which is where this machine parts company
+001389r 1               ;   with the Commodores (SPEC 11.2, D15). There, SPACE has to be rotate so a
+001389r 1               ;   keyboard player has one at all; here the cursor keys carry rotate and
+001389r 1               ;   SPACE is free to be the thumb button next to them — and FIRE confirms in
+001389r 1               ;   every menu that UP does, so PRESS FIRE still starts a game.
 001389r 1               ; -----------------------------------------------------------------------------
 001389r 1               KeyBit:
-001389r 1  C9 0D          cmp #$0D                      ; RETURN — confirm
-00138Br 1  F0 2D          beq @Fire
-00138Dr 1  C9 20          cmp #' '                      ; SPACE — rotate, and start (D15)
-00138Fr 1  F0 1D          beq @Up
-001391r 1  09 20          ora #$20                      ; Fold to lower case. Anything that is not a
-001393r 1  C9 77          cmp #'w'                      ;   letter simply matches nothing below.
-001395r 1  F0 17          beq @Up
-001397r 1  C9 73          cmp #'s'
-001399r 1  F0 16          beq @Down
-00139Br 1  C9 61          cmp #'a'
-00139Dr 1  F0 15          beq @Left
-00139Fr 1  C9 64          cmp #'d'
-0013A1r 1  F0 14          beq @Right
-0013A3r 1  C9 71          cmp #'q'
-0013A5r 1  F0 13          beq @Fire
-0013A7r 1  C9 70          cmp #'p'
-0013A9r 1  F0 12          beq @Pause
-0013ABr 1  A9 00          lda #0
-0013ADr 1  60             rts
-0013AEr 1               
-0013AEr 1               @Up:
-0013AEr 1  A9 01          lda #INPUT_UP
-0013B0r 1  60             rts
-0013B1r 1               @Down:
-0013B1r 1  A9 02          lda #INPUT_DOWN
-0013B3r 1  60             rts
-0013B4r 1               @Left:
-0013B4r 1  A9 04          lda #INPUT_LEFT
-0013B6r 1  60             rts
-0013B7r 1               @Right:
-0013B7r 1  A9 08          lda #INPUT_RIGHT
-0013B9r 1  60             rts
-0013BAr 1               @Fire:
-0013BAr 1  A9 10          lda #INPUT_FIRE
-0013BCr 1  60             rts
-0013BDr 1               @Pause:
-0013BDr 1  A9 20          lda #INPUT_PAUSE
-0013BFr 1  60             rts
-0013C0r 1               
-0013C0r 1               ; -----------------------------------------------------------------------------
-0013C0r 1               ;   HalDetectRegion — the TMS9918 here is 60 Hz
-0013C0r 1               ; -----------------------------------------------------------------------------
-0013C0r 1               HalDetectRegion:
-0013C0r 1  A9 00          lda #0                        ; NTSC
-0013C2r 1  60             rts
-0013C3r 1               
-0013C3r 1               ; -----------------------------------------------------------------------------
-0013C3r 1               ;   HalColorFlash — the fireball's detonation (SPEC 4.6, 14)
-0013C3r 1               ;   In:  A = colour key ($40..$68), or TINT_NONE.  Modifies: A, X, Y, TintColor
-0013C3r 1               ;
-0013C3r 1               ;   ONE BYTE. A tile's colour on this machine belongs to its 8-pattern group
-0013C3r 1               ;   and not to the cell, so turning every red tile on the board white is a
-0013C3r 1               ;   single write to the VDP colour table — and its undo is another. SPEC 4.6
-0013C3r 1               ;   calls this the fireball's free trick and it is not an exaggeration: the
-0013C3r 1               ;   Commodores' equivalent costs a compare on every cell they draw for as long
-0013C3r 1               ;   as the flash lasts, and this costs nothing at all once it is lit.
-0013C3r 1               ;
-0013C3r 1               ;   The group index is the colour key >> 3, because both the tile map and the
-0013C3r 1               ;   colour table are eight patterns to a group (SPEC Appendix A).
-0013C3r 1               ;
-0013C3r 1               ;   The old colour goes back BEFORE the new one is lit, so two fireballs of
-0013C3r 1               ;   different colours in one step leave exactly one group flashing rather than
-0013C3r 1               ;   one group flashing and another stuck white for the rest of the game.
-0013C3r 1               ; -----------------------------------------------------------------------------
-0013C3r 1               HalColorFlash:
-0013C3r 1  48             pha
-0013C4r 1  AC rr rr       ldy TintColor
-0013C7r 1  C0 01          cpy #TINT_NONE
-0013C9r 1  F0 0B          beq @Light                    ; Nothing lit — nothing to put back
-0013CBr 1  98             tya
-0013CCr 1  4A             lsr a
-0013CDr 1  4A             lsr a
-0013CEr 1  4A             lsr a
-0013CFr 1  A8             tay
-0013D0r 1  B9 rr rr       lda TileColorTMS,y            ; Its own colour, straight out of the table the
-0013D3r 1  20 rr rr       jsr VdpPutColor               ;   init loaded from
-0013D6r 1               
-0013D6r 1               @Light:
-0013D6r 1  68             pla
-0013D7r 1  8D rr rr       sta TintColor
-0013DAr 1  C9 01          cmp #TINT_NONE
-0013DCr 1  F0 0E          beq @Done
+001389r 1  C9 1C          cmp #$1C                      ; Cursor left
+00138Br 1  F0 37          beq @Left
+00138Dr 1  C9 1D          cmp #$1D                      ; Cursor right
+00138Fr 1  F0 36          beq @Right
+001391r 1  C9 1E          cmp #$1E                      ; Cursor up
+001393r 1  F0 29          beq @Up
+001395r 1  C9 1F          cmp #$1F                      ; Cursor down
+001397r 1  F0 28          beq @Down
+001399r 1  C9 0D          cmp #$0D                      ; RETURN — confirm
+00139Br 1  F0 2D          beq @Fire
+00139Dr 1  C9 20          cmp #' '                      ; SPACE — rotate back, and start
+00139Fr 1  F0 29          beq @Fire
+0013A1r 1  09 20          ora #$20                      ; Fold to lower case. Anything that is not a
+0013A3r 1  C9 77          cmp #'w'                      ;   letter simply matches nothing below.
+0013A5r 1  F0 17          beq @Up
+0013A7r 1  C9 73          cmp #'s'
+0013A9r 1  F0 16          beq @Down
+0013ABr 1  C9 61          cmp #'a'
+0013ADr 1  F0 15          beq @Left
+0013AFr 1  C9 64          cmp #'d'
+0013B1r 1  F0 14          beq @Right
+0013B3r 1  C9 71          cmp #'q'
+0013B5r 1  F0 13          beq @Fire
+0013B7r 1  C9 70          cmp #'p'
+0013B9r 1  F0 12          beq @Pause
+0013BBr 1  A9 00          lda #0
+0013BDr 1  60             rts
+0013BEr 1               
+0013BEr 1               @Up:
+0013BEr 1  A9 01          lda #INPUT_UP
+0013C0r 1  60             rts
+0013C1r 1               @Down:
+0013C1r 1  A9 02          lda #INPUT_DOWN
+0013C3r 1  60             rts
+0013C4r 1               @Left:
+0013C4r 1  A9 04          lda #INPUT_LEFT
+0013C6r 1  60             rts
+0013C7r 1               @Right:
+0013C7r 1  A9 08          lda #INPUT_RIGHT
+0013C9r 1  60             rts
+0013CAr 1               @Fire:
+0013CAr 1  A9 10          lda #INPUT_FIRE
+0013CCr 1  60             rts
+0013CDr 1               @Pause:
+0013CDr 1  A9 20          lda #INPUT_PAUSE
+0013CFr 1  60             rts
+0013D0r 1               
+0013D0r 1               ; -----------------------------------------------------------------------------
+0013D0r 1               ;   HalDetectRegion — the TMS9918 here is 60 Hz
+0013D0r 1               ; -----------------------------------------------------------------------------
+0013D0r 1               HalDetectRegion:
+0013D0r 1  A9 00          lda #0                        ; NTSC
+0013D2r 1  60             rts
+0013D3r 1               
+0013D3r 1               ; -----------------------------------------------------------------------------
+0013D3r 1               ;   HalColorFlash — the fireball's detonation (SPEC 4.6, 14)
+0013D3r 1               ;   In:  A = colour key ($40..$68), or TINT_NONE.  Modifies: A, X, Y, TintColor
+0013D3r 1               ;
+0013D3r 1               ;   ONE BYTE. A tile's colour on this machine belongs to its 8-pattern group
+0013D3r 1               ;   and not to the cell, so turning every red tile on the board white is a
+0013D3r 1               ;   single write to the VDP colour table — and its undo is another. SPEC 4.6
+0013D3r 1               ;   calls this the fireball's free trick and it is not an exaggeration: the
+0013D3r 1               ;   Commodores' equivalent costs a compare on every cell they draw for as long
+0013D3r 1               ;   as the flash lasts, and this costs nothing at all once it is lit.
+0013D3r 1               ;
+0013D3r 1               ;   The group index is the colour key >> 3, because both the tile map and the
+0013D3r 1               ;   colour table are eight patterns to a group (SPEC Appendix A).
+0013D3r 1               ;
+0013D3r 1               ;   The old colour goes back BEFORE the new one is lit, so two fireballs of
+0013D3r 1               ;   different colours in one step leave exactly one group flashing rather than
+0013D3r 1               ;   one group flashing and another stuck white for the rest of the game.
+0013D3r 1               ; -----------------------------------------------------------------------------
+0013D3r 1               HalColorFlash:
+0013D3r 1  48             pha
+0013D4r 1  AC rr rr       ldy TintColor
+0013D7r 1  C0 01          cpy #TINT_NONE
+0013D9r 1  F0 0B          beq @Light                    ; Nothing lit — nothing to put back
+0013DBr 1  98             tya
+0013DCr 1  4A             lsr a
+0013DDr 1  4A             lsr a
 0013DEr 1  4A             lsr a
-0013DFr 1  4A             lsr a
-0013E0r 1  4A             lsr a
-0013E1r 1  A8             tay
-0013E2r 1  B9 rr rr       lda TileColorTMS,y
-0013E5r 1  29 0F          and #$0F                      ; Keep the background nibble — black (SPEC 4.3)
-0013E7r 1  09 F0          ora #$F0                      ; ...and make the foreground white
-0013E9r 1  20 rr rr       jsr VdpPutColor
-0013ECr 1               @Done:
-0013ECr 1  60             rts
-0013EDr 1               
-0013EDr 1               ; -----------------------------------------------------------------------------
-0013EDr 1               ;   VdpPutColor — In: A = colour byte, Y = group 0-31.  Modifies: A, X, Y
-0013EDr 1               ; -----------------------------------------------------------------------------
-0013EDr 1               VdpPutColor:
-0013EDr 1  48             pha
-0013EEr 1  98             tya
-0013EFr 1  18             clc
-0013F0r 1  69 00          adc #<VRAM_COLORS             ; 32 bytes, one per group; the low byte of the
-0013F2r 1  A2 20          ldx #>VRAM_COLORS             ;   table's address is zero so this cannot carry
-0013F4r 1  20 rr rr       jsr VdpSetWrite
-0013F7r 1  68             pla
-0013F8r 1  8D 00 9C       sta VC_DATA
-0013FBr 1  60             rts
-0013FCr 1               
-0013FCr 1               ; -----------------------------------------------------------------------------
-0013FCr 1               ;   HalSfx — one note on the SID at $9800 (hal.inc)
-0013FCr 1               ;   In:  A = TIMBRE_*, X = note.  Out: nothing.  Modifies: A, X, Y, Tmp0-Tmp2
-0013FCr 1               ;
-0013FCr 1               ;   The sound card is the one piece of this machine the game uses and cannot
-0013FCr 1               ;   count on — HW_PRESENT bit 6 is set by the BIOS probe at boot, and a machine
-0013FCr 1               ;   with an empty IO 7 leaves it clear. Writing to an absent card's addresses
-0013FCr 1               ;   is a read of a floating bus away from being harmless, and "harmless" is not
-0013FCr 1               ;   a thing to build a frame on: the guard is four cycles and the game plays
-0013FCr 1               ;   through in silence without it (PLAN.md P8).
-0013FCr 1               ; -----------------------------------------------------------------------------
-0013FCr 1               HalSfx:
-0013FCr 1  48             pha
-0013FDr 1  AD 0D 03       lda HW_PRESENT
-001400r 1  29 40          and #HW_SID
-001402r 1  F0 04          beq @None
-001404r 1  68             pla
-001405r 1  4C rr rr       jmp SidSfx                    ; include/sid.inc, shared with the C64
-001408r 1               @None:
-001408r 1  68             pla
-001409r 1  60             rts
-00140Ar 1               
-00140Ar 1               SID_BASE = $9800                ; IO 7 (ac6502.inc). The C64's is $D400 and
-00140Ar 1               .include "../include/sid.inc"   ;   nothing else about the two differs
-00140Ar 2               ; =============================================================================
-00140Ar 2               ;   sid.inc — the SID half of the HAL, shared by the two machines that have one
-00140Ar 2               ; =============================================================================
-00140Ar 2               ;   SPEC.md section 16: the AC6502 and the C64 "share SID driver code almost
-00140Ar 2               ;   verbatim (register base differs: $9800 vs $D400)". This is that code, and
-00140Ar 2               ;   the base is all that differs — the platform defines SID_BASE and includes
-00140Ar 2               ;   this file once, from inside its CODE segment.
-00140Ar 2               ;
-00140Ar 2               ;   It is the one file in include/ that is not a list of equates. It has
-00140Ar 2               ;   nowhere else to be: it belongs to two platforms and not to the third, so
-00140Ar 2               ;   it cannot live in either WizardsLab.asm without one machine including the
-00140Ar 2               ;   other's, and it cannot live in src/, where nothing touches hardware
-00140Ar 2               ;   (PLAN.md D2, D22).
-00140Ar 2               ;
-00140Ar 2               ;   What it does NOT contain is a driver in the sequencing sense. Which effect
-00140Ar 2               ;   is playing, which step of it, how long the step lasts and what note it is
-00140Ar 2               ;   are all in src/audio.asm and shared by all three machines; SidSfx is asked
-00140Ar 2               ;   for one note in one timbre and writes eleven registers.
-00140Ar 2               ;
-00140Ar 2               ;   ONE VOICE. Voice 1 only — the game plays one sound at a time by design
-00140Ar 2               ;   (audio.asm), and voices 2 and 3 are left silent rather than half-used.
-00140Ar 2               ;
-00140Ar 2               ;   Leaves the RODATA segment selected; every caller declares its own segment
-00140Ar 2               ;   immediately afterwards.
-00140Ar 2               ; =============================================================================
-00140Ar 2               
-00140Ar 2               ; --- Register offsets from SID_BASE ------------------------------------------
-00140Ar 2               SID_FREQ_LO         = 0
-00140Ar 2               SID_FREQ_HI         = 1
-00140Ar 2               SID_PW_LO           = 2
-00140Ar 2               SID_PW_HI           = 3
-00140Ar 2               SID_CTRL            = 4         ; Waveform in the high nibble, GATE in bit 0
-00140Ar 2               SID_AD              = 5
-00140Ar 2               SID_SR              = 6
-00140Ar 2               SID_VOL             = 24        ; Master volume, low nibble
-00140Ar 2               
-00140Ar 2               ; --- The two levels (constants.inc) ------------------------------------------
-00140Ar 2               ;   A SID has no per-voice volume, so this register is the only place a
-00140Ar 2               ;   "quieter" can live. The game plays at full; the title screen's ambience
-00140Ar 2               ;   plays under it (ambience.asm).
-00140Ar 2               SID_VOL_FULL        = $0F
-00140Ar 2               SID_VOL_QUIET       = $06
-00140Ar 2               
-00140Ar 2               ; -----------------------------------------------------------------------------
-00140Ar 2               ;   SidSfx — HalSfx for a SID (hal.inc)
-00140Ar 2               ;   In:  A = TIMBRE_*, optionally + TIMBRE_QUIET; X = note (semitones above C3;
-00140Ar 2               ;        ignored when A is TIMBRE_OFF)
-00140Ar 2               ;   Out: nothing.  Modifies: A, X, Y, Tmp0-Tmp2
-00140Ar 2               ; -----------------------------------------------------------------------------
-00140Ar 2               SidSfx:
-00140Ar 2                 ; --- the level, which is bit 7 of the timbre and not a voice --------------
-00140Ar 2                 ;   Written before the note rather than with it, so the volume is already
-00140Ar 2                 ;   where it belongs when the gate comes up. Masked off first and on every
-00140Ar 2                 ;   path, which is what makes a QUIET TIMBRE_OFF ($80) still silence.
-00140Ar 2  A0 0F          ldy #SID_VOL_FULL
-00140Cr 2  C9 80          cmp #TIMBRE_QUIET
-00140Er 2  90 04          bcc @Level
-001410r 2  29 7F          and #TIMBRE_MASK
-001412r 2  A0 06          ldy #SID_VOL_QUIET
-001414r 2               @Level:
-001414r 2  8C 18 98       sty SID_BASE + SID_VOL
-001417r 2               
-001417r 2  C9 00          cmp #TIMBRE_OFF
-001419r 2  F0 50          beq SidGateOff
-00141Br 2               
-00141Br 2  85 rr          sta Tmp0                      ; The timbre, 1..4 — an index into the three
-00141Dr 2                                               ;   tables at the bottom of this file
-00141Dr 2  BD rr rr       lda SidNoteLo,x
-001420r 2  85 rr          sta Tmp1
-001422r 2  BD rr rr       lda SidNoteHi,x
-001425r 2  85 rr          sta Tmp2
+0013DFr 1  A8             tay
+0013E0r 1  B9 rr rr       lda TileColorTMS,y            ; Its own colour, straight out of the table the
+0013E3r 1  20 rr rr       jsr VdpPutColor               ;   init loaded from
+0013E6r 1               
+0013E6r 1               @Light:
+0013E6r 1  68             pla
+0013E7r 1  8D rr rr       sta TintColor
+0013EAr 1  C9 01          cmp #TINT_NONE
+0013ECr 1  F0 0E          beq @Done
+0013EEr 1  4A             lsr a
+0013EFr 1  4A             lsr a
+0013F0r 1  4A             lsr a
+0013F1r 1  A8             tay
+0013F2r 1  B9 rr rr       lda TileColorTMS,y
+0013F5r 1  29 0F          and #$0F                      ; Keep the background nibble — black (SPEC 4.3)
+0013F7r 1  09 F0          ora #$F0                      ; ...and make the foreground white
+0013F9r 1  20 rr rr       jsr VdpPutColor
+0013FCr 1               @Done:
+0013FCr 1  60             rts
+0013FDr 1               
+0013FDr 1               ; -----------------------------------------------------------------------------
+0013FDr 1               ;   VdpPutColor — In: A = colour byte, Y = group 0-31.  Modifies: A, X, Y
+0013FDr 1               ; -----------------------------------------------------------------------------
+0013FDr 1               VdpPutColor:
+0013FDr 1  48             pha
+0013FEr 1  98             tya
+0013FFr 1  18             clc
+001400r 1  69 00          adc #<VRAM_COLORS             ; 32 bytes, one per group; the low byte of the
+001402r 1  A2 20          ldx #>VRAM_COLORS             ;   table's address is zero so this cannot carry
+001404r 1  20 rr rr       jsr VdpSetWrite
+001407r 1  68             pla
+001408r 1  8D 00 9C       sta VC_DATA
+00140Br 1  60             rts
+00140Cr 1               
+00140Cr 1               ; -----------------------------------------------------------------------------
+00140Cr 1               ;   HalSfx — one note on the SID at $9800 (hal.inc)
+00140Cr 1               ;   In:  A = TIMBRE_*, X = note.  Out: nothing.  Modifies: A, X, Y, Tmp0-Tmp2
+00140Cr 1               ;
+00140Cr 1               ;   The sound card is the one piece of this machine the game uses and cannot
+00140Cr 1               ;   count on — HW_PRESENT bit 6 is set by the BIOS probe at boot, and a machine
+00140Cr 1               ;   with an empty IO 7 leaves it clear. Writing to an absent card's addresses
+00140Cr 1               ;   is a read of a floating bus away from being harmless, and "harmless" is not
+00140Cr 1               ;   a thing to build a frame on: the guard is four cycles and the game plays
+00140Cr 1               ;   through in silence without it (PLAN.md P8).
+00140Cr 1               ; -----------------------------------------------------------------------------
+00140Cr 1               HalSfx:
+00140Cr 1  48             pha
+00140Dr 1  AD 0D 03       lda HW_PRESENT
+001410r 1  29 40          and #HW_SID
+001412r 1  F0 04          beq @None
+001414r 1  68             pla
+001415r 1  4C rr rr       jmp SidSfx                    ; include/sid.inc, shared with the C64
+001418r 1               @None:
+001418r 1  68             pla
+001419r 1  60             rts
+00141Ar 1               
+00141Ar 1               SID_BASE = $9800                ; IO 7 (ac6502.inc). The C64's is $D400 and
+00141Ar 1               .include "../include/sid.inc"   ;   nothing else about the two differs
+00141Ar 2               ; =============================================================================
+00141Ar 2               ;   sid.inc — the SID half of the HAL, shared by the two machines that have one
+00141Ar 2               ; =============================================================================
+00141Ar 2               ;   SPEC.md section 16: the AC6502 and the C64 "share SID driver code almost
+00141Ar 2               ;   verbatim (register base differs: $9800 vs $D400)". This is that code, and
+00141Ar 2               ;   the base is all that differs — the platform defines SID_BASE and includes
+00141Ar 2               ;   this file once, from inside its CODE segment.
+00141Ar 2               ;
+00141Ar 2               ;   It is the one file in include/ that is not a list of equates. It has
+00141Ar 2               ;   nowhere else to be: it belongs to two platforms and not to the third, so
+00141Ar 2               ;   it cannot live in either WizardsLab.asm without one machine including the
+00141Ar 2               ;   other's, and it cannot live in src/, where nothing touches hardware
+00141Ar 2               ;   (PLAN.md D2, D22).
+00141Ar 2               ;
+00141Ar 2               ;   What it does NOT contain is a driver in the sequencing sense. Which effect
+00141Ar 2               ;   is playing, which step of it, how long the step lasts and what note it is
+00141Ar 2               ;   are all in src/audio.asm and shared by all three machines; SidSfx is asked
+00141Ar 2               ;   for one note in one timbre and writes eleven registers.
+00141Ar 2               ;
+00141Ar 2               ;   ONE VOICE. Voice 1 only — the game plays one sound at a time by design
+00141Ar 2               ;   (audio.asm), and voices 2 and 3 are left silent rather than half-used.
+00141Ar 2               ;
+00141Ar 2               ;   Leaves the RODATA segment selected; every caller declares its own segment
+00141Ar 2               ;   immediately afterwards.
+00141Ar 2               ; =============================================================================
+00141Ar 2               
+00141Ar 2               ; --- Register offsets from SID_BASE ------------------------------------------
+00141Ar 2               SID_FREQ_LO         = 0
+00141Ar 2               SID_FREQ_HI         = 1
+00141Ar 2               SID_PW_LO           = 2
+00141Ar 2               SID_PW_HI           = 3
+00141Ar 2               SID_CTRL            = 4         ; Waveform in the high nibble, GATE in bit 0
+00141Ar 2               SID_AD              = 5
+00141Ar 2               SID_SR              = 6
+00141Ar 2               SID_VOL             = 24        ; Master volume, low nibble
+00141Ar 2               
+00141Ar 2               ; --- The two levels (constants.inc) ------------------------------------------
+00141Ar 2               ;   A SID has no per-voice volume, so this register is the only place a
+00141Ar 2               ;   "quieter" can live. The game plays at full; the title screen's ambience
+00141Ar 2               ;   plays under it (ambience.asm).
+00141Ar 2               SID_VOL_FULL        = $0F
+00141Ar 2               SID_VOL_QUIET       = $06
+00141Ar 2               
+00141Ar 2               ; -----------------------------------------------------------------------------
+00141Ar 2               ;   SidSfx — HalSfx for a SID (hal.inc)
+00141Ar 2               ;   In:  A = TIMBRE_*, optionally + TIMBRE_QUIET; X = note (semitones above C3;
+00141Ar 2               ;        ignored when A is TIMBRE_OFF)
+00141Ar 2               ;   Out: nothing.  Modifies: A, X, Y, Tmp0-Tmp2
+00141Ar 2               ; -----------------------------------------------------------------------------
+00141Ar 2               SidSfx:
+00141Ar 2                 ; --- the level, which is bit 7 of the timbre and not a voice --------------
+00141Ar 2                 ;   Written before the note rather than with it, so the volume is already
+00141Ar 2                 ;   where it belongs when the gate comes up. Masked off first and on every
+00141Ar 2                 ;   path, which is what makes a QUIET TIMBRE_OFF ($80) still silence.
+00141Ar 2  A0 0F          ldy #SID_VOL_FULL
+00141Cr 2  C9 80          cmp #TIMBRE_QUIET
+00141Er 2  90 04          bcc @Level
+001420r 2  29 7F          and #TIMBRE_MASK
+001422r 2  A0 06          ldy #SID_VOL_QUIET
+001424r 2               @Level:
+001424r 2  8C 18 98       sty SID_BASE + SID_VOL
 001427r 2               
-001427r 2                 ; --- the timbre's octave (constants.inc) ----------------------------------
-001427r 2                 ;   A SID frequency register is linear in Hz, so an octave is a shift. On the
-001427r 2                 ;   VIC-20 the same octave is free, because its three tone oscillators are
-001427r 2                 ;   already an octave apart and the timbre picks between them.
-001427r 2  A4 rr          ldy Tmp0
-001429r 2  C0 01          cpy #TIMBRE_SOFT
-00142Br 2  D0 04          bne @NotSoft
-00142Dr 2  46 rr          lsr Tmp2                      ; Down one
-00142Fr 2  66 rr          ror Tmp1
-001431r 2               @NotSoft:
-001431r 2  C0 03          cpy #TIMBRE_BRIGHT
-001433r 2  D0 04          bne @NotBright
-001435r 2  06 rr          asl Tmp1                      ; Up one
-001437r 2  26 rr          rol Tmp2
-001439r 2               @NotBright:
-001439r 2               
-001439r 2                 ; --- the hard restart ------------------------------------------------------
-001439r 2                 ;   Gate down with a zeroed envelope BEFORE the new note. Without it the
-001439r 2                 ;   SID's envelope generator can be caught mid-release and skip the attack
-001439r 2                 ;   of the note that follows — the ADSR delay bug — and every step of every
-001439r 2                 ;   effect comes through here, so a skipped attack is a silent sound effect
-001439r 2                 ;   rather than a quiet one.
-001439r 2  A9 00          lda #0
-00143Br 2  8D 04 98       sta SID_BASE + SID_CTRL
-00143Er 2  8D 05 98       sta SID_BASE + SID_AD
-001441r 2  8D 06 98       sta SID_BASE + SID_SR
-001444r 2               
-001444r 2  A5 rr          lda Tmp1
-001446r 2  8D 00 98       sta SID_BASE + SID_FREQ_LO
-001449r 2  A5 rr          lda Tmp2
-00144Br 2  8D 01 98       sta SID_BASE + SID_FREQ_HI
-00144Er 2  A9 00          lda #$00                      ; A 50% pulse, which is a square wave. Only
-001450r 2  8D 02 98       sta SID_BASE + SID_PW_LO      ;   TIMBRE_BRIGHT reads it, and it never
-001453r 2  A9 08          lda #$08                      ;   changes, so it is written with everything
-001455r 2  8D 03 98       sta SID_BASE + SID_PW_HI      ;   else rather than kept as state
-001458r 2               
-001458r 2  B9 rr rr       lda SidAD - 1,y               ; The timbre tables are 1-based: TIMBRE_OFF
-00145Br 2  8D 05 98       sta SID_BASE + SID_AD         ;   never reaches them
-00145Er 2  B9 rr rr       lda SidSR - 1,y
-001461r 2  8D 06 98       sta SID_BASE + SID_SR
-001464r 2               
-001464r 2  B9 rr rr       lda SidWave - 1,y
-001467r 2  8D 04 98       sta SID_BASE + SID_CTRL       ; Waveform and GATE — the note starts here
-00146Ar 2  60             rts
-00146Br 2               
-00146Br 2               ; -----------------------------------------------------------------------------
-00146Br 2               ;   SidGateOff — end whatever is sounding
-00146Br 2               ;   The release does the rest. Voice 1 keeps its frequency and waveform, which
-00146Br 2               ;   costs nothing and means the next note writes the same registers either way.
-00146Br 2               ; -----------------------------------------------------------------------------
-00146Br 2               SidGateOff:
-00146Br 2  A9 00          lda #0
-00146Dr 2  8D 04 98       sta SID_BASE + SID_CTRL
-001470r 2  60             rts
-001471r 2               
-001471r 2               ; =============================================================================
-001471r 2               ;   SID tables
-001471r 2               ; =============================================================================
-001471r 2               
-001471r 2               .segment "RODATA"
+001427r 2  C9 00          cmp #TIMBRE_OFF
+001429r 2  F0 50          beq SidGateOff
+00142Br 2               
+00142Br 2  85 rr          sta Tmp0                      ; The timbre, 1..4 — an index into the three
+00142Dr 2                                               ;   tables at the bottom of this file
+00142Dr 2  BD rr rr       lda SidNoteLo,x
+001430r 2  85 rr          sta Tmp1
+001432r 2  BD rr rr       lda SidNoteHi,x
+001435r 2  85 rr          sta Tmp2
+001437r 2               
+001437r 2                 ; --- the timbre's octave (constants.inc) ----------------------------------
+001437r 2                 ;   A SID frequency register is linear in Hz, so an octave is a shift. On the
+001437r 2                 ;   VIC-20 the same octave is free, because its three tone oscillators are
+001437r 2                 ;   already an octave apart and the timbre picks between them.
+001437r 2  A4 rr          ldy Tmp0
+001439r 2  C0 01          cpy #TIMBRE_SOFT
+00143Br 2  D0 04          bne @NotSoft
+00143Dr 2  46 rr          lsr Tmp2                      ; Down one
+00143Fr 2  66 rr          ror Tmp1
+001441r 2               @NotSoft:
+001441r 2  C0 03          cpy #TIMBRE_BRIGHT
+001443r 2  D0 04          bne @NotBright
+001445r 2  06 rr          asl Tmp1                      ; Up one
+001447r 2  26 rr          rol Tmp2
+001449r 2               @NotBright:
+001449r 2               
+001449r 2                 ; --- the hard restart ------------------------------------------------------
+001449r 2                 ;   Gate down with a zeroed envelope BEFORE the new note. Without it the
+001449r 2                 ;   SID's envelope generator can be caught mid-release and skip the attack
+001449r 2                 ;   of the note that follows — the ADSR delay bug — and every step of every
+001449r 2                 ;   effect comes through here, so a skipped attack is a silent sound effect
+001449r 2                 ;   rather than a quiet one.
+001449r 2  A9 00          lda #0
+00144Br 2  8D 04 98       sta SID_BASE + SID_CTRL
+00144Er 2  8D 05 98       sta SID_BASE + SID_AD
+001451r 2  8D 06 98       sta SID_BASE + SID_SR
+001454r 2               
+001454r 2  A5 rr          lda Tmp1
+001456r 2  8D 00 98       sta SID_BASE + SID_FREQ_LO
+001459r 2  A5 rr          lda Tmp2
+00145Br 2  8D 01 98       sta SID_BASE + SID_FREQ_HI
+00145Er 2  A9 00          lda #$00                      ; A 50% pulse, which is a square wave. Only
+001460r 2  8D 02 98       sta SID_BASE + SID_PW_LO      ;   TIMBRE_BRIGHT reads it, and it never
+001463r 2  A9 08          lda #$08                      ;   changes, so it is written with everything
+001465r 2  8D 03 98       sta SID_BASE + SID_PW_HI      ;   else rather than kept as state
+001468r 2               
+001468r 2  B9 rr rr       lda SidAD - 1,y               ; The timbre tables are 1-based: TIMBRE_OFF
+00146Br 2  8D 05 98       sta SID_BASE + SID_AD         ;   never reaches them
+00146Er 2  B9 rr rr       lda SidSR - 1,y
+001471r 2  8D 06 98       sta SID_BASE + SID_SR
+001474r 2               
+001474r 2  B9 rr rr       lda SidWave - 1,y
+001477r 2  8D 04 98       sta SID_BASE + SID_CTRL       ; Waveform and GATE — the note starts here
+00147Ar 2  60             rts
+00147Br 2               
+00147Br 2               ; -----------------------------------------------------------------------------
+00147Br 2               ;   SidGateOff — end whatever is sounding
+00147Br 2               ;   The release does the rest. Voice 1 keeps its frequency and waveform, which
+00147Br 2               ;   costs nothing and means the next note writes the same registers either way.
+00147Br 2               ; -----------------------------------------------------------------------------
+00147Br 2               SidGateOff:
+00147Br 2  A9 00          lda #0
+00147Dr 2  8D 04 98       sta SID_BASE + SID_CTRL
+001480r 2  60             rts
+001481r 2               
+001481r 2               ; =============================================================================
+001481r 2               ;   SID tables
+001481r 2               ; =============================================================================
+001481r 2               
+001481r 2               .segment "RODATA"
 000000r 2               
 000000r 2               ; --- Waveform and envelope by timbre, indexed 1..4 (constants.inc) -----------
 000000r 2               ;   TIMBRE_SOFT   triangle, decaying to a low sustain — the lock's thunk and
@@ -7398,14 +7419,14 @@ Current file: WizardsLab.asm
 000800r 1               ;   cartridge writing a handler of its own.
 000800r 1               
 000800r 1               .segment "CODE"
-001471r 1               
-001471r 1               IrqTrampoline:
-001471r 1  6C 00 03       jmp (IRQ_PTR)
-001474r 1               
-001474r 1               NmiTrampoline:
-001474r 1  6C 04 03       jmp (NMI_PTR)
-001477r 1               
-001477r 1               .segment "VECTORS"
+001481r 1               
+001481r 1               IrqTrampoline:
+001481r 1  6C 00 03       jmp (IRQ_PTR)
+001484r 1               
+001484r 1               NmiTrampoline:
+001484r 1  6C 04 03       jmp (NMI_PTR)
+001487r 1               
+001487r 1               .segment "VECTORS"
 000000r 1               
 000000r 1  rr rr        .word   NmiTrampoline           ; NMI
 000002r 1  rr rr        .word   CartReset               ; RESET — the cartridge entry point

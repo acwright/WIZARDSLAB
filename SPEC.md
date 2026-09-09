@@ -816,11 +816,11 @@ detection (`new = current AND NOT previous`) happens once, centrally.
 
 | Action | Joystick | Keyboard |
 |---|---|---|
-| Rotate | Up | `W`, Cursor-Up, or `SPACE` |
+| Rotate | Up | `W`, Cursor-Up, or `SPACE` (Commodores) |
 | Soft drop | Down | `S` or Cursor-Down |
 | Move left | Left | `A` or Cursor-Left |
 | Move right | Right | `D` or Cursor-Right |
-| Rotate reverse *(optional)* | Fire | `Q` |
+| Rotate reverse *(optional)* | Fire | `Q`, or `SPACE` (AC6502) |
 | Pause | — | `P` |
 | Start / confirm | Fire | `SPACE` or `RETURN` |
 
@@ -830,12 +830,20 @@ the KERNAL, and read a SHIFT key alongside them, so all four directions are
 reachable — the KERNAL hands back one translated character and loses the
 distinction.
 
-**SPACE is `UP`, not `FIRE`.** One key cannot be both rotate-forward and
-rotate-reverse, so SPACE folds into the same bit as `W` and cursor-up, and
-`RETURN` and `Q` fold into `FIRE`. The two places that ask for a confirm —
-the title screen and the game-over screen — therefore accept **either** bit,
-which is also why joystick UP starts a game. Nothing in play is ambiguous:
-there, `UP` rotates forward and `FIRE` rotates back.
+**SPACE is `UP`, not `FIRE`** — on the Commodores. One key cannot be both
+rotate-forward and rotate-reverse, so SPACE folds into the same bit as `W`
+and cursor-up, and `RETURN` and `Q` fold into `FIRE`. The two places that ask
+for a confirm — the title screen and the game-over screen — therefore accept
+**either** bit, which is also why joystick UP starts a game. Nothing in play
+is ambiguous: there, `UP` rotates forward and `FIRE` rotates back.
+
+**The AC6502 puts SPACE on `FIRE` instead**, and it is the one control that
+differs between the three machines. The reason SPACE has to be rotate on a
+Commodore is that its cursor keys are shifted pairs, awkward enough that a
+keyboard player may never find all four; the AC6502's encoders send four
+plain codes, so cursor-up already carries rotate and SPACE is free to be the
+thumb button sitting under it. Confirm is unaffected — both screens take
+`FIRE` as readily as `UP`, so `PRESS FIRE` remains literally true.
 
 ### 11.3 Auto-repeat (DAS)
 
@@ -880,8 +888,14 @@ speed table is ever pushed further — but nothing today reaches it.
   bit: rotate, pause and fire behave exactly as on a stick, and left, right
   and soft drop advance once per keystroke and once per encoder auto-repeat.
   DAS never engages from this keyboard because no bit is ever down two frames
-  running. WASD, SPACE, RETURN, `Q` and `P` are the whole scheme — the
-  encoders define no code for the arrow keys.
+  running.
+
+  The encoders **do** send the arrow keys, from the matrix keyboard and the
+  PS/2 port alike, as the four C0 codes nothing else uses: `$1C` left, `$1D`
+  right, `$1E` up, `$1F` down. Match them before folding the byte to lower
+  case, or the fold turns them into punctuation. So this machine offers two
+  complete schemes — WASD with `Q`, and the cursor keys with SPACE — plus
+  RETURN and `P`.
 - **VIC-20.** Joystick is split: up/down/left/fire on VIA1 `$9111` bits 2–5,
   **right on VIA2 `$9120` bit 7** — which is also the last of the eight
   keyboard row lines.

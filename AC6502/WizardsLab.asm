@@ -389,14 +389,35 @@ ScanKeys:
 ; -----------------------------------------------------------------------------
 ;   KeyBit — one ASCII byte to one input bit
 ;   In:  A = character      Out: A = INPUT_* bit, or 0 for anything else
-;   SPEC 11.2. The arrow keys are not here: the encoders define no code for
-;   them, so WASD is the whole of the keyboard control scheme on this machine.
+;   SPEC 11.2. Two control schemes, either one whole on its own:
+;
+;     WASD   W rotate, S drop, A/D move, Q rotate back, SPACE start
+;     Arrows cursor keys move and rotate, SPACE rotate back and start
+;
+;   The encoders DO define codes for the arrow keys — the C0 four nobody
+;   else uses, $1C left, $1D right, $1E up, $1F down — and send them from
+;   the matrix keyboard and the PS/2 port alike. They are matched before the
+;   case fold below, which would otherwise turn them into punctuation.
+;
+;   SPACE is FIRE here and not UP, which is where this machine parts company
+;   with the Commodores (SPEC 11.2, D15). There, SPACE has to be rotate so a
+;   keyboard player has one at all; here the cursor keys carry rotate and
+;   SPACE is free to be the thumb button next to them — and FIRE confirms in
+;   every menu that UP does, so PRESS FIRE still starts a game.
 ; -----------------------------------------------------------------------------
 KeyBit:
+  cmp #$1C                      ; Cursor left
+  beq @Left
+  cmp #$1D                      ; Cursor right
+  beq @Right
+  cmp #$1E                      ; Cursor up
+  beq @Up
+  cmp #$1F                      ; Cursor down
+  beq @Down
   cmp #$0D                      ; RETURN — confirm
   beq @Fire
-  cmp #' '                      ; SPACE — rotate, and start (D15)
-  beq @Up
+  cmp #' '                      ; SPACE — rotate back, and start
+  beq @Fire
   ora #$20                      ; Fold to lower case. Anything that is not a
   cmp #'w'                      ;   letter simply matches nothing below.
   beq @Up
