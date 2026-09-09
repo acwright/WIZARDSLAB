@@ -75,7 +75,7 @@ Uploads
     upload downloads from the web page on any machine, which is what you want.
 
     Display name for the file:
-        Cartridge images — AC6502, VIC-20, C64  (.crt + ROMs, 35 KB)
+        Cartridge images — AC6502, VIC-20, C64  (.crt, .prg + ROMs, 40 KB)
 
 Genre
     Puzzle
@@ -145,8 +145,9 @@ same tiles, same timing, on all three.
 This is a cartridge, not a browser game — but it is one file per machine and
 it loads like anything else. Drag the .crt onto VICE, or drop it on the SD card
 of a C64 Ultimate, an Ultimate II+ or a VIC-20 Final Expansion 3 and pick it
-from the file browser. Raw ROM images are in the same download for anyone
-burning an EPROM.
+from the file browser. VIC-20 owners with an sd2iec or a 1541 want the .prg
+instead — same game, loaded as a program. Raw ROM images are in the same
+download for anyone burning an EPROM.
 
 >>H<< The one rule worth knowing
 
@@ -181,6 +182,7 @@ run/ — load these. One file per machine, the load address carried inside it.
 
 - WizardsLab-C64.crt — Commodore 64
 - WizardsLab-VIC20.crt — VIC-20, both blocks in the one file
+- WizardsLab-VIC20.prg — VIC-20 from a disk drive, see below
 - WizardsLab-AC6502.crt — AC6502
 
 eprom/ — burn these. Raw ROM images, named for their size and load address, for
@@ -198,6 +200,14 @@ AC6502 — 6502 run --cart WizardsLab-AC6502.crt
 
 On a C64 Ultimate, an Ultimate II+ or a VIC-20 Final Expansion 3, copy run/ to
 the SD card and pick the .crt from the file browser.
+
+VIC-20 FROM A DISK DRIVE — take WizardsLab-VIC20.prg. A .crt only means
+something to hardware that emulates cartridge ROM; an sd2iec, the SD side of a
+Penultimate Cartridge or a real 1541 is a disk drive, and a cartridge has to be
+ROM in the address space at reset. The .prg is the same 16 KB as a program that
+copies itself into place and starts. SET THE MEMORY TO 32K OR 35K FIRST — the
+two blocks have to have somewhere to land, and that is the one thing that
+catches people out.
 
 One file per machine, including the VIC-20. Its 16 KB is two 8 KB blocks at
 different addresses — BLK5 at $A000 holds the code, BLK3 at $6000 the artwork —

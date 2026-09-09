@@ -23,8 +23,10 @@ piece can unravel half the board.
 > **The artwork is finished** — all 256 tiles and both screens are drawn — and
 > the game is complete end to end: title, play, pause, game over and back to
 > the title, with the reagents, the scoring, the animation and the sound all
-> in. What is left is the real hardware. See [PLAN.md](PLAN.md) for what is
-> done and what is next.
+> in. **It has now run on a real VIC-20** — a gold-label NTSC machine, loaded
+> off an sd2iec as `WizardsLab-VIC20.prg`. What is left is the rest of the
+> hardware: the VIC-20 in PAL, the C64 and the AC6502. See [PLAN.md](PLAN.md)
+> for what is done and what is next.
 
 ---
 

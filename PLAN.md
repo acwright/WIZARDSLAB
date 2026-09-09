@@ -1294,7 +1294,13 @@ that own it, and each is easy to get wrong by assuming the obvious:
       needs a real machine to start on:** P9 found that VICE's remote monitor
       writes memory and hands the game input a frame at a time (§3), so a clear
       can be planted or played there first — and then confirmed on hardware
-- [ ] VIC-20 on real hardware, NTSC and PAL
+- [x] VIC-20 on real hardware, **NTSC** — a gold-label NTSC machine with its
+      original MOS 6560, 35K expanded, loaded off an sd2iec as
+      `run/WizardsLab-VIC20.prg`. Title screen and play both correct. This is
+      what `tools/prg.py` exists for: a `.crt` is meaningless to a disk drive,
+      which is what a real VIC-20 usually has attached, so the cartridge had to
+      be reachable as a program before any of this could be tried at all
+- [ ] VIC-20 on real hardware, **PAL**
 - [ ] C64 on real hardware, NTSC and PAL
 - [ ] Burn instructions in the README confirmed against an actual programmer
 - [ ] SPEC.md reconciled with whatever the hardware changed
