@@ -44,6 +44,8 @@ import subprocess
 import sys
 import zipfile
 
+from prg import build_prg, verify_prg
+
 # The version the download is named for. Kept in step with the git tag and the
 # GitHub release, so a zip somebody downloaded a year ago can be traced back to
 # the commit that built it: v1.0.0 here is the tag v1.0.0 is the release
@@ -237,6 +239,13 @@ file.
 The AC6502's file is the same in both -- its cartridge image burns straight to
 a 28C256 -- so the same bytes appear under both names.
 
+VIC-20 OWNERS WITH A DISK DRIVE want run/WizardsLab-VIC20.prg, not the .crt.
+A .crt only means anything to something that emulates cartridge ROM. An sd2iec,
+the SD side of a Penultimate Cartridge, or a real 1541 is a disk drive: it can
+hand the machine a file, but it cannot put ROM in the address space at reset,
+which is when the VIC-20 looks for a cartridge. The .prg is the same 16 KB as
+a program that copies itself into place and starts. See RUNNING IT.
+
 
 RUNNING IT
 ----------
@@ -256,6 +265,28 @@ ONE FILE PER MACHINE, INCLUDING THE VIC-20. The VIC-20's 16 KB is two 8 KB
 blocks at different addresses -- BLK5 at $A000 holds the code, BLK3 at $6000
 the artwork -- and both are inside run/WizardsLab-VIC20.crt. The two blocks are
 separate files only in eprom/, where they are two separate chips.
+
+
+FROM A DISK DRIVE (VIC-20)
+--------------------------
+
+  run/WizardsLab-VIC20.prg
+
+Copy it to the SD card or disk, then load and run it the way you load anything
+else -- a file browser's RUN, or:
+
+    LOAD"WIZARDSLAB-VIC20",8,1
+    RUN
+
+SET THE MEMORY TO 32K OR 35K FIRST. It is not optional and it is the only thing
+that usually goes wrong. The file is the cartridge's two 8 KB blocks carried as
+payload: it loads at $1201, needs BLK1 and BLK2 to sit in while it loads, and
+copies itself out to BLK3 at $6000 and BLK5 at $A000, which have to be RAM for
+it to land. On a Penultimate Cartridge that is the top setting in the memory
+menu. Anything less and half the game has nowhere to go.
+
+From that point the machine is running the same bytes as the cartridge -- the
+copy ends with a jump to the cartridge's own cold-start vector.
 
 
 BURNING IT
@@ -342,6 +373,17 @@ def build(version):
     for name in sorted(os.listdir(run_dir)):
         path = os.path.join(run_dir, name)
         made.append((f"run/{name}", os.path.getsize(path), verify(path, tmp)))
+
+    # The VIC-20's disk conversion, built after the loop above because it is
+    # not a container and has nothing for verify() to check a header on. A .crt
+    # needs something that emulates cartridge ROM; an sd2iec, a Penultimate's
+    # SD side or a 1541 is a disk drive and cannot put ROM in the address space
+    # at reset. This is the same cartridge as a program that loads itself into
+    # place. See tools/prg.py.
+    prg = os.path.join(run_dir, "WizardsLab-VIC20.prg")
+    layout = build_prg(rom("vic20-blk5"), rom("vic20-blk3"), prg)
+    made.append((f"run/{os.path.basename(prg)}", os.path.getsize(prg),
+                 f"{layout}, {verify_prg(prg, tmp)}"))
 
     for key, label in (("ac6502",     "AC6502-32k-8000"),
                        ("c64",        "C64-16k-8000"),

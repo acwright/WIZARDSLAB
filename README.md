@@ -44,6 +44,15 @@ Or drag the `.crt` onto a running VICE window. On a **C64 Ultimate**, an
 **Ultimate II+** or a VIC-20 **Final Expansion 3**, copy `run/` to the SD card
 and pick the `.crt` from the file browser.
 
+**On a VIC-20 with a disk drive, take `WizardsLab-VIC20.prg` instead.** An
+sd2iec, the SD side of a **Penultimate Cartridge**, or a real 1541 is a disk
+drive, and a `.crt` means nothing to one: a cartridge has to be ROM in the
+address space at reset, which is when the VIC-20 looks for it, and a drive
+cannot put it there. The `.prg` is the same 16 KB carried as a program that
+copies itself to `$6000` and `$A000` and jumps to the cartridge's own cold-start
+vector. **Set the memory to 32K or 35K before running it** — the two blocks have
+to have somewhere to land, and that is the one thing that usually goes wrong.
+
 The two Commodore files are proper VICE `.crt` containers, which is what makes
 that work: the load address is inside the file, so nothing has to be told where
 the ROM belongs. **The VIC-20 is one file too** — its 16 KB is two 8 KB blocks
@@ -157,12 +166,21 @@ image and an EPROM image are not the same file**:
 ```
 run/     WizardsLab-C64.crt              .crt container, 16 KB at $8000
          WizardsLab-VIC20.crt            .crt container, BOTH blocks
+         WizardsLab-VIC20.prg            disk conversion, for sd2iec etc.
          WizardsLab-AC6502.crt           raw, the AC6502's own convention
 eprom/   WizardsLab-C64-16k-8000.bin
          WizardsLab-VIC20-blk5-8k-a000.bin
          WizardsLab-VIC20-blk3-8k-6000.bin
          WizardsLab-AC6502-32k-8000.bin
 ```
+
+`WizardsLab-VIC20.prg` is the odd one out: not a container at all, but the
+cartridge turned into a program, for the drives that cannot take a container.
+It is a `10 SYS 4624` BASIC line, a sixty-one byte copier, and the two ROM
+blocks as payload — the same shape as every cart-to-disk conversion on an
+sd2iec card. `tools/prg.py` builds it, and proves it by booting the conversion
+and the real cartridge side by side and requiring the same title screen; a
+block sent to the wrong address moves that from 1% of pixels to 95%.
 
 A raw image is the right thing to burn and the wrong thing to hand somebody
 with a flash cart, because nothing in it says where in the address map it
