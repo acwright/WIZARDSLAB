@@ -45,3 +45,8 @@ itch/*.zip
 
 # DEBUG=1 build stamps (see each platform Makefile)
 .debug-*
+
+# Planning documents are kept local
+VDP-ASSESSMENT.md
+VDP-PLAN.md
+/PLAN.md
