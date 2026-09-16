@@ -327,7 +327,7 @@ def main():
               " three zeroes.\n      The pieces all land in the spawn column"
               " with no input, and whether that\n      column ever holds three"
               " of a colour is down to the seed. Same limit as\n      the well:"
-              " a CLEAR cannot be planted through VICE (PLAN.md P3).")
+              " a CLEAR cannot be planted through VICE.")
 
     print()
     if fails:

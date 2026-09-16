@@ -528,7 +528,7 @@ VdpPutColor:
 ;   with an empty IO 7 leaves it clear. Writing to an absent card's addresses
 ;   is a read of a floating bus away from being harmless, and "harmless" is not
 ;   a thing to build a frame on: the guard is four cycles and the game plays
-;   through in silence without it (PLAN.md P8).
+;   through in silence without it.
 ; -----------------------------------------------------------------------------
 HalSfx:
   pha

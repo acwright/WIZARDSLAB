@@ -9,8 +9,7 @@
 ;   It is the one file in include/ that is not a list of equates. It has
 ;   nowhere else to be: it belongs to two platforms and not to the third, so
 ;   it cannot live in either WizardsLab.asm without one machine including the
-;   other's, and it cannot live in src/, where nothing touches hardware
-;   (PLAN.md D2, D22).
+;   other's, and it cannot live in src/, where nothing touches hardware.
 ;
 ;   What it does NOT contain is a driver in the sequencing sense. Which effect
 ;   is playing, which step of it, how long the step lasts and what note it is

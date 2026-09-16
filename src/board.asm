@@ -145,7 +145,7 @@ BoardGravityStep:
 @Next:
   dec GravIdx                   ; Down to 0, then $FF, which ends the pass —
   bpl @Cell                     ;   GRAV_TOP is 119, so bit 7 starts clear
-                                ;   (see PLAN.md section 3)
+                                ;   (a bpl from 128 or more would not loop)
 @Finished:
   sec
   rts

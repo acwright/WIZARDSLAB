@@ -12,9 +12,8 @@
 ;   of it scores and ramps the level, the five reagents fire and set each other
 ;   off, a clear glows and shatters on the frame clock instead of happening
 ;   between two frames, the arcade loop around all of it is closed — title,
-;   play, pause, game over, title — and every event of SPEC 16 makes a noise
-;   (PLAN.md P2 to P8). The game is complete; what is left is real hardware
-;   (P10).
+;   play, pause, game over, title — and every event of SPEC 16 makes a noise.
+;   The game is complete; what is left is real hardware.
 ; =============================================================================
 
 ; -----------------------------------------------------------------------------
@@ -63,7 +62,7 @@ GameInit:
                                 ;   because a headless machine has no input
                                 ;   attached and would sit on the title screen
                                 ;   forever. Nothing else about the build
-                                ;   differs any more (PLAN.md section 3).
+                                ;   differs any more.
 .else
   lda #STATE_TITLE
   sta GameState

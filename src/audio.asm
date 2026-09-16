@@ -11,8 +11,8 @@
 ;   its own, which is true of the twenty lines that write registers and of
 ;   nothing else: the sequencing, the priority, the envelope of an effect
 ;   across frames and every note in the game are the same on all three, so
-;   they live here and are shared by all three rather than by two (PLAN.md
-;   D22). What each platform still owns is a note table and five stores.
+;   they live here and are shared by all three rather than by two. What each
+;   platform still owns is a note table and five stores.
 ;
 ;   ONE CHANNEL. The id is the priority — SPEC 16 lists the twelve from the
 ;   quietest event to the loudest — so a request takes the channel only if its

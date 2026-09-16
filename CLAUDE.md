@@ -15,11 +15,13 @@ So:
 
 - Commit to `main` as you go, one commit per meaningful step.
 - Do **not** open a branch for a phase, a fix or an experiment, and do not
-  branch just because the change is large. The phases in PLAN.md are the unit
-  of work, and they belong on `main` in order.
+  branch just because the change is large. A plan, when there is one, is a
+  local untracked `PLAN.md`; its phases are the unit of work, and they belong
+  on `main` in order.
 - This overrides any default agent habit of branching before editing. If you
   find yourself on a branch, fast-forward `main` to it and delete the branch.
 - Push to `origin/main` when a phase is done, so the remote is not left behind
   either.
 
-The history should read as one straight line of phases, matching PLAN.md.
+The history should read as one straight line of phases, matching the plan
+they came from.

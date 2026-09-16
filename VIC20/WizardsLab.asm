@@ -237,7 +237,7 @@ HalBlitScreen:
 ;
 ;   The VIC splits its stick across two chips: up, down, left and fire are on
 ;   VIA1 $9111, but RIGHT is on VIA2 $9120 bit 7 — which is also the last of
-;   the eight keyboard row lines. That collision is PLAN.md S4, and it turns
+;   the eight keyboard row lines. That looks like a collision, and it turns
 ;   out not to be one:
 ;
 ;     Every key this game reads lives in matrix rows 1-6. Row 0 is the top

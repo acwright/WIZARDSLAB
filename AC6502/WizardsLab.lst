@@ -1401,7 +1401,7 @@ Current file: WizardsLab.asm
 000000r 2               DIRTY_ENTRIES       = 64        ; 3 bytes each: offset lo, offset hi, tile
 000000r 2               DIRTY_BYTES         = DIRTY_ENTRIES * 3
 000000r 2               DIRTY_FLUSH_MAX     = 24        ; Cells pushed to the screen per frame.
-000000r 2                                               ;   MEASURED, not estimated (PLAN.md S1). A
+000000r 2                                               ;   MEASURED, not estimated. A
 000000r 2                                               ;   flush costs 165 cycles a cell on the
 000000r 2                                               ;   AC6502 and about 132 on the Commodores, so
 000000r 2                                               ;   24 cells is 3965 cycles — inside vertical
@@ -1849,9 +1849,8 @@ Current file: WizardsLab.asm
 00000Br 2               ;   of it scores and ramps the level, the five reagents fire and set each other
 00000Br 2               ;   off, a clear glows and shatters on the frame clock instead of happening
 00000Br 2               ;   between two frames, the arcade loop around all of it is closed — title,
-00000Br 2               ;   play, pause, game over, title — and every event of SPEC 16 makes a noise
-00000Br 2               ;   (PLAN.md P2 to P8). The game is complete; what is left is real hardware
-00000Br 2               ;   (P10).
+00000Br 2               ;   play, pause, game over, title — and every event of SPEC 16 makes a noise.
+00000Br 2               ;   The game is complete; what is left is real hardware.
 00000Br 2               ; =============================================================================
 00000Br 2               
 00000Br 2               ; -----------------------------------------------------------------------------
@@ -1900,7 +1899,7 @@ Current file: WizardsLab.asm
 000046r 2                                               ;   because a headless machine has no input
 000046r 2                                               ;   attached and would sit on the title screen
 000046r 2                                               ;   forever. Nothing else about the build
-000046r 2                                               ;   differs any more (PLAN.md section 3).
+000046r 2                                               ;   differs any more.
 000046r 2               .else
 000046r 2  A9 00          lda #STATE_TITLE
 000048r 2  8D rr rr       sta GameState
@@ -2760,7 +2759,7 @@ Current file: WizardsLab.asm
 000444r 2               @Next:
 000444r 2  C6 rr          dec GravIdx                   ; Down to 0, then $FF, which ends the pass —
 000446r 2  10 C1          bpl @Cell                     ;   GRAV_TOP is 119, so bit 7 starts clear
-000448r 2                                               ;   (see PLAN.md section 3)
+000448r 2                                               ;   (a bpl from 128 or more would not loop)
 000448r 2               @Finished:
 000448r 2  38             sec
 000449r 2  60             rts
@@ -5328,7 +5327,7 @@ Current file: WizardsLab.asm
 000E8Br 2               ;   Changed cells are appended to a ring and flushed once a frame, at most
 000E8Br 2               ;   DIRTY_FLUSH_MAX per frame with the remainder carried over.
 000E8Br 2               ;
-000E8Br 2               ;   The cap is NOT a hardware write-spacing limit. S1 measured this loop at
+000E8Br 2               ;   The cap is NOT a hardware write-spacing limit. This loop was measured at
 000E8Br 2               ;   165 cycles a cell on the AC6502, which puts two VRAM data writes 165 us
 000E8Br 2               ;   apart at 1 MHz and the closest two VDP PORT accesses 8 cycles apart —
 000E8Br 2               ;   inside even a real TMS9918A's 8 us and 2 us windows with two orders of
@@ -5337,7 +5336,7 @@ Current file: WizardsLab.asm
 000E8Br 2               ;   clock cannot write a TMS9918 too fast however hard it tries.
 000E8Br 2               ;
 000E8Br 2               ;   The cap is a TIME BUDGET: DIRTY_FLUSH_MAX cells is what fits in vertical
-000E8Br 2               ;   blank on the tightest of the three. See constants.inc and PLAN.md S1.
+000E8Br 2               ;   blank on the tightest of the three. See constants.inc.
 000E8Br 2               ;
 000E8Br 2               ;   All screen access goes through HalPlotCell (see hal.inc). Nothing in this
 000E8Br 2               ;   file knows where screen memory is.
@@ -5981,8 +5980,8 @@ Current file: WizardsLab.asm
 001113r 2               ;   its own, which is true of the twenty lines that write registers and of
 001113r 2               ;   nothing else: the sequencing, the priority, the envelope of an effect
 001113r 2               ;   across frames and every note in the game are the same on all three, so
-001113r 2               ;   they live here and are shared by all three rather than by two (PLAN.md
-001113r 2               ;   D22). What each platform still owns is a note table and five stores.
+001113r 2               ;   they live here and are shared by all three rather than by two. What each
+001113r 2               ;   platform still owns is a note table and five stores.
 001113r 2               ;
 001113r 2               ;   ONE CHANNEL. The id is the priority — SPEC 16 lists the twelve from the
 001113r 2               ;   quietest event to the loudest — so a request takes the channel only if its
@@ -6740,7 +6739,7 @@ Current file: WizardsLab.asm
 00140Cr 1               ;   with an empty IO 7 leaves it clear. Writing to an absent card's addresses
 00140Cr 1               ;   is a read of a floating bus away from being harmless, and "harmless" is not
 00140Cr 1               ;   a thing to build a frame on: the guard is four cycles and the game plays
-00140Cr 1               ;   through in silence without it (PLAN.md P8).
+00140Cr 1               ;   through in silence without it.
 00140Cr 1               ; -----------------------------------------------------------------------------
 00140Cr 1               HalSfx:
 00140Cr 1  48             pha
@@ -6766,8 +6765,7 @@ Current file: WizardsLab.asm
 00141Ar 2               ;   It is the one file in include/ that is not a list of equates. It has
 00141Ar 2               ;   nowhere else to be: it belongs to two platforms and not to the third, so
 00141Ar 2               ;   it cannot live in either WizardsLab.asm without one machine including the
-00141Ar 2               ;   other's, and it cannot live in src/, where nothing touches hardware
-00141Ar 2               ;   (PLAN.md D2, D22).
+00141Ar 2               ;   other's, and it cannot live in src/, where nothing touches hardware.
 00141Ar 2               ;
 00141Ar 2               ;   What it does NOT contain is a driver in the sequencing sense. Which effect
 00141Ar 2               ;   is playing, which step of it, how long the step lasts and what note it is

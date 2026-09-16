@@ -5,7 +5,7 @@
 ;   Changed cells are appended to a ring and flushed once a frame, at most
 ;   DIRTY_FLUSH_MAX per frame with the remainder carried over.
 ;
-;   The cap is NOT a hardware write-spacing limit. S1 measured this loop at
+;   The cap is NOT a hardware write-spacing limit. This loop was measured at
 ;   165 cycles a cell on the AC6502, which puts two VRAM data writes 165 us
 ;   apart at 1 MHz and the closest two VDP PORT accesses 8 cycles apart —
 ;   inside even a real TMS9918A's 8 us and 2 us windows with two orders of
@@ -14,7 +14,7 @@
 ;   clock cannot write a TMS9918 too fast however hard it tries.
 ;
 ;   The cap is a TIME BUDGET: DIRTY_FLUSH_MAX cells is what fits in vertical
-;   blank on the tightest of the three. See constants.inc and PLAN.md S1.
+;   blank on the tightest of the three. See constants.inc.
 ;
 ;   All screen access goes through HalPlotCell (see hal.inc). Nothing in this
 ;   file knows where screen memory is.

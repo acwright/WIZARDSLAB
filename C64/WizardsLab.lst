@@ -526,7 +526,7 @@ Current file: WizardsLab.asm
 000000r 2               DIRTY_ENTRIES       = 64        ; 3 bytes each: offset lo, offset hi, tile
 000000r 2               DIRTY_BYTES         = DIRTY_ENTRIES * 3
 000000r 2               DIRTY_FLUSH_MAX     = 24        ; Cells pushed to the screen per frame.
-000000r 2                                               ;   MEASURED, not estimated (PLAN.md S1). A
+000000r 2                                               ;   MEASURED, not estimated. A
 000000r 2                                               ;   flush costs 165 cycles a cell on the
 000000r 2                                               ;   AC6502 and about 132 on the Commodores, so
 000000r 2                                               ;   24 cells is 3965 cycles — inside vertical
@@ -990,9 +990,8 @@ Current file: WizardsLab.asm
 000015r 2               ;   of it scores and ramps the level, the five reagents fire and set each other
 000015r 2               ;   off, a clear glows and shatters on the frame clock instead of happening
 000015r 2               ;   between two frames, the arcade loop around all of it is closed — title,
-000015r 2               ;   play, pause, game over, title — and every event of SPEC 16 makes a noise
-000015r 2               ;   (PLAN.md P2 to P8). The game is complete; what is left is real hardware
-000015r 2               ;   (P10).
+000015r 2               ;   play, pause, game over, title — and every event of SPEC 16 makes a noise.
+000015r 2               ;   The game is complete; what is left is real hardware.
 000015r 2               ; =============================================================================
 000015r 2               
 000015r 2               ; -----------------------------------------------------------------------------
@@ -1041,7 +1040,7 @@ Current file: WizardsLab.asm
 000050r 2                                               ;   because a headless machine has no input
 000050r 2                                               ;   attached and would sit on the title screen
 000050r 2                                               ;   forever. Nothing else about the build
-000050r 2                                               ;   differs any more (PLAN.md section 3).
+000050r 2                                               ;   differs any more.
 000050r 2               .else
 000050r 2  A9 00          lda #STATE_TITLE
 000052r 2  8D rr rr       sta GameState
@@ -1901,7 +1900,7 @@ Current file: WizardsLab.asm
 00044Er 2               @Next:
 00044Er 2  C6 rr          dec GravIdx                   ; Down to 0, then $FF, which ends the pass —
 000450r 2  10 C1          bpl @Cell                     ;   GRAV_TOP is 119, so bit 7 starts clear
-000452r 2                                               ;   (see PLAN.md section 3)
+000452r 2                                               ;   (a bpl from 128 or more would not loop)
 000452r 2               @Finished:
 000452r 2  38             sec
 000453r 2  60             rts
@@ -4469,7 +4468,7 @@ Current file: WizardsLab.asm
 000E95r 2               ;   Changed cells are appended to a ring and flushed once a frame, at most
 000E95r 2               ;   DIRTY_FLUSH_MAX per frame with the remainder carried over.
 000E95r 2               ;
-000E95r 2               ;   The cap is NOT a hardware write-spacing limit. S1 measured this loop at
+000E95r 2               ;   The cap is NOT a hardware write-spacing limit. This loop was measured at
 000E95r 2               ;   165 cycles a cell on the AC6502, which puts two VRAM data writes 165 us
 000E95r 2               ;   apart at 1 MHz and the closest two VDP PORT accesses 8 cycles apart —
 000E95r 2               ;   inside even a real TMS9918A's 8 us and 2 us windows with two orders of
@@ -4478,7 +4477,7 @@ Current file: WizardsLab.asm
 000E95r 2               ;   clock cannot write a TMS9918 too fast however hard it tries.
 000E95r 2               ;
 000E95r 2               ;   The cap is a TIME BUDGET: DIRTY_FLUSH_MAX cells is what fits in vertical
-000E95r 2               ;   blank on the tightest of the three. See constants.inc and PLAN.md S1.
+000E95r 2               ;   blank on the tightest of the three. See constants.inc.
 000E95r 2               ;
 000E95r 2               ;   All screen access goes through HalPlotCell (see hal.inc). Nothing in this
 000E95r 2               ;   file knows where screen memory is.
@@ -5122,8 +5121,8 @@ Current file: WizardsLab.asm
 00111Dr 2               ;   its own, which is true of the twenty lines that write registers and of
 00111Dr 2               ;   nothing else: the sequencing, the priority, the envelope of an effect
 00111Dr 2               ;   across frames and every note in the game are the same on all three, so
-00111Dr 2               ;   they live here and are shared by all three rather than by two (PLAN.md
-00111Dr 2               ;   D22). What each platform still owns is a note table and five stores.
+00111Dr 2               ;   they live here and are shared by all three rather than by two. What each
+00111Dr 2               ;   platform still owns is a note table and five stores.
 00111Dr 2               ;
 00111Dr 2               ;   ONE CHANNEL. The id is the priority — SPEC 16 lists the twelve from the
 00111Dr 2               ;   quietest event to the loudest — so a request takes the channel only if its
@@ -5830,8 +5829,7 @@ Current file: WizardsLab.asm
 001412r 2               ;   It is the one file in include/ that is not a list of equates. It has
 001412r 2               ;   nowhere else to be: it belongs to two platforms and not to the third, so
 001412r 2               ;   it cannot live in either WizardsLab.asm without one machine including the
-001412r 2               ;   other's, and it cannot live in src/, where nothing touches hardware
-001412r 2               ;   (PLAN.md D2, D22).
+001412r 2               ;   other's, and it cannot live in src/, where nothing touches hardware.
 001412r 2               ;
 001412r 2               ;   What it does NOT contain is a driver in the sequencing sense. Which effect
 001412r 2               ;   is playing, which step of it, how long the step lasts and what note it is

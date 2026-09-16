@@ -2262,7 +2262,7 @@ print("\nthe writes reach the chip: a watchpoint on every SID register (SPEC C.1
 #   count is no use for the second question anyway: the emulator's hit counter
 #   under-reports badly — voice 1's volume register is written once a note and
 #   showed 3 hits across eight of them — so everything below reads it as a
-#   yes/no and never as a total (PLAN.md section 3).
+#   yes/no and never as a total.
 SID_BASE = 0x9800                               # ac6502.inc, SPEC C.1
 SID_VOICE1 = [0, 1, 2, 3, 4, 5, 6]              # freq, pulse width, control,
 SID_MASTER_VOL = 24                             #   attack/decay, sustain/release

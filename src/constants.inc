@@ -410,7 +410,7 @@ EFFECTQ_BYTES       = EFFECTQ_ENTRIES   ;   detonation, and nothing else.
 DIRTY_ENTRIES       = 64        ; 3 bytes each: offset lo, offset hi, tile
 DIRTY_BYTES         = DIRTY_ENTRIES * 3
 DIRTY_FLUSH_MAX     = 24        ; Cells pushed to the screen per frame.
-                                ;   MEASURED, not estimated (PLAN.md S1). A
+                                ;   MEASURED, not estimated. A
                                 ;   flush costs 165 cycles a cell on the
                                 ;   AC6502 and about 132 on the Commodores, so
                                 ;   24 cells is 3965 cycles — inside vertical

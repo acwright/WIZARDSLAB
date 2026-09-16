@@ -34,7 +34,7 @@
   - [A.3 The groups that do not hold potions](#a3-the-groups-that-do-not-hold-potions)
 - [Appendix B — Constants Summary](#appendix-b--constants-summary)
 - [Appendix C — Platform Build Notes](#appendix-c--platform-build-notes)
-- [Appendix D — Build Order](#appendix-d--build-order) *(moved to PLAN.md)*
+- [Appendix D — Build Order](#appendix-d--build-order)
 - [Appendix E — Cut List & Stretch Ideas](#appendix-e--cut-list--stretch-ideas)
 
 ---
@@ -364,7 +364,7 @@ of the four steps moves down at most one row at a time, so a line that reaches
 the pile at all must cross the pile's top row; starting each pass there, and
 the diagonals' edge-column start cells below it, misses nothing and skips the
 empty air above — which on a normal board is most of the work. Measured at
-about a third of the cost on a six-row pile ([PLAN.md](PLAN.md) P3).
+about a third of the cost on a six-row pile.
 
 `MARKS` is a **16 × 1-byte** bitmap (one byte per row, bits 0–5 = columns 0–5),
 so union-of-runs is a free `ORA`. 16 bytes total.
@@ -881,9 +881,8 @@ speed table is ever pushed further — but nothing today reaches it.
   or CA1 (PS/2). Poll `GPIO_IFR` for those flags and read `GPIO_PORTB` /
   `GPIO_PORTA` — the read takes the byte and clears the flag, and the flag
   raises whether or not the VIA is allowed to assert IRQ, so the cartridge
-  never has to clear the CPU's `I` ([D7](PLAN.md)). Read the key **before**
-  `ReadJoystick1`, which releases both encoders and would take a pending key
-  with them.
+  never has to clear the CPU's `I`. Read the key **before** `ReadJoystick1`,
+  which releases both encoders and would take a pending key with them.
 
   There is no key-up event, so a key here is a **one-frame pulse**, not a held
   bit: rotate, pause and fire behave exactly as on a stick, and left, right
@@ -1480,8 +1479,8 @@ piece's redraw back until any full-board redraw has gone past it.
 | **Headroom** | **~5,200** |
 
 Comfortable — and the images are carried **raw**, because no cartridge has
-needed the space (PLAN S3). The 800-byte line above is what they would cost
-compressed, and it is now measured rather than guessed. A byte-pair RLE — a
+needed the space. The 800-byte line above is what they would cost compressed,
+and it is now measured rather than guessed. A byte-pair RLE — a
 count and a value, runs capped at 255 — takes a title screen to about a third
 and a play screen to about half:
 
@@ -1963,11 +1962,11 @@ PSpecial:     .byte 38, 56, 69, 82, 92     ; level bands 1-3,4-6,7-9,10-12,13+
 
 ## Appendix D — Build Order
 
-Moved to **[PLAN.md](PLAN.md)**, which carries the phases, their exit criteria
-and their current state. This document stays the authority on the rules; PLAN.md
-is the authority on the order they get built in.
+The build order — the phases, their exit criteria and their state — lived in
+the implementation plan while the game was being built, and is history now
+(`git show f3eab29:PLAN.md`). This document stays the authority on the rules.
 
-Two things from this document shape that order and are worth restating here:
+Two things from this document shaped that order and are worth restating here:
 
 - Steps that set up a platform (cartridge header, video mode, tile format,
   colour model, frame sync) are done per-platform and first, so that when the
