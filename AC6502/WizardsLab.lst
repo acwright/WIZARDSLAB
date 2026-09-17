@@ -18,6 +18,14 @@ Current file: WizardsLab.asm
 000000r 1               ;   This file is the platform half of the contract in src/hal.inc. Everything
 000000r 1               ;   it includes from src/ is shared, byte for byte, with the VIC-20 and C64.
 000000r 1               ;
+000000r 1               ;   One image runs on every AC6502: a TMS9918A with BIOS 1.x, or a
+000000r 1               ;   6502-PICOVDP with BIOS 2.x (D26). It uploads its own tileset rather than
+000000r 1               ;   reading the 1.x character set at $B800, which is Kernal code on 2.x. It
+000000r 1               ;   calls only KernalInit and ReadJoystick1, and never prints, so 2.x leaves
+000000r 1               ;   the PICOVDP in its legacy submode, where these TMS9918 register writes
+000000r 1               ;   select Graphics I. include/ac6502.inc describes BIOS 1.6; the two entries
+000000r 1               ;   used keep their slots on 2.x.
+000000r 1               ;
 000000r 1               ;   Built with AC6502-16K.cfg.
 000000r 1               ; =============================================================================
 000000r 1               

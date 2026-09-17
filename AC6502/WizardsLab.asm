@@ -14,6 +14,14 @@
 ;   This file is the platform half of the contract in src/hal.inc. Everything
 ;   it includes from src/ is shared, byte for byte, with the VIC-20 and C64.
 ;
+;   One image runs on every AC6502: a TMS9918A with BIOS 1.x, or a
+;   6502-PICOVDP with BIOS 2.x (D26). It uploads its own tileset rather than
+;   reading the 1.x character set at $B800, which is Kernal code on 2.x. It
+;   calls only KernalInit and ReadJoystick1, and never prints, so 2.x leaves
+;   the PICOVDP in its legacy submode, where these TMS9918 register writes
+;   select Graphics I. include/ac6502.inc describes BIOS 1.6; the two entries
+;   used keep their slots on 2.x.
+;
 ;   Built with AC6502-16K.cfg.
 ; =============================================================================
 
