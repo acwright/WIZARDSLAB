@@ -285,7 +285,7 @@ build output under each platform directory unchanged.
 
 ```
 SPEC.md            The design bible — rules, scoring, screen layout, tile map
-DECISIONS.md       How it is built: settled questions (S1–S5), decisions (D1–D25)
+DECISIONS.md       How it is built: settled questions (S1–S5), decisions (D1–D26)
 Makefile           Delegates to each platform
 
 src/               Shared game code. Identical on all three machines.

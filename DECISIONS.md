@@ -1,7 +1,7 @@
 # Wizards Lab — Decisions
 
 The design record behind the code: the questions that had to be measured (S1–S5)
-and the implementation decisions (D1–D25) that the sources cite by label.
+and the implementation decisions (D1–D26) that the sources cite by label.
 [SPEC.md](SPEC.md) owns the *game* rules; this file owns the choices about how
 the game is built.
 
@@ -156,7 +156,7 @@ VICE in PAL mode. Marked untested rather than open.
 
 ---
 
-## Decisions (D1–D25)
+## Decisions (D1–D26)
 
 Numbered so phases can cite them. SPEC.md owns the *game* decisions; these are
 the implementation ones that SPEC.md does not cover.
@@ -333,6 +333,25 @@ the implementation ones that SPEC.md does not cover.
   playing: a move blip cutting the game's own opening in half would be the
   first thing they ever hear. The three ambience ids moved up to 14-16 to make
   room, which is the whole cost of the ordering being meaningful.
+- **D26 — One AC6502 cartridge serves both video cards.** The same image runs
+  unchanged on a TMS9918A with BIOS 1.x and on a 6502-PICOVDP with BIOS 2.x,
+  and it stays that way. It can, because it asks the machine for almost
+  nothing: the tiles are its own, uploaded from the cartridge's `TILES`
+  segment, so it never reads the 1.x character set at `$B800` (Kernal code on
+  2.x); it calls only `KernalInit` and `ReadJoystick1`, which keep their slots
+  on both BIOS lines; and it never prints, so 2.x leaves the PICOVDP in its
+  reset-time legacy submode, where the game's TMS9918 register writes select
+  Graphics I and `HalWaitFrame`'s status poll behaves as before. The tools run
+  on both cards by default (`CARDS=`), so 2.x stays tested rather than
+  assumed. **There is no VDP build in this line.** Nothing the PICOVDP adds
+  can be shown without breaking the game's own rules — richer tiles or colour
+  would be art drawn outside the TMS9918 project (D10), and scrolling, palette
+  cycling or a taller screen would be a feature on one machine only (SPEC
+  pillar 3) — and a VDP-only image would be the first that fails on a
+  TMS9918A. If that changes, it is a new SPEC revision and a new version.
+  `include/ac6502.inc` stays the frozen BIOS 1.6 copy, byte for byte: its
+  memory-map text is right for 1.6, and this cartridge's own comments say what
+  differs on 2.x.
 - **D9 — The whole static screen comes from the editors.** Panel frame, labels
   and margin are one name-table image per platform; code draws only the well,
   the digits, the preview and the message band over the top.
