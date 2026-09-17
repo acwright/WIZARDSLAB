@@ -7,7 +7,7 @@ Current file: WizardsLab.asm
 000000r 1               ; =============================================================================
 000000r 1               ;   Wizards Lab — AC6502
 000000r 1               ; =============================================================================
-000000r 1               ;   A 16 K cartridge for the A.C. Wright 6502, running the TMS9918 in
+000000r 1               ;   A 16 K cartridge for the AC6502, running the TMS9918 in
 000000r 1               ;   Graphics Mode I: 32 x 24 cells of 8 x 8 pixels, 256 patterns, and colour
 000000r 1               ;   assigned one foreground/background pair per group of eight patterns.
 000000r 1               ;

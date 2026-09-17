@@ -3,7 +3,7 @@
 ; =============================================================================
 ;   Wizards Lab — AC6502
 ; =============================================================================
-;   A 16 K cartridge for the A.C. Wright 6502, running the TMS9918 in
+;   A 16 K cartridge for the AC6502, running the TMS9918 in
 ;   Graphics Mode I: 32 x 24 cells of 8 x 8 pixels, 256 patterns, and colour
 ;   assigned one foreground/background pair per group of eight patterns.
 ;
