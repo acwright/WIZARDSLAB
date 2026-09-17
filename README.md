@@ -65,6 +65,15 @@ at different addresses, BLK5 at `$A000` for the code and BLK3 at `$6000` for
 the artwork, and the container holds both. The AC6502's image is raw by that
 platform's convention; its emulator takes it as it is.
 
+**The AC6502 file runs on every AC6502**, unchanged, whichever video card it
+has: a TMS9918A with BIOS 1.x, or a 6502-PICOVDP with BIOS 2.x. The command in
+the table boots the TMS9918A. For the PICOVDP with BIOS 2.0, which needs
+6502-EMULATOR 3.1 or later:
+
+```bash
+6502 run --vdp picovdp --cart WizardsLab-AC6502.crt
+```
+
 The download's other half is `eprom/` — the same game as raw ROM images, named
 for their size and load address, for anyone burning a real cartridge. See
 [Burning to a cartridge](#burning-to-a-cartridge).
@@ -216,7 +225,8 @@ For the containers that carry their own load address, see
 
 ```bash
 # AC6502 — https://github.com/acwright/6502-EMULATOR
-6502 run --cart AC6502/WizardsLab.crt
+6502 run --cart AC6502/WizardsLab.crt                 # TMS9918A, BIOS 1.6
+6502 run --vdp picovdp --cart AC6502/WizardsLab.crt   # 6502-PICOVDP, BIOS 2.0
 
 # VIC-20 — VICE
 xvic -cartA VIC20/WizardsLab-blk5.crt -cart6 VIC20/WizardsLab-blk3.crt
@@ -225,9 +235,15 @@ xvic -cartA VIC20/WizardsLab-blk5.crt -cart6 VIC20/WizardsLab-blk3.crt
 x64sc -cart16 C64/WizardsLab.crt
 ```
 
+The AC6502 cartridge runs unchanged on a TMS9918A with BIOS 1.x and on a
+6502-PICOVDP with BIOS 2.x; the second line needs 6502-EMULATOR 3.1 or later.
+`make run-AC6502` boots the TMS9918A, and `make run-AC6502 CARD=picovdp` the
+PICOVDP.
+
 `make smoke` runs all three headless instead, fails if a cartridge hangs
 rather than reaching its main loop, and leaves a screenshot beside each
-Commodore image. It is the fastest way to tell whether a change to the
+Commodore image. The AC6502 boots once on each video card; `CARD=picovdp`
+narrows it to one. It is the fastest way to tell whether a change to the
 platform layer broke a boot.
 
 `make screenshots` retakes the four pictures at the top of this file — those
@@ -241,7 +257,7 @@ are dealt the same game — the frame counter the seed is taken from is set
 before FIRE — and play it identically, which the run checks by reading both
 wells back off the two PNGs and comparing them cell for cell. The title shots
 are stepped forward until the blinking prompt is on screen rather than caught
-on its dark half. There are no AC6502 shots because its emulator writes no PNG.
+on its dark half. There are no AC6502 shots yet: the tool drives VICE only.
 
 `make playtest` goes further: it boots the AC6502 build paused and advances it
 a game frame at a time with the joystick held wherever the test wants it,
@@ -251,11 +267,16 @@ the floor are all assertions about numbers rather than about pixels. It also
 writes boards into RAM to order, which is how the match scanner, the clears and
 the falling pile are checked — including one board read back out of the video
 chip to prove that what the game believes is also what is on the screen.
+It runs once per video card, the TMS9918A and then the 6502-PICOVDP, and
+`make CARDS=picovdp playtest` runs one. Both it and `make crosscheck` build the
+DEBUG cartridge over `AC6502/WizardsLab.crt`, so run `make` afterwards before
+committing.
 
 `make crosscheck` is the cross-platform half of it: one headless game on each
 of the three machines, played to game over, with the wells compared cell by
 cell. The two Commodores are read off their screenshots — and the well *is* the
-board, since the board byte is the tile index.
+board, since the board byte is the tile index. The AC6502's side runs once per
+video card, narrowed the same way with `CARDS=`.
 
 `make audiocheck` does the same for the sound. VICE's `dump` sound device
 writes one line per sound-chip register write, so a headless game leaves a

@@ -203,6 +203,12 @@ VIC-20 — xvic -cartcrt WizardsLab-VIC20.crt
 
 AC6502 — 6502 run --cart WizardsLab-AC6502.crt
 
+The AC6502 file runs unchanged on every AC6502: a TMS9918A with BIOS 1.x, or a
+6502-PICOVDP with BIOS 2.x. The line above boots the TMS9918A; to boot the
+PICOVDP with BIOS 2.0 (6502-EMULATOR 3.1 or later):
+
+AC6502 — 6502 run --vdp picovdp --cart WizardsLab-AC6502.crt
+
 On a C64 Ultimate, an Ultimate II+ or a VIC-20 Final Expansion 3, copy run/ to
 the SD card and pick the .crt from the file browser.
 
@@ -333,7 +339,7 @@ and the cover changes with it. There is no second copy of the artwork.
       difference between the two screens — 22 fat columns against 40 thin ones
       — and it is the thing a pair of square-pixel shots hides.
 
-      There are no AC6502 shots. Its emulator writes no PNG.
+      There are no AC6502 shots yet.
 
   reagent-card.png               960 × 640
       Not a screenshot — the five reagents and what each one does, set in the
