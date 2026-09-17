@@ -12,6 +12,11 @@ looks at a picture, so an assertion is about a number and not about a pixel.
         -Wl --dbgfile,/tmp/wl.dbg -o /tmp/wl.crt WizardsLab.asm
     python3 tools/playtest.py
 
+WL_VDP picks the video card the machines boot with: tms9918a (the default,
+with BIOS 1.6) or picovdp (with BIOS 2.0). `make playtest` runs it once per
+card. WL_PORT moves the debug port (default 8770; the no-sound-card machine
+takes the port two above it).
+
 The -g build is only for the symbols: /tmp/wl.dbg is where every address below
 comes from, so nothing has to guess at a BSS offset. The cartridge the
 emulator runs is the ordinary DEBUG=1 one.
@@ -32,7 +37,8 @@ import sys
 import time
 import urllib.request
 
-PORT, TOKEN = 8770, "wizardslab"
+PORT, TOKEN = int(os.environ.get("WL_PORT", "8770")), "wizardslab"
+CARD = os.environ.get("WL_VDP", "tms9918a")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CART = os.path.join(ROOT, "AC6502", "WizardsLab.crt")
 DBGFILE = os.environ.get("WL_DBGFILE", "/tmp/wl.dbg")
@@ -65,11 +71,32 @@ def require_free_port(port):
              f"and try again.")
 
 
+def require_emulator(minimum=(3, 1, 0)):
+    """Fail loudly if the installed emulator cannot boot the card asked for.
+
+    2.7.0 rejects --vdp outright, and 3.0.x's picovdp boots BIOS 1.6 rather
+    than 2.0 — a run that would pass and prove nothing about 2.x.
+    """
+    try:
+        out = subprocess.run(["6502", "--version"], capture_output=True,
+                             text=True, timeout=30).stdout
+    except OSError:
+        sys.exit("no 6502 emulator on the PATH")
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
+    if not m or tuple(map(int, m.groups())) < minimum:
+        sys.exit(f"6502-EMULATOR {'.'.join(map(str, minimum))} or later is "
+                 f"needed to run on both video cards; this is "
+                 f"{out.strip() or 'unknown'}")
+    return m.group(0)
+
+
 require_free_port(PORT)
+EMULATOR = require_emulator()
+print(f"playtest: AC6502 on {CARD}, 6502-EMULATOR {EMULATOR}")
 
 proc = subprocess.Popen(
     ["6502", "run", "--headless", "--console", "video", "--pause",
-     "--cart", CART,
+     "--vdp", CARD, "--cart", CART,
      "--debug", "--debug-port", str(PORT), "--debug-token", TOKEN,
      "--timeout", "600s", "--quiet"],
     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -2429,11 +2456,11 @@ check("...and nothing else does either, not even a game over",
 #   the game has to reach play and stack pieces exactly as it does with sound.
 
 print("\nSPEC 16 — a machine with no sound card runs the same game in silence")
-NOSID_PORT = 8772
+NOSID_PORT = PORT + 2
 require_free_port(NOSID_PORT)
 mute = subprocess.Popen(
     ["6502", "run", "--headless", "--console", "video", "--pause",
-     "--empty", "sound", "--cart", CART,
+     "--vdp", CARD, "--empty", "sound", "--cart", CART,
      "--debug", "--debug-port", str(NOSID_PORT), "--debug-token", TOKEN,
      "--timeout", "120s", "--quiet"],
     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -2489,6 +2516,7 @@ check("nothing was written to the empty slot",
 mute.terminate()
 
 print()
-print(f"{len(fails)} FAILED: {fails}" if fails else "all checks passed")
+print(f"{CARD}: {len(fails)} FAILED: {fails}" if fails
+      else f"{CARD}: all checks passed")
 proc.terminate()
 sys.exit(1 if fails else 0)

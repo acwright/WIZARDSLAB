@@ -27,6 +27,10 @@ something when the game being played actually scores, which with no input
 depends on the seed dealing three of a colour into the spawn column — the same
 limitation the well has, and the run says so when it happens.
 
+WL_VDP picks the AC6502's video card: tms9918a (the default, with BIOS 1.6)
+or picovdp (with BIOS 2.0). `make crosscheck` runs it once per card. WL_PORT
+moves the debug port (default 8771).
+
 Run it from the repository root. Exits non-zero if the three disagree.
 """
 import base64
@@ -45,7 +49,8 @@ from importlib import import_module
 read_screen = import_module("read-screen").read_screen
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PORT, TOKEN = 8771, "wizardslab"
+PORT, TOKEN = int(os.environ.get("WL_PORT", "8771")), "wizardslab"
+CARD = os.environ.get("WL_VDP", "tms9918a")
 DBGFILE = os.environ.get("WL_DBGFILE", "/tmp/wl.dbg")
 
 BOARD_W, BOARD_H, STRIDE = 6, 16, 8
@@ -103,6 +108,25 @@ def require_free_port(port):
              f"and try again.")
 
 
+def require_emulator(minimum=(3, 1, 0)):
+    """Fail loudly if the installed emulator cannot boot the card asked for.
+
+    2.7.0 rejects --vdp outright, and 3.0.x's picovdp boots BIOS 1.6 rather
+    than 2.0 — a run that would pass and prove nothing about 2.x.
+    """
+    try:
+        out = subprocess.run(["6502", "--version"], capture_output=True,
+                             text=True, timeout=30).stdout
+    except OSError:
+        sys.exit("no 6502 emulator on the PATH")
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
+    if not m or tuple(map(int, m.groups())) < minimum:
+        sys.exit(f"6502-EMULATOR {'.'.join(map(str, minimum))} or later is "
+                 f"needed to run on both video cards; this is "
+                 f"{out.strip() or 'unknown'}")
+    return m.group(0)
+
+
 def ac6502_board():
     """Boot the AC6502 DEBUG cartridge, play to game over, return the board."""
     syms = {}
@@ -114,7 +138,7 @@ def ac6502_board():
     require_free_port(PORT)
     proc = subprocess.Popen(
         ["6502", "run", "--headless", "--console", "video", "--pause",
-         "--cart", os.path.join(ROOT, "AC6502", "WizardsLab.crt"),
+         "--vdp", CARD, "--cart", os.path.join(ROOT, "AC6502", "WizardsLab.crt"),
          "--debug", "--debug-port", str(PORT), "--debug-token", TOKEN,
          "--timeout", "600s", "--quiet"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -250,13 +274,14 @@ def show(well):
 
 def main():
     os.chdir(ROOT)
+    print(f"crosscheck: AC6502 on {CARD}, 6502-EMULATOR {require_emulator()}")
     state, board, score, level, nxt, band = ac6502_board()
     wells = {"AC6502": board_well(board)}
     scores = {"AC6502": unbcd(score)}
     levels = {"AC6502": level}
     nexts = {"AC6502": nxt}
     bands = {"AC6502": band}
-    print(f"AC6502: up to {AC6502_CYCLES} cycles, GameState {state}"
+    print(f"AC6502 ({CARD}): up to {AC6502_CYCLES} cycles, GameState {state}"
           f" ({'GAMEOVER' if state == 3 else 'still playing'}),"
           f" score {scores['AC6502']}, level {level}")
     for plat, target in (("VIC20", "WizardsLab"), ("C64", "WizardsLab")):
@@ -334,7 +359,8 @@ def main():
         for f in fails:
             print("FAIL " + f)
         sys.exit(1)
-    print("all three machines played the same game to the same well")
+    print(f"all three machines played the same game to the same well"
+          f" (AC6502 on {CARD})")
 
 
 if __name__ == "__main__":

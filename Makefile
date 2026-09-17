@@ -18,6 +18,13 @@ all: $(PLATFORMS)
 # past it. Changing the setting forces a rebuild — see any platform Makefile.
 export DEBUG
 
+# The AC6502 cartridge runs on either video card — a TMS9918A with BIOS 1.x or
+# a 6502-PICOVDP with BIOS 2.x — so its tests run on both. CARDS narrows
+# `make playtest` and `make crosscheck` to one (make CARDS=picovdp playtest);
+# CARD picks the card for `make run-AC6502` and narrows `make smoke-AC6502`.
+# See AC6502/Makefile.
+CARDS ?= tms9918a picovdp
+
 AC6502 VIC20 C64:
 	@echo "==> Building $@"
 	@$(MAKE) -C $@ all
@@ -57,23 +64,36 @@ artwork-check:
 # Play the game with a script and check what the piece actually did — DAS
 # timing, rotation, soft drop, lock delay, the walls and the floor, all read
 # out of RAM rather than off a picture. Needs the DEBUG cartridge and a -g
-# build beside it for the symbols. See tools/playtest.py.
+# build beside it for the symbols. Once per card in CARDS, one after the other:
+# the symbols are the same for both, since the cartridge is. See
+# tools/playtest.py.
 playtest:
 	@$(MAKE) DEBUG=1 AC6502
 	cd AC6502 && cl65 -t none -g --asm-define WL_DEBUG=1 -C AC6502-16K.cfg \
 	  -Wl --dbgfile,/tmp/wl.dbg -o /tmp/wl.crt WizardsLab.asm
-	python3 tools/playtest.py
+	@failed=; \
+	for card in $(CARDS); do \
+	  echo "==> playtest on $$card"; \
+	  WL_VDP=$$card python3 tools/playtest.py || failed="$$failed $$card"; \
+	done; \
+	if [ -n "$$failed" ]; then echo "playtest FAILED on:$$failed"; exit 1; fi
 
 # Play one headless game on ALL THREE and check they end up with the same well.
 # `make playtest` proves the rules on the machine whose memory can be read and
 # written; this proves the other two run the same code to the same answer. Slow
 # — three whole games, one of them a frame at a time — so it is a phase check
-# and not something to run after every edit. See tools/crosscheck.py.
+# and not something to run after every edit. Once per card in CARDS, so the
+# AC6502 side is checked on both. See tools/crosscheck.py.
 crosscheck:
 	@$(MAKE) DEBUG=1
 	cd AC6502 && cl65 -t none -g --asm-define WL_DEBUG=1 -C AC6502-16K.cfg \
 	  -Wl --dbgfile,/tmp/wl.dbg -o /tmp/wl.crt WizardsLab.asm
-	python3 tools/crosscheck.py
+	@failed=; \
+	for card in $(CARDS); do \
+	  echo "==> crosscheck with the AC6502 on $$card"; \
+	  WL_VDP=$$card python3 tools/crosscheck.py || failed="$$failed $$card"; \
+	done; \
+	if [ -n "$$failed" ]; then echo "crosscheck FAILED on:$$failed"; exit 1; fi
 
 # Read what the two Commodores' sound chips are actually told. VICE's `dump`
 # sound device logs every register write with its cycle, so a headless game
