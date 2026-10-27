@@ -19,7 +19,8 @@
 ;   flash is one palette write as it is there.
 ;
 ;   This file is the platform half of the contract in src/hal.inc. For now
-;   input reads only Esc, which goes back to BASIC, and the game is silent.
+;   the game is silent, and the fireball's flash lights nothing. Esc goes
+;   back to BASIC at any time.
 ;
 ;   Built with VC83.cfg.
 ; =============================================================================
@@ -368,8 +369,18 @@ HalBlitScreen:
   rts
 
 ; -----------------------------------------------------------------------------
-;   HalReadInput — STUB: Esc goes back to BASIC; nothing else is read yet
-;   Out: A = INPUT_* bits, active high
+;   HalReadInput — the keyboard, as one active-high mask
+;   Out: A = INPUT_* bits.  Modifies: A, X, Y, Tmp0
+;
+;   The keyboard controller keeps a bit for every key that is down, so a key
+;   here is HELD, as on the Commodores, and not the AC6502's one-frame pulse:
+;   DAS engages on a held arrow and soft drop lasts as long as the key does.
+;   The bitmap is not in doc/vc83_io.md — it is read from the simulator's
+;   keyboard_device.cpp — so all of it is behind this one routine and
+;   KeyTable, in case it moves.
+;
+;   Esc is not an input. It leaves the game for BASIC from here, at any
+;   point, without the shared code knowing it happened.
 ; -----------------------------------------------------------------------------
 HalReadInput:
   jsr DrainKeys
@@ -377,8 +388,27 @@ HalReadInput:
   lda KBD_HELD + KEY_ESC/8      ;   or held now
   and #1 << (KEY_ESC .mod 8)
   bne @Exit
-  lda #0
+
+  stz Tmp0
+  ldy #0
+@Key:
+  ldx KeyTable,y                ; Which byte of the bitmap...
+  bmi @Done                     ;   ($FF ends the table)
+  lda KBD_HELD,x                ; Indexed is safe: the bitmap is plain
+  and KeyTable+1,y              ;   registers and does not cross a page
+  beq @Next                     ;   ...and which bit of it
+  lda Tmp0
+  ora KeyTable+2,y
+  sta Tmp0
+@Next:
+  iny
+  iny
+  iny
+  bra @Key
+@Done:
+  lda Tmp0
   rts
+
 @Exit:
   jmp ExitToBasic
 
@@ -458,6 +488,30 @@ HalSfx:
 
 BasicPath:      .byte "B:BASIC.PRG"
 BasicPathLen    = * - BasicPath
+
+; --- KeyTable — bitmap byte, bit mask, input bit.  Terminated by $FF ---------
+;   SPEC 11.2: WASD and the arrows, either one whole on its own, with SPACE
+;   (and RETURN, and Q) as rotate-back and start, and P to pause. The same
+;   keys as on the other three machines. Codes are the keyboard matrix's
+;   (map_host_key_to_matrix in the simulator's keyboard_device.cpp).
+.macro KEY code, input
+  .byte code / 8, 1 << (code .mod 8), input
+.endmacro
+
+KeyTable:
+  KEY 69, INPUT_UP              ; Cursor up
+  KEY 49, INPUT_DOWN            ; Cursor down
+  KEY 48, INPUT_LEFT            ; Cursor left
+  KEY 50, INPUT_RIGHT           ; Cursor right
+  KEY 13, INPUT_UP              ; W
+  KEY 23, INPUT_DOWN            ; S
+  KEY 22, INPUT_LEFT            ; A
+  KEY 24, INPUT_RIGHT           ; D
+  KEY 45, INPUT_FIRE            ; SPACE
+  KEY 64, INPUT_FIRE            ; RETURN
+  KEY 12, INPUT_FIRE            ; Q
+  KEY 56, INPUT_PAUSE           ; P
+  .byte $FF
 
 ; --- Which bit of the group each bitplane holds ------------------------------
 PlaneBit:       .byte 0, 1, 2, 4, 8, 16, 0, 0
