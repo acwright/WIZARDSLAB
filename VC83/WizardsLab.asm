@@ -19,8 +19,7 @@
 ;   flash is one palette write as it is there.
 ;
 ;   This file is the platform half of the contract in src/hal.inc. For now
-;   the game is silent, and the fireball's flash lights nothing. Esc goes
-;   back to BASIC at any time.
+;   the game is silent. Esc goes back to BASIC at any time.
 ;
 ;   Built with VC83.cfg.
 ; =============================================================================
@@ -107,6 +106,9 @@ HAS_COLOR_RAM       = 0             ; Colour lives in the palette, by group
 .segment "CODE"
 
 Start:
+.ifdef WL_DEBUG
+  stz TestKey                   ; BSS is not cleared
+.endif
   jsr GameInit                  ; Never returns
 
 ; --- Shared game code --------------------------------------------------------
@@ -388,6 +390,9 @@ HalReadInput:
   lda KBD_HELD + KEY_ESC/8      ;   or held now
   and #1 << (KEY_ESC .mod 8)
   bne @Exit
+.ifdef WL_DEBUG
+  jsr TestKeys
+.endif
 
   stz Tmp0
   ldy #0
@@ -427,6 +432,15 @@ DrainKeys:
   and #$7F                      ;   doc/bus_accelerator.md
   beq @Done
   lda KBD_DATA
+.ifdef WL_DEBUG
+  cmp #ASCII_F1                 ; The test keys (see TestKeys)
+  bcc @NotTest
+  cmp #ASCII_F3 + 1
+  bcs @NotTest
+  sta TestKey
+  bra @Next
+@NotTest:
+.endif
   cmp #ASCII_ESC
   bne @Next
   ldx #1
@@ -463,11 +477,57 @@ HalDetectRegion:
   rts
 
 ; -----------------------------------------------------------------------------
-;   HalColorFlash — STUB: records the colour and lights nothing
-;   In:  A = colour key ($40..$68), or TINT_NONE.  Modifies: TintColor
+;   HalColorFlash — the fireball's detonation (SPEC 4.6, 14)
+;   In:  A = colour key ($40..$68), or TINT_NONE.  Modifies: A, X, Y, TintColor
+;
+;   ONE PALETTE ENTRY, as on the AC6502 it is one colour table byte. A tile's
+;   pixel values name its 8-pattern group, so every red tile on the screen
+;   draws its foreground from the same entry, 2g + 1, and making that entry
+;   white makes all of them white at once. Its undo is writing the group's
+;   own foreground back.
+;
+;   The group is the colour key >> 3, and entry 2g + 1 is palette byte
+;   4g + 2. The old colour goes back BEFORE the new one is lit, so two
+;   fireballs of different colours in one step leave exactly one group
+;   flashing, as on the AC6502.
 ; -----------------------------------------------------------------------------
 HalColorFlash:
+  pha
+  lda TintColor
+  cmp #TINT_NONE
+  beq @Light                    ; Nothing lit — nothing to put back
+  jsr FlashEntry
+  lda TileColorTMS,x            ; Its own foreground, out of the table
+  lsr a                         ;   LoadPalette read
+  lsr a
+  lsr a
+  lsr a
+  jsr PutTmsColor
+
+@Light:
+  pla
   sta TintColor
+  cmp #TINT_NONE
+  beq @Done
+  jsr FlashEntry
+  lda #TMS_WHITE
+  jsr PutTmsColor
+@Done:
+  rts
+
+; -----------------------------------------------------------------------------
+;   FlashEntry — In: A = colour key.  Out: X = its group, Y = the palette byte
+;   offset of the group's foreground entry.  Modifies: A
+; -----------------------------------------------------------------------------
+FlashEntry:
+  lsr a
+  lsr a
+  lsr a
+  tax                           ; X = group
+  asl a
+  asl a
+  ora #2
+  tay                           ; Y = 4g + 2
   rts
 
 ; -----------------------------------------------------------------------------
@@ -475,6 +535,163 @@ HalColorFlash:
 ; -----------------------------------------------------------------------------
 HalSfx:
   rts
+
+.ifdef WL_DEBUG
+; =============================================================================
+;   Test keys — DEBUG builds only
+; =============================================================================
+;   The AC6502 is tested by writing its RAM through the emulator's debug port
+;   (tools/playtest.py). The VC83 simulator has no such port, so the DEBUG
+;   build carries the same few writes itself, on three keys nothing else
+;   reads:
+;
+;     F1   plant a board with one red fireball in a run of three, more red
+;          elsewhere, and other colours beside it
+;     F2   plant a board with a red and a blue fireball, each in a run, so
+;          one step detonates both
+;     F3   kick: send the cascade into a scan of the board as it stands
+;
+;   Plant, look, kick, look. These are set_board, redraw and kick in
+;   tools/playtest.py, and they act only while a game is being played.
+;   Headless runs press no keys, so a DEBUG build behaves as before.
+
+ASCII_F1            = $80           ; What F1-F3 put in the FIFO
+ASCII_F2            = $81
+ASCII_F3            = $82
+
+.segment "BSS"
+
+TestKey:        .res 1          ; Last test key typed, or 0
+
+.segment "CODE"
+
+TestKeys:
+  lda TestKey
+  beq @Done
+  stz TestKey
+  ldx GameState
+  cpx #STATE_PLAY
+  bne @Done
+  cmp #ASCII_F3
+  beq TestKick
+  ldx #<TestBoard1
+  ldy #>TestBoard1
+  cmp #ASCII_F1
+  beq TestPlant
+  ldx #<TestBoard2
+  ldy #>TestBoard2
+  bra TestPlant
+@Done:
+  rts
+
+; --- TestPlant — In: X/Y -> (index, tile) pairs, ended by $FF ----------------
+TestPlant:
+  stx SrcPtr
+  sty SrcPtr+1
+  ldx #0
+@Clear:
+  lda #TILE_WALL                ; The four rows below the well...
+  cpx #16 * BOARD_STRIDE
+  bcs @Put
+  txa
+  and #BOARD_STRIDE - 1
+  cmp #6                        ; ...and its two dead columns
+  lda #TILE_WALL
+  bcs @Put
+  lda #TILE_EMPTY
+@Put:
+  sta Board,x
+  inx
+  cpx #BOARD_BYTES
+  bne @Clear
+
+  ldy #0
+@Cell:
+  lda (SrcPtr),y
+  cmp #$FF
+  beq @Drawn
+  tax
+  iny
+  lda (SrcPtr),y
+  sta Board,x
+  iny
+  bra @Cell
+@Drawn:
+  stz RedrawIdx                 ; Redraw the whole well from the board
+  rts
+
+; --- TestKick — the next frame runs cascade step 1 on the board --------------
+;   playtest.py's kick sets the accumulators by hand and leaves the effect
+;   queue alone, because every cascade before it has drained the queue. Here
+;   the kick can come before the game's first cascade, with the queue still
+;   uninitialised BSS, whose garbage entries detonate as reagents. So this
+;   calls CascadeBegin, which clears all of it, and then backs ChainStep off
+;   by one, because PlayGravity increments it.
+TestKick:
+  jsr CascadeBegin
+  stz ChainStep
+  stz PieceDirty                ; The falling piece is dropped where it is,
+  stz RedrawIdx                 ;   and the redraw takes it off the screen
+  lda #$FF
+  sta GravIdx
+  stz GravMoved
+  lda #1
+  sta AnimTimer
+  lda #PLAY_GRAVITY
+  sta PlayState
+  rts
+
+.define CELL(row, col) .byte row * BOARD_STRIDE + col
+RED     = COLOR_BASE + COLOR_RED    * 8
+YELLOW  = COLOR_BASE + COLOR_YELLOW * 8
+GREEN   = COLOR_BASE + COLOR_GREEN  * 8
+CYAN    = COLOR_BASE + COLOR_CYAN   * 8
+BLUE    = COLOR_BASE + COLOR_BLUE   * 8
+
+.segment "RODATA"
+
+TestBoard1:
+  CELL(15, 0)
+  .byte RED
+  CELL(15, 1)
+  .byte RED + GLYPH_FIREBALL
+  CELL(15, 2)
+  .byte RED
+  CELL(15, 3)
+  .byte BLUE
+  CELL(15, 4)
+  .byte CYAN
+  CELL(14, 4)
+  .byte RED                     ; Not in the run: the fireball takes it
+  CELL(15, 5)
+  .byte GREEN
+  CELL(14, 5)
+  .byte RED                     ; Nor this
+  CELL(13, 5)
+  .byte YELLOW
+  .byte $FF
+
+TestBoard2:
+  CELL(15, 0)
+  .byte RED
+  CELL(15, 1)
+  .byte RED + GLYPH_FIREBALL
+  CELL(15, 2)
+  .byte RED
+  CELL(15, 4)
+  .byte BLUE                    ; Not in the blue run
+  CELL(15, 5)
+  .byte BLUE
+  CELL(14, 5)
+  .byte BLUE + GLYPH_FIREBALL
+  CELL(13, 5)
+  .byte BLUE
+  CELL(12, 5)
+  .byte GREEN
+  .byte $FF
+
+.segment "CODE"
+.endif
 
 ; =============================================================================
 ;   Data
@@ -538,6 +755,7 @@ TmsRgb:
   RGB $C9, $5B, $BA             ; 13 magenta
   RGB $CC, $CC, $CC             ; 14 gray
   RGB $FF, $FF, $FF             ; 15 white
+TMS_WHITE       = 15
 
 ; --- Tilemap row start addresses ---------------------------------------------
 RowLo:

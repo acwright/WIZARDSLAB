@@ -23,8 +23,7 @@ Current file: WizardsLab.asm
 000000r 1               ;   flash is one palette write as it is there.
 000000r 1               ;
 000000r 1               ;   This file is the platform half of the contract in src/hal.inc. For now
-000000r 1               ;   the game is silent, and the fireball's flash lights nothing. Esc goes
-000000r 1               ;   back to BASIC at any time.
+000000r 1               ;   the game is silent. Esc goes back to BASIC at any time.
 000000r 1               ;
 000000r 1               ;   Built with VC83.cfg.
 000000r 1               ; =============================================================================
@@ -936,6 +935,9 @@ Current file: WizardsLab.asm
 00000Br 1               .segment "CODE"
 000000r 1               
 000000r 1               Start:
+000000r 1               .ifdef WL_DEBUG
+000000r 1                 stz TestKey                   ; BSS is not cleared
+000000r 1               .endif
 000000r 1  20 rr rr       jsr GameInit                  ; Never returns
 000003r 1               
 000003r 1               ; --- Shared game code --------------------------------------------------------
@@ -5648,6 +5650,9 @@ Current file: WizardsLab.asm
 001334r 1  AD 86 B0       lda KBD_HELD + KEY_ESC/8      ;   or held now
 001337r 1  29 02          and #1 << (KEY_ESC .mod 8)
 001339r 1  D0 20          bne @Exit
+00133Br 1               .ifdef WL_DEBUG
+00133Br 1                 jsr TestKeys
+00133Br 1               .endif
 00133Br 1               
 00133Br 1  64 rr          stz Tmp0
 00133Dr 1  A0 00          ldy #0
@@ -5687,6 +5692,15 @@ Current file: WizardsLab.asm
 001363r 1  29 7F          and #$7F                      ;   doc/bus_accelerator.md
 001365r 1  F0 0B          beq @Done
 001367r 1  AD 81 B0       lda KBD_DATA
+00136Ar 1               .ifdef WL_DEBUG
+00136Ar 1                 cmp #ASCII_F1                 ; The test keys (see TestKeys)
+00136Ar 1                 bcc @NotTest
+00136Ar 1                 cmp #ASCII_F3 + 1
+00136Ar 1                 bcs @NotTest
+00136Ar 1                 sta TestKey
+00136Ar 1                 bra @Next
+00136Ar 1               @NotTest:
+00136Ar 1               .endif
 00136Ar 1  C9 1B          cmp #ASCII_ESC
 00136Cr 1  D0 F2          bne @Next
 00136Er 1  A2 01          ldx #1
@@ -5723,24 +5737,227 @@ Current file: WizardsLab.asm
 001396r 1  60             rts
 001397r 1               
 001397r 1               ; -----------------------------------------------------------------------------
-001397r 1               ;   HalColorFlash — STUB: records the colour and lights nothing
-001397r 1               ;   In:  A = colour key ($40..$68), or TINT_NONE.  Modifies: TintColor
+001397r 1               ;   HalColorFlash — the fireball's detonation (SPEC 4.6, 14)
+001397r 1               ;   In:  A = colour key ($40..$68), or TINT_NONE.  Modifies: A, X, Y, TintColor
+001397r 1               ;
+001397r 1               ;   ONE PALETTE ENTRY, as on the AC6502 it is one colour table byte. A tile's
+001397r 1               ;   pixel values name its 8-pattern group, so every red tile on the screen
+001397r 1               ;   draws its foreground from the same entry, 2g + 1, and making that entry
+001397r 1               ;   white makes all of them white at once. Its undo is writing the group's
+001397r 1               ;   own foreground back.
+001397r 1               ;
+001397r 1               ;   The group is the colour key >> 3, and entry 2g + 1 is palette byte
+001397r 1               ;   4g + 2. The old colour goes back BEFORE the new one is lit, so two
+001397r 1               ;   fireballs of different colours in one step leave exactly one group
+001397r 1               ;   flashing, as on the AC6502.
 001397r 1               ; -----------------------------------------------------------------------------
 001397r 1               HalColorFlash:
-001397r 1  8D rr rr       sta TintColor
-00139Ar 1  60             rts
-00139Br 1               
-00139Br 1               ; -----------------------------------------------------------------------------
-00139Br 1               ;   HalSfx — STUB: silent
-00139Br 1               ; -----------------------------------------------------------------------------
-00139Br 1               HalSfx:
-00139Br 1  60             rts
-00139Cr 1               
-00139Cr 1               ; =============================================================================
-00139Cr 1               ;   Data
-00139Cr 1               ; =============================================================================
-00139Cr 1               
-00139Cr 1               .segment "RODATA"
+001397r 1  48             pha
+001398r 1  AD rr rr       lda TintColor
+00139Br 1  C9 01          cmp #TINT_NONE
+00139Dr 1  F0 0D          beq @Light                    ; Nothing lit — nothing to put back
+00139Fr 1  20 rr rr       jsr FlashEntry
+0013A2r 1  BD rr rr       lda TileColorTMS,x            ; Its own foreground, out of the table
+0013A5r 1  4A             lsr a                         ;   LoadPalette read
+0013A6r 1  4A             lsr a
+0013A7r 1  4A             lsr a
+0013A8r 1  4A             lsr a
+0013A9r 1  20 rr rr       jsr PutTmsColor
+0013ACr 1               
+0013ACr 1               @Light:
+0013ACr 1  68             pla
+0013ADr 1  8D rr rr       sta TintColor
+0013B0r 1  C9 01          cmp #TINT_NONE
+0013B2r 1  F0 08          beq @Done
+0013B4r 1  20 rr rr       jsr FlashEntry
+0013B7r 1  A9 0F          lda #TMS_WHITE
+0013B9r 1  20 rr rr       jsr PutTmsColor
+0013BCr 1               @Done:
+0013BCr 1  60             rts
+0013BDr 1               
+0013BDr 1               ; -----------------------------------------------------------------------------
+0013BDr 1               ;   FlashEntry — In: A = colour key.  Out: X = its group, Y = the palette byte
+0013BDr 1               ;   offset of the group's foreground entry.  Modifies: A
+0013BDr 1               ; -----------------------------------------------------------------------------
+0013BDr 1               FlashEntry:
+0013BDr 1  4A             lsr a
+0013BEr 1  4A             lsr a
+0013BFr 1  4A             lsr a
+0013C0r 1  AA             tax                           ; X = group
+0013C1r 1  0A             asl a
+0013C2r 1  0A             asl a
+0013C3r 1  09 02          ora #2
+0013C5r 1  A8             tay                           ; Y = 4g + 2
+0013C6r 1  60             rts
+0013C7r 1               
+0013C7r 1               ; -----------------------------------------------------------------------------
+0013C7r 1               ;   HalSfx — STUB: silent
+0013C7r 1               ; -----------------------------------------------------------------------------
+0013C7r 1               HalSfx:
+0013C7r 1  60             rts
+0013C8r 1               
+0013C8r 1               .ifdef WL_DEBUG
+0013C8r 1               ; =============================================================================
+0013C8r 1               ;   Test keys — DEBUG builds only
+0013C8r 1               ; =============================================================================
+0013C8r 1               ;   The AC6502 is tested by writing its RAM through the emulator's debug port
+0013C8r 1               ;   (tools/playtest.py). The VC83 simulator has no such port, so the DEBUG
+0013C8r 1               ;   build carries the same few writes itself, on three keys nothing else
+0013C8r 1               ;   reads:
+0013C8r 1               ;
+0013C8r 1               ;     F1   plant a board with one red fireball in a run of three, more red
+0013C8r 1               ;          elsewhere, and other colours beside it
+0013C8r 1               ;     F2   plant a board with a red and a blue fireball, each in a run, so
+0013C8r 1               ;          one step detonates both
+0013C8r 1               ;     F3   kick: send the cascade into a scan of the board as it stands
+0013C8r 1               ;
+0013C8r 1               ;   Plant, look, kick, look. These are set_board, redraw and kick in
+0013C8r 1               ;   tools/playtest.py, and they act only while a game is being played.
+0013C8r 1               ;   Headless runs press no keys, so a DEBUG build behaves as before.
+0013C8r 1               
+0013C8r 1               ASCII_F1            = $80           ; What F1-F3 put in the FIFO
+0013C8r 1               ASCII_F2            = $81
+0013C8r 1               ASCII_F3            = $82
+0013C8r 1               
+0013C8r 1               .segment "BSS"
+0013C8r 1               
+0013C8r 1               TestKey:        .res 1          ; Last test key typed, or 0
+0013C8r 1               
+0013C8r 1               .segment "CODE"
+0013C8r 1               
+0013C8r 1               TestKeys:
+0013C8r 1                 lda TestKey
+0013C8r 1                 beq @Done
+0013C8r 1                 stz TestKey
+0013C8r 1                 ldx GameState
+0013C8r 1                 cpx #STATE_PLAY
+0013C8r 1                 bne @Done
+0013C8r 1                 cmp #ASCII_F3
+0013C8r 1                 beq TestKick
+0013C8r 1                 ldx #<TestBoard1
+0013C8r 1                 ldy #>TestBoard1
+0013C8r 1                 cmp #ASCII_F1
+0013C8r 1                 beq TestPlant
+0013C8r 1                 ldx #<TestBoard2
+0013C8r 1                 ldy #>TestBoard2
+0013C8r 1                 bra TestPlant
+0013C8r 1               @Done:
+0013C8r 1                 rts
+0013C8r 1               
+0013C8r 1               ; --- TestPlant — In: X/Y -> (index, tile) pairs, ended by $FF ----------------
+0013C8r 1               TestPlant:
+0013C8r 1                 stx SrcPtr
+0013C8r 1                 sty SrcPtr+1
+0013C8r 1                 ldx #0
+0013C8r 1               @Clear:
+0013C8r 1                 lda #TILE_WALL                ; The four rows below the well...
+0013C8r 1                 cpx #16 * BOARD_STRIDE
+0013C8r 1                 bcs @Put
+0013C8r 1                 txa
+0013C8r 1                 and #BOARD_STRIDE - 1
+0013C8r 1                 cmp #6                        ; ...and its two dead columns
+0013C8r 1                 lda #TILE_WALL
+0013C8r 1                 bcs @Put
+0013C8r 1                 lda #TILE_EMPTY
+0013C8r 1               @Put:
+0013C8r 1                 sta Board,x
+0013C8r 1                 inx
+0013C8r 1                 cpx #BOARD_BYTES
+0013C8r 1                 bne @Clear
+0013C8r 1               
+0013C8r 1                 ldy #0
+0013C8r 1               @Cell:
+0013C8r 1                 lda (SrcPtr),y
+0013C8r 1                 cmp #$FF
+0013C8r 1                 beq @Drawn
+0013C8r 1                 tax
+0013C8r 1                 iny
+0013C8r 1                 lda (SrcPtr),y
+0013C8r 1                 sta Board,x
+0013C8r 1                 iny
+0013C8r 1                 bra @Cell
+0013C8r 1               @Drawn:
+0013C8r 1                 stz RedrawIdx                 ; Redraw the whole well from the board
+0013C8r 1                 rts
+0013C8r 1               
+0013C8r 1               ; --- TestKick — the next frame runs cascade step 1 on the board --------------
+0013C8r 1               ;   playtest.py's kick sets the accumulators by hand and leaves the effect
+0013C8r 1               ;   queue alone, because every cascade before it has drained the queue. Here
+0013C8r 1               ;   the kick can come before the game's first cascade, with the queue still
+0013C8r 1               ;   uninitialised BSS, whose garbage entries detonate as reagents. So this
+0013C8r 1               ;   calls CascadeBegin, which clears all of it, and then backs ChainStep off
+0013C8r 1               ;   by one, because PlayGravity increments it.
+0013C8r 1               TestKick:
+0013C8r 1                 jsr CascadeBegin
+0013C8r 1                 stz ChainStep
+0013C8r 1                 stz PieceDirty                ; The falling piece is dropped where it is,
+0013C8r 1                 stz RedrawIdx                 ;   and the redraw takes it off the screen
+0013C8r 1                 lda #$FF
+0013C8r 1                 sta GravIdx
+0013C8r 1                 stz GravMoved
+0013C8r 1                 lda #1
+0013C8r 1                 sta AnimTimer
+0013C8r 1                 lda #PLAY_GRAVITY
+0013C8r 1                 sta PlayState
+0013C8r 1                 rts
+0013C8r 1               
+0013C8r 1               .define CELL(row, col) .byte row * BOARD_STRIDE + col
+0013C8r 1               RED     = COLOR_BASE + COLOR_RED    * 8
+0013C8r 1               YELLOW  = COLOR_BASE + COLOR_YELLOW * 8
+0013C8r 1               GREEN   = COLOR_BASE + COLOR_GREEN  * 8
+0013C8r 1               CYAN    = COLOR_BASE + COLOR_CYAN   * 8
+0013C8r 1               BLUE    = COLOR_BASE + COLOR_BLUE   * 8
+0013C8r 1               
+0013C8r 1               .segment "RODATA"
+0013C8r 1               
+0013C8r 1               TestBoard1:
+0013C8r 1                 CELL(15, 0)
+0013C8r 1                 .byte RED
+0013C8r 1                 CELL(15, 1)
+0013C8r 1                 .byte RED + GLYPH_FIREBALL
+0013C8r 1                 CELL(15, 2)
+0013C8r 1                 .byte RED
+0013C8r 1                 CELL(15, 3)
+0013C8r 1                 .byte BLUE
+0013C8r 1                 CELL(15, 4)
+0013C8r 1                 .byte CYAN
+0013C8r 1                 CELL(14, 4)
+0013C8r 1                 .byte RED                     ; Not in the run: the fireball takes it
+0013C8r 1                 CELL(15, 5)
+0013C8r 1                 .byte GREEN
+0013C8r 1                 CELL(14, 5)
+0013C8r 1                 .byte RED                     ; Nor this
+0013C8r 1                 CELL(13, 5)
+0013C8r 1                 .byte YELLOW
+0013C8r 1                 .byte $FF
+0013C8r 1               
+0013C8r 1               TestBoard2:
+0013C8r 1                 CELL(15, 0)
+0013C8r 1                 .byte RED
+0013C8r 1                 CELL(15, 1)
+0013C8r 1                 .byte RED + GLYPH_FIREBALL
+0013C8r 1                 CELL(15, 2)
+0013C8r 1                 .byte RED
+0013C8r 1                 CELL(15, 4)
+0013C8r 1                 .byte BLUE                    ; Not in the blue run
+0013C8r 1                 CELL(15, 5)
+0013C8r 1                 .byte BLUE
+0013C8r 1                 CELL(14, 5)
+0013C8r 1                 .byte BLUE + GLYPH_FIREBALL
+0013C8r 1                 CELL(13, 5)
+0013C8r 1                 .byte BLUE
+0013C8r 1                 CELL(12, 5)
+0013C8r 1                 .byte GREEN
+0013C8r 1                 .byte $FF
+0013C8r 1               
+0013C8r 1               .segment "CODE"
+0013C8r 1               .endif
+0013C8r 1               
+0013C8r 1               ; =============================================================================
+0013C8r 1               ;   Data
+0013C8r 1               ; =============================================================================
+0013C8r 1               
+0013C8r 1               .segment "RODATA"
 000000r 1               
 000000r 1               .include "../data/tilecolor-tms9918.inc"
 000000r 2               ; =============================================================================
@@ -6322,6 +6539,7 @@ Current file: WizardsLab.asm
 00025Dr 1                 RGB $C9, $5B, $BA             ; 13 magenta
 00025Dr 1                 RGB $CC, $CC, $CC             ; 14 gray
 00025Dr 1                 RGB $FF, $FF, $FF             ; 15 white
+00025Dr 1               TMS_WHITE       = 15
 00025Dr 1               
 00025Dr 1               ; --- Tilemap row start addresses ---------------------------------------------
 00025Dr 1               RowLo:
