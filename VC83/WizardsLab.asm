@@ -18,8 +18,8 @@
 ;   which is the AC6502's colour table under another name, and the fireball's
 ;   flash is one palette write as it is there.
 ;
-;   This file is the platform half of the contract in src/hal.inc. For now
-;   the game is silent. Esc goes back to BASIC at any time.
+;   This file is the platform half of the contract in src/hal.inc. Esc goes
+;   back to BASIC at any time.
 ;
 ;   Built with VC83.cfg.
 ; =============================================================================
@@ -65,6 +65,18 @@ PALETTE             = $D800         ; Palette 0, $B0800: 256 entries of 2 bytes,
 LAYER_REGION        = $04           ; Part 1 (full) of frame 0 (640 x 400)
 LAYER_FORMAT        = $14           ; Text, 2X, 8 bpp: 40 x 25 cells
 
+; --- VCSS, through window C --------------------------------------------------
+VCSS_MASTER_L       = $C000         ; Output levels: 128 is unity
+VCSS_MASTER_R       = $C001
+VCSS_VOICE          = $C040         ; + 8 * voice
+VCSS_PITCH          = VCSS_VOICE + 0    ; Voice 0: pitch word,
+VCSS_TIMBRE         = VCSS_VOICE + 2    ;   timbre 0-3 (and portamento, 0),
+VCSS_VELOCITY       = VCSS_VOICE + 3    ;   velocity: a write of 1-127 starts
+VCSS_MIX_L          = VCSS_VOICE + 4    ;   a note, 0 releases it, and
+VCSS_MIX_R          = VCSS_VOICE + 5    ;   mix levels, 128 unity
+VCSS_PATCHES        = $C080         ; Timbres 0-3, 32 bytes each
+VCSS_VOICES         = 8
+
 ; --- Keyboard, through window B ($E0000, registers from $E0080) --------------
 KBD_LEVEL           = $B080         ; FIFO entries waiting (bit 7 = overflow)
 KBD_DATA            = $B081         ; Read pops one entry
@@ -109,6 +121,8 @@ Start:
 .ifdef WL_DEBUG
   stz TestKey                   ; BSS is not cleared
 .endif
+  jsr SetWindows
+  jsr VcssInit
   jsr GameInit                  ; Never returns
 
 ; --- Shared game code --------------------------------------------------------
@@ -454,10 +468,12 @@ DrainKeys:
 ;   reloads its own font and palette, so nothing here needs putting back.
 ; -----------------------------------------------------------------------------
 ExitToBasic:
+  jsr VcssSilence               ; Nothing goes on sounding over BASIC
+@Release:
   jsr DrainKeys
   lda KBD_HELD + KEY_ESC/8
   and #1 << (KEY_ESC .mod 8)
-  bne ExitToBasic
+  bne @Release
   jsr DrainKeys
 
   lda #<BasicPath
@@ -531,9 +547,95 @@ FlashEntry:
   rts
 
 ; -----------------------------------------------------------------------------
-;   HalSfx — STUB: silent
+;   VcssInit — four patches, one voice, everything else silent
+;   The VCSS is a long way past a SID: eight voices of two oscillators, a
+;   filter and a modulation matrix each. The game plays one sound at a time
+;   (audio.asm), so it takes voice 0 and asks it for no more than a SID voice
+;   gives. Timbre m is TIMBRE_* m + 1 (constants.inc).
+; -----------------------------------------------------------------------------
+VcssInit:
+  jsr VcssSilence
+  ldx #4 * 32 - 1
+@Patch:
+  lda VcssPatches,x
+  sta VCSS_PATCHES,x
+  dex
+  bpl @Patch
+  lda #VCSS_UNITY
+  sta VCSS_MIX_L
+  sta VCSS_MIX_R
+  sta VCSS_MASTER_L
+  sta VCSS_MASTER_R
+  rts
+
+; -----------------------------------------------------------------------------
+;   VcssSilence — release every voice, ours and whatever BASIC left playing
+;   Modifies: X
+; -----------------------------------------------------------------------------
+VcssSilence:
+  ldx #(VCSS_VOICES - 1) * 8
+@Voice:
+  stz VCSS_VELOCITY,x
+  txa
+  sec
+  sbc #8
+  tax
+  bcs @Voice
+  rts
+
+; -----------------------------------------------------------------------------
+;   HalSfx — one note on VCSS voice 0 (hal.inc)
+;   In:  A = TIMBRE_*, optionally + TIMBRE_QUIET; X = note (semitones above C3;
+;        ignored when A is TIMBRE_OFF)
+;   Out: nothing.  Modifies: A, X, Y, Tmp1, Tmp2
+;
+;   include/sid.inc, note for note: the level goes in the master volume first,
+;   masked off on every path, the timbre's octave is a shift of the pitch,
+;   and a note is a note-on. Two things a SID needs and this does not: there
+;   is no hard restart, because a VCSS envelope retriggers from wherever it
+;   is, and no pulse width, because the square wave is a waveform here.
 ; -----------------------------------------------------------------------------
 HalSfx:
+  ldy #VCSS_UNITY
+  cmp #TIMBRE_QUIET
+  bcc @Level
+  and #TIMBRE_MASK
+  ldy #VCSS_QUIET
+@Level:
+  sty VCSS_MASTER_L
+  sty VCSS_MASTER_R
+
+  cmp #TIMBRE_OFF
+  beq @Off
+
+  tay                           ; Y = the timbre, 1..4
+  lda VcssNoteLo,x
+  sta Tmp1
+  lda VcssNoteHi,x
+  sta Tmp2
+  cpy #TIMBRE_SOFT
+  bne @NotSoft
+  lsr Tmp2                      ; Down one
+  ror Tmp1
+@NotSoft:
+  cpy #TIMBRE_BRIGHT
+  bne @NotBright
+  asl Tmp1                      ; Up one
+  rol Tmp2
+@NotBright:
+
+  lda Tmp1
+  sta VCSS_PITCH
+  lda Tmp2
+  sta VCSS_PITCH + 1
+  dey                           ; The VCSS timbres are 0-based
+  sty VCSS_TIMBRE
+  lda #VCSS_NOTE_ON
+  sta VCSS_VELOCITY             ; Any write of it starts the envelope again
+  rts
+
+@Off:
+  stz VCSS_VELOCITY             ; The release does the rest
   rts
 
 .ifdef WL_DEBUG
@@ -729,6 +831,58 @@ KeyTable:
   KEY 12, INPUT_FIRE            ; Q
   KEY 56, INPUT_PAUSE           ; P
   .byte $FF
+
+; --- VCSS levels ---------------------------------------------------------------
+VCSS_UNITY      = 128           ; Every VCSS level: 128 is x1.0
+VCSS_QUIET      = 51            ; The title's ambience: 6/15 of full, as on
+                                ;   the SID (SID_VOL_QUIET)
+VCSS_NOTE_ON    = 127           ; Velocity only gates in the simulator
+
+; --- VCSS patches, TIMBRE_SOFT to TIMBRE_NOISE -------------------------------
+;   Each is include/sid.inc's waveform and envelope. An envelope rate is a
+;   4.4 float, (16 + low nibble) << high nibble, added to a 24-bit level
+;   48,000 times a second (the simulator's vcss_envelope_generator.h). So a
+;   full sweep takes 2^24 / that steps:
+;
+;     $D5   2 ms      attack, all four, the SID's attack 0
+;     $BC   6 ms      release, all four, the SID's release 0, and BRIGHT's
+;                     decay, which is the SID's decay 0
+;     $62   300 ms    SOFT's decay, the SID's decay 8
+;     $70   170 ms    NOISE's decay, the SID's decay 5
+;
+;   Sustain is 0-127 where the SID's is 0-15. NOISE has its first oscillator
+;   silent and the noise generator at full, clocked by the second
+;   oscillator's rollover four octaves up (options $44). A SID's noise is
+;   clocked at sixteen times the note, so that is the same pitched hiss.
+.macro PATCH wave, attack, decay, sustain, level, noise, options
+  .byte wave, attack, decay, sustain, $BC, level      ; Osc 1 and its envelope
+  .byte 0, 0, 0, 0, 0, 0, 0, 0                        ; Osc 2: silent
+  .byte 0, 0, noise, 0, options                       ; FM, feedback, noise,
+                                                      ;   ring, options
+  .byte 0, 0, 0, $40, 0                               ; Filter bypassed
+  .byte 0, 0, 0, 0, 0, 0, 0, 0                        ; No modulation
+.endmacro
+
+VcssPatches:
+  PATCH $10, $D5, $62, 34,  127, 0,   $00   ; SOFT    triangle, to 4/15
+  PATCH $20, $D5, $62, 127, 127, 0,   $00   ; BUZZ    sawtooth, full
+  PATCH $30, $D5, $BC, 102, 127, 0,   $00   ; BRIGHT  square, to 12/15
+  PATCH $00, $D5, $70, 0,   0,   127, $44   ; NOISE   to nothing
+
+; --- Note table: semitones above C3, C3 to C6 (NOTE_MAX) ---------------------
+;   Pitch = round(Hz * 2^20 / 192000), equal temperament from A4 = 440 Hz
+;   (doc/vcss_quick_start.md section 3). SOFT halves it and BRIGHT doubles it,
+;   as sid.inc does.
+VcssNoteLo:
+  .byte $CA, $F5, $22, $52, $84, $BA, $F2, $2E, $6E, $B1, $F9, $45   ; C3-B3
+  .byte $95, $EA, $44, $A3, $08, $73, $E5, $5D, $DC, $63, $F2, $89   ; C4-B4
+  .byte $2A, $D4, $88, $46, $10, $E7, $C9, $BA, $B8, $C6, $E4, $13   ; C5-B5
+  .byte $53                                                          ; C6
+VcssNoteHi:
+  .byte $02, $02, $03, $03, $03, $03, $03, $04, $04, $04, $04, $05   ; C3-B3
+  .byte $05, $05, $06, $06, $07, $07, $07, $08, $08, $09, $09, $0A   ; C4-B4
+  .byte $0B, $0B, $0C, $0D, $0E, $0E, $0F, $10, $11, $12, $13, $15   ; C5-B5
+  .byte $16                                                          ; C6
 
 ; --- Which bit of the group each bitplane holds ------------------------------
 PlaneBit:       .byte 0, 1, 2, 4, 8, 16, 0, 0
