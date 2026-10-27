@@ -1,0 +1,251 @@
+ca65 V2.19 - Git 547d92358
+Main file   : WizardsLab.asm
+Current file: WizardsLab.asm
+
+000000r 1               .setcpu "65C02"
+000000r 1               
+000000r 1               ; =============================================================================
+000000r 1               ;   Wizards Lab — VC83
+000000r 1               ; =============================================================================
+000000r 1               ;   A program for the VC83, run from the SD card with EXEC "WIZLAB.PRG" at
+000000r 1               ;   the BASIC prompt. There is no VC83 hardware yet, so this targets Willis
+000000r 1               ;   Blackburn's simulator, built from vc83computer at commit 8648902.
+000000r 1               ;
+000000r 1               ;   The VCGA runs one tilemap layer: 40 x 25 cells of 8 x 8 pixels, doubled to
+000000r 1               ;   fill the 640 x 400 frame, the same grid as the C64's.
+000000r 1               ;
+000000r 1               ;   This file will be the platform half of the contract in src/hal.inc. For
+000000r 1               ;   now it is a skeleton that proves the platform: it brings up the layer,
+000000r 1               ;   fills it with every tile index over the system font, and goes back to
+000000r 1               ;   BASIC on Esc. It does not include the game yet.
+000000r 1               ;
+000000r 1               ;   Built with VC83.cfg.
+000000r 1               ; =============================================================================
+000000r 1               
+000000r 1               ; --- Zero page and OS (submodules/vc83os/os.inc) -----------------------------
+000000r 1               BANK_A              = $00           ; Bank window selects: each holds bus
+000000r 1               BANK_B              = $01           ;   address bits 19:12 for its 4 K window
+000000r 1               BANK_C              = $02
+000000r 1               BANK_D              = $03
+000000r 1               
+000000r 1               OS_ARG1             = $20           ; OS call arguments
+000000r 1               OS_ARG2             = $21
+000000r 1               OS_ARG3             = $22
+000000r 1               OS_ARG4             = $23
+000000r 1               OS_PATH_PTR         = $31           ; EXEC's file name, and its length
+000000r 1               OS_PATH_LEN         = $33
+000000r 1               
+000000r 1               OS_EXEC             = $E000         ; Load and run a .PRG; returns only on error
+000000r 1               OS_VCGALAYER        = $E003         ; Configure one VCGA layer
+000000r 1               OS_RESET            = $FFFC         ; Cold-start vector, if EXEC fails
+000000r 1               
+000000r 1               ; --- Bank windows while the game runs ----------------------------------------
+000000r 1               ;   Each window is pointed at one device and left there; anything that moves
+000000r 1               ;   one (an OS call does) puts it back with SetWindows.
+000000r 1               WIN_VRAM            = $80           ; A: VRAM $80000, the tilemap
+000000r 1               WIN_KBD             = $E0           ; B: peripheral slots, the keyboard
+000000r 1               WIN_VCSS            = $C0           ; C: VCSS registers
+000000r 1               WIN_VCGA            = $B0           ; D: VCGA registers and palette RAM
+000000r 1               
+000000r 1               TILEMAP             = $A000         ; VRAM $80000, through window A
+000000r 1               TILE_RAM            = $A000         ; Tile RAM $A0000, through window A at init
+000000r 1                                                   ;   only: 2 K per bitplane, two per window
+000000r 1               
+000000r 1               ; --- VCGA, through window D --------------------------------------------------
+000000r 1               VCGA_LAYER_MODE     = $D00C         ; + 32 * layer: 0 = disabled
+000000r 1               VCGA_FRAME          = $D087         ; Frame counter, low byte: +1 per vblank
+000000r 1               
+000000r 1               LAYER_REGION        = $04           ; Part 1 (full) of frame 0 (640 x 400)
+000000r 1               LAYER_FORMAT        = $14           ; Text, 2X, 8 bpp: 40 x 25 cells
+000000r 1               
+000000r 1               ; --- Keyboard, through window B ($E0000, registers from $E0080) --------------
+000000r 1               KBD_LEVEL           = $B080         ; FIFO entries waiting (bit 7 = overflow)
+000000r 1               KBD_DATA            = $B081         ; Read pops one entry
+000000r 1               KBD_HELD            = $B086         ; 10 bytes: one bit per matrix key, held
+000000r 1               KEY_ESC             = 1             ; Matrix code
+000000r 1               ASCII_ESC           = $1B           ; What a press of it puts in the FIFO
+000000r 1               
+000000r 1               ; --- Platform constants (hal.inc) --------------------------------------------
+000000r 1               SCR_COLS            = 40
+000000r 1               SCR_ROWS            = 25
+000000r 1               SCR_CELLS           = SCR_COLS * SCR_ROWS     ; 1000
+000000r 1               
+000000r 1               ; =============================================================================
+000000r 1               ;   Header — see VC83.cfg
+000000r 1               ; =============================================================================
+000000r 1               
+000000r 1               .segment "HEADER"
+000000r 1               
+000000r 1  56 43 38 33    .byte "VC83"
+000004r 1  rr rr          .word Start
+000006r 1  rr rr          .word __MAIN_START__              ; One segment record: the whole image,
+000008r 1  00             .byte $00                         ;   into main RAM
+000009r 1  rr rr          .word __MAIN_LAST__ - __MAIN_START__
+00000Br 1               
+00000Br 1               .import __MAIN_START__, __MAIN_LAST__
+00000Br 1               
+00000Br 1               ; =============================================================================
+00000Br 1               ;   Entry — EXEC leaves interrupts off, the windows at 0 and S at $FF
+00000Br 1               ; =============================================================================
+00000Br 1               
+00000Br 1               .segment "ZEROPAGE"
+000000r 1               
+000000r 1  xx xx        Ptr:            .res 2
+000002r 1               
+000002r 1               .segment "CODE"
+000000r 1               
+000000r 1               Start:
+000000r 1  64 22          stz OS_ARG3                       ; Base 0: the tilemap at the start of VRAM
+000002r 1  64 23          stz OS_ARG4
+000004r 1  A9 04          lda #LAYER_REGION
+000006r 1  85 20          sta OS_ARG1
+000008r 1  A9 14          lda #LAYER_FORMAT
+00000Ar 1  85 21          sta OS_ARG2
+00000Cr 1  A9 00          lda #0
+00000Er 1  20 03 E0       jsr OS_VCGALAYER
+000011r 1  20 rr rr       jsr SetWindows
+000014r 1               
+000014r 1  9C 2C D0       stz VCGA_LAYER_MODE + 32*1        ; BASIC's console is layer 2, and EXEC
+000017r 1  9C 4C D0       stz VCGA_LAYER_MODE + 32*2        ;   leaves it on
+00001Ar 1  9C 6C D0       stz VCGA_LAYER_MODE + 32*3
+00001Dr 1               
+00001Dr 1  20 rr rr       jsr ClearUpperPlanes
+000020r 1  20 rr rr       jsr FillTestPattern
+000023r 1               
+000023r 1               @loop:
+000023r 1  20 rr rr       jsr WaitFrame
+000026r 1  20 rr rr       jsr DrainKeys
+000029r 1  B0 07          bcs @exit                         ; Esc typed since the last frame,
+00002Br 1  AD 86 B0       lda KBD_HELD + KEY_ESC/8          ;   or held now
+00002Er 1  29 02          and #1 << (KEY_ESC .mod 8)
+000030r 1  F0 F1          beq @loop
+000032r 1               @exit:
+000032r 1  4C rr rr       jmp ExitToBasic
+000035r 1               
+000035r 1               ; -----------------------------------------------------------------------------
+000035r 1               ;   SetWindows — point all four bank windows where the game keeps them
+000035r 1               ; -----------------------------------------------------------------------------
+000035r 1               SetWindows:
+000035r 1  A9 80          lda #WIN_VRAM
+000037r 1  85 00          sta BANK_A
+000039r 1  A9 E0          lda #WIN_KBD
+00003Br 1  85 01          sta BANK_B
+00003Dr 1  A9 C0          lda #WIN_VCSS
+00003Fr 1  85 02          sta BANK_C
+000041r 1  A9 B0          lda #WIN_VCGA
+000043r 1  85 03          sta BANK_D
+000045r 1  60             rts
+000046r 1               
+000046r 1               ; -----------------------------------------------------------------------------
+000046r 1               ;   ClearUpperPlanes — zero tile RAM bitplanes 1-7, leaving the system font
+000046r 1               ;   in plane 0, so an 8 bpp layer draws it in palette entries 0 and 1
+000046r 1               ; -----------------------------------------------------------------------------
+000046r 1               ClearUpperPlanes:
+000046r 1  A2 A0          ldx #$A0                          ; Planes 0-1, then 2-3, 4-5, 6-7
+000048r 1               @window:
+000048r 1  86 00          stx BANK_A
+00004Ar 1  A0 A8          ldy #>TILE_RAM + 8                ; Skip plane 0 in the first window
+00004Cr 1  E0 A0          cpx #$A0
+00004Er 1  F0 02          beq @set
+000050r 1  A0 A0          ldy #>TILE_RAM
+000052r 1               @set:
+000052r 1  84 rr          sty Ptr + 1
+000054r 1  64 rr          stz Ptr
+000056r 1  A9 00          lda #0
+000058r 1               @page:
+000058r 1  A0 00          ldy #0
+00005Ar 1               @byte:
+00005Ar 1  91 rr          sta (Ptr),y
+00005Cr 1  C8             iny
+00005Dr 1  D0 FB          bne @byte
+00005Fr 1  E6 rr          inc Ptr + 1
+000061r 1  A4 rr          ldy Ptr + 1
+000063r 1  C0 B0          cpy #>TILE_RAM + $10
+000065r 1  D0 F1          bne @page
+000067r 1  E8             inx
+000068r 1  E0 A4          cpx #$A4
+00006Ar 1  D0 DC          bne @window
+00006Cr 1  A9 80          lda #WIN_VRAM
+00006Er 1  85 00          sta BANK_A
+000070r 1  60             rts
+000071r 1               
+000071r 1               ; -----------------------------------------------------------------------------
+000071r 1               ;   FillTestPattern — every cell n gets tile n mod 256
+000071r 1               ; -----------------------------------------------------------------------------
+000071r 1               FillTestPattern:
+000071r 1  A9 00          lda #<TILEMAP
+000073r 1  85 rr          sta Ptr
+000075r 1  A9 A0          lda #>TILEMAP
+000077r 1  85 rr          sta Ptr + 1
+000079r 1  A2 04          ldx #>(SCR_CELLS + 255)           ; Four pages: 1024 cells, the last 24
+00007Br 1  A0 00          ldy #0                            ;   past the bottom row are not shown
+00007Dr 1               @byte:
+00007Dr 1  98             tya
+00007Er 1  91 rr          sta (Ptr),y
+000080r 1  C8             iny
+000081r 1  D0 FA          bne @byte
+000083r 1  E6 rr          inc Ptr + 1
+000085r 1  CA             dex
+000086r 1  D0 F5          bne @byte
+000088r 1  60             rts
+000089r 1               
+000089r 1               ; -----------------------------------------------------------------------------
+000089r 1               ;   WaitFrame — block until the frame counter moves
+000089r 1               ; -----------------------------------------------------------------------------
+000089r 1               WaitFrame:
+000089r 1  AD 87 D0       lda VCGA_FRAME
+00008Cr 1               @wait:
+00008Cr 1  CD 87 D0       cmp VCGA_FRAME
+00008Fr 1  F0 FB          beq @wait
+000091r 1  60             rts
+000092r 1               
+000092r 1               ; -----------------------------------------------------------------------------
+000092r 1               ;   DrainKeys — empty the keyboard FIFO, which BASIC's line editor would
+000092r 1               ;   otherwise read as typing when it gets the machine back
+000092r 1               ;   Out: carry set if one of the entries was Esc. A tap shorter than a frame
+000092r 1               ;        can come and go between two looks at the held bits, but it always
+000092r 1               ;        leaves its character here.
+000092r 1               ; -----------------------------------------------------------------------------
+000092r 1               ;        Modifies: A, X
+000092r 1               DrainKeys:
+000092r 1  A2 00          ldx #0                            ; Becomes 1 at the first Esc
+000094r 1               @next:
+000094r 1  AD 80 B0       lda KBD_LEVEL                     ; Plain LDA abs only: see
+000097r 1  29 7F          and #$7F                          ;   doc/bus_accelerator.md
+000099r 1  F0 0B          beq @done
+00009Br 1  AD 81 B0       lda KBD_DATA
+00009Er 1  C9 1B          cmp #ASCII_ESC
+0000A0r 1  D0 F2          bne @next
+0000A2r 1  A2 01          ldx #1
+0000A4r 1  80 EE          bra @next
+0000A6r 1               @done:
+0000A6r 1  E0 01          cpx #1                            ; Carry = X >= 1
+0000A8r 1  60             rts
+0000A9r 1               
+0000A9r 1               ; -----------------------------------------------------------------------------
+0000A9r 1               ;   ExitToBasic — wait for Esc to come up, drain, and EXEC BASIC afresh. It
+0000A9r 1               ;   reloads its own font and palette, so nothing here needs putting back.
+0000A9r 1               ; -----------------------------------------------------------------------------
+0000A9r 1               ExitToBasic:
+0000A9r 1  20 rr rr       jsr DrainKeys
+0000ACr 1  AD 86 B0       lda KBD_HELD + KEY_ESC/8
+0000AFr 1  29 02          and #1 << (KEY_ESC .mod 8)
+0000B1r 1  D0 F6          bne ExitToBasic
+0000B3r 1  20 rr rr       jsr DrainKeys
+0000B6r 1               
+0000B6r 1  A9 rr          lda #<BasicPath
+0000B8r 1  85 31          sta OS_PATH_PTR
+0000BAr 1  A9 rr          lda #>BasicPath
+0000BCr 1  85 32          sta OS_PATH_PTR + 1
+0000BEr 1  A9 0B          lda #BasicPathLen
+0000C0r 1  85 33          sta OS_PATH_LEN
+0000C2r 1  20 00 E0       jsr OS_EXEC                       ; Does not return unless it failed
+0000C5r 1  6C FC FF       jmp (OS_RESET)
+0000C8r 1               
+0000C8r 1               .segment "RODATA"
+000000r 1               
+000000r 1  42 3A 42 41  BasicPath:      .byte "B:BASIC.PRG"
+000004r 1  53 49 43 2E  
+000008r 1  50 52 47     
+00000Br 1               BasicPathLen    = * - BasicPath
+00000Br 1               
