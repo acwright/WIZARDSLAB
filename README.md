@@ -3,7 +3,9 @@ WIZARDS LAB
 
 A falling-block match-three game for the [AC6502](https://github.com/acwright/6502-ACE),
 the Commodore VIC-20 and the Commodore 64 — one game, three 16 KB cartridges,
-written in 6502 assembly.
+written in 6502 assembly. It also runs on the
+[VC83](https://github.com/willisblackburn/vc83computer), Willis Blackburn's
+FPGA 65C02 computer, as a program loaded off an SD card.
 
 Potions rain down from the shelves of a wizard's laboratory in vials of six
 colours. Line up three or more of a colour — horizontally, vertically or
@@ -30,6 +32,11 @@ piece can unravel half the board.
 > of trying — the region tables run correctly under VICE in PAL mode, and that
 > is as far as it goes here. What is left is the AC6502 on real hardware, and
 > a PAL machine for either Commodore.
+>
+> **The VC83 port runs in the VC83's simulator only**, because the VC83 itself
+> is still being designed and no board exists yet. It plays the whole game,
+> sound included, and was built against vc83computer `8648902`. The machine is
+> moving fast, so a newer checkout may need the port changing to match.
 
 ---
 
@@ -48,6 +55,9 @@ No toolchain needed — they are ready to run. **One file per machine**, in
 Or drag the `.crt` onto a running VICE window. On a **C64 Ultimate**, an
 **Ultimate II+** or a VIC-20 **Final Expansion 3**, copy `run/` to the SD card
 and pick the `.crt` from the file browser.
+
+**The VC83 is not in the release yet.** Build it from source and run it in the
+simulator: see [Running on the VC83](#running-on-the-vc83).
 
 **On a VIC-20 with a disk drive, take `WizardsLab-VIC20.prg` instead.** An
 sd2iec, the SD side of a **Penultimate Cartridge**, or a real 1541 is a disk
@@ -98,8 +108,10 @@ reorder the three colours, and match.
 | Rotate back | Fire | `Q` · `SPACE` |
 | Pause | — | `P` |
 | Start | Fire | `SPACE` · `RETURN` |
+| Back to BASIC | — | `ESC` (VC83 only) |
 
-Joysticks are Atari 2600 compatible — port 2 on the C64.
+Joysticks are Atari 2600 compatible — port 2 on the C64. The VC83 port reads
+the keyboard only.
 
 ### The one rule worth knowing
 
@@ -134,8 +146,8 @@ brew install cc65        # or see cc65.github.io for other platforms
 Then:
 
 ```bash
-make              # Build all three cartridges
-make run-C64      # Launch one in an emulator
+make              # Build all three cartridges and the VC83 program
+make run-C64      # Launch one in an emulator (run-VC83 for the simulator)
 make smoke        # Boot all three headless and check they come up
 make playtest     # Play it with a script and check what the game did
 make crosscheck   # Play the same game on all three and compare the wells
@@ -159,9 +171,13 @@ Each platform directory has its own Makefile with the same targets, so
 | AC6502 | `AC6502/WizardsLab.crt` | 32 KB† |
 | VIC-20 | `VIC20/WizardsLab-blk5.crt` and `-blk3.crt` | 8 KB each |
 | C64 | `C64/WizardsLab.crt` | 16 KB |
+| VC83 | `VC83/WIZLAB.PRG`, and `VC83/wizlab.img`‡ | about 10 KB |
 
 † 16 KB of cartridge inside a 32 KB file spanning `$8000-$FFFF`, so it burns
 straight to a 28C256. The low half is padding the machine never reads.
+
+‡ A 64 MB FAT SD card image holding `WIZLAB.PRG`, for the simulator.
+Gitignored, since it is the `.PRG` and nothing else.
 
 The VIC-20's 16 KB is two 8 KB blocks at different addresses, so it is two
 files: BLK5 (`$A000`) holds the autostart header and the code, BLK3 (`$6000`)
@@ -284,6 +300,40 @@ cycle-stamped transcript of everything the game told the SID or the VIC-I —
 and every note in it is compared against the effect tables, register for
 register and frame for frame. Nothing listens to anything.
 
+### Running on the VC83
+
+There is no VC83 hardware yet, so the program runs in the VC83's own
+cycle-accurate simulator. Build that once from a checkout of
+[vc83computer](https://github.com/willisblackburn/vc83computer), which the
+Makefile expects at `~/Developer/Github/vc83computer` (override it with
+`VC83_REPO=`):
+
+```bash
+cd ~/Developer/Github/vc83computer && source .venv/bin/activate && make sim
+```
+
+Then, from here:
+
+```bash
+make run-VC83     # Build, and boot the simulator with the SD card in
+```
+
+It boots to the VC83's BASIC. Type `EXEC "WIZLAB.PRG"` to play. **Esc goes
+back to BASIC** at any point, and **Cmd+Q quits the simulator**. Inside the
+VC83, Cmd is the Alt key.
+
+After a rebuild, `cd VC83 && make reload` hands the new card to the simulator
+that is already open. A running simulator keeps reading the image it started
+with, so without this, `EXEC` runs the previous build. Press Esc first: the
+program is in RAM, and only the next `EXEC` reads the card.
+
+None of the headless tools above cover the VC83. Its simulator has a window
+and no way to read the machine's memory from outside, so `make smoke`,
+`playtest`, `crosscheck`, `audiocheck` and `screenshots` stay on the other
+three. `make DEBUG=1 VC83` adds three test keys instead: **F1** and **F2**
+each plant a board with a fireball in it, and **F3** sets off the cascade,
+for checking the flash by eye.
+
 ---
 
 ## Burning to a cartridge
@@ -306,10 +356,10 @@ build output under each platform directory unchanged.
 
 ```
 SPEC.md            The design bible — rules, scoring, screen layout, tile map
-DECISIONS.md       How it is built: settled questions (S1–S5), decisions (D1–D26)
+DECISIONS.md       How it is built: settled questions (S1–S5), decisions (D1–D27)
 Makefile           Delegates to each platform
 
-src/               Shared game code. Identical on all three machines.
+src/               Shared game code. Identical on all four machines.
   hal.inc            The platform contract
   constants.inc      Every number from SPEC.md
   tables.inc         Speed, scoring and probability tables
@@ -339,15 +389,16 @@ itch/              The itch.io page. ITCH-PAGE.txt is every field of the form,
 dist/              The download; make dist. Gitignored — every file in it is
                    already tracked somewhere else
 
-AC6502/  VIC20/  C64/
-                   Cartridge header, linker config, and each machine's HAL
+AC6502/  VIC20/  C64/  VC83/
+                   Cartridge header (the VC83's is a .PRG header), linker
+                   config, and each machine's HAL
 ```
 
 ---
 
-## How one game runs on three machines
+## How one game runs on four machines
 
-Everything in `src/` is included, unmodified, by all three builds. The only
+Everything in `src/` is included, unmodified, by all four builds. The only
 things that differ live behind the contract in [`src/hal.inc`](src/hal.inc):
 four constants and seven routines. Nothing in `src/` touches hardware, so a
 platform directory is just a cartridge header, video setup, those seven
@@ -356,10 +407,11 @@ routines, and the lines that pull in its artwork.
 Three decisions made that possible:
 
 **The VIC-20 set the shape of the game.** Its 22 columns are exactly the panel
-all three machines draw — the C64 and AC6502 centre that same panel and fill
-the margin either side with a brick wall. Vertically it is the AC6502's 24 rows
-that fit the panel exactly; the VIC clips the last row and the C64 has one to
-spare. Its eight hi-res colours capped the palette at six potions plus white.
+every machine draws — the C64, the VC83 and the AC6502 centre that same panel
+and fill the margin either side with a brick wall. Vertically it is the
+AC6502's 24 rows that fit the panel exactly; the VIC clips the last row, and
+the C64 and the VC83 have one to spare. Its eight hi-res colours capped the
+palette at six potions plus white.
 Its roughly 1 KB of usable work RAM is what the 523-byte RAM layout was
 designed against. Designing for the tightest target first is why the other two
 needed no compromises.
@@ -374,6 +426,17 @@ a byte copy with no translation step.
 **The Commodores agree on colour numbers.** The C64's first eight colours are
 numerically identical to the VIC-20's eight hi-res colours, so the playfield
 colour bytes are the same values on both machines.
+
+**The VC83 borrowed the TMS9918's colour model.** Its video chip draws tiles
+with no colour per cell, only a pixel value per tile, up to 8 bits deep. So
+each tile is drawn with its 8-pattern group above the pattern bit in every
+pixel: bitplane 0 is the tileset as it is, and planes 1–5 spell out the group.
+Each group then owns two palette entries, its background and its foreground,
+filled from the AC6502's colour table. That is Graphics Mode I's colour table
+under another name, so the fireball's flash is one palette write on the VC83,
+as it is one colour-table byte on the AC6502. The screen is the C64's 40 × 25
+grid, so the C64's screen images serve unchanged. See D27 in
+[DECISIONS.md](DECISIONS.md).
 
 ---
 

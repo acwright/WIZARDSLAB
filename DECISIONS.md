@@ -1,7 +1,7 @@
 # Wizards Lab — Decisions
 
 The design record behind the code: the questions that had to be measured (S1–S5)
-and the implementation decisions (D1–D26) that the sources cite by label.
+and the implementation decisions (D1–D27) that the sources cite by label.
 [SPEC.md](SPEC.md) owns the *game* rules; this file owns the choices about how
 the game is built.
 
@@ -156,7 +156,7 @@ VICE in PAL mode. Marked untested rather than open.
 
 ---
 
-## Decisions (D1–D26)
+## Decisions (D1–D27)
 
 Numbered so phases can cite them. SPEC.md owns the *game* decisions; these are
 the implementation ones that SPEC.md does not cover.
@@ -352,6 +352,25 @@ the implementation ones that SPEC.md does not cover.
   `include/ac6502.inc` stays the frozen BIOS 1.6 copy, byte for byte: its
   memory-map text is right for 1.6, and this cartridge's own comments say what
   differs on 2.x.
+- **D27 — The VC83 is a fourth platform, with the TMS9918's colour model and
+  the C64's screen.** The VC83 has no cartridge port in this sense, so the game
+  is a `.PRG` that `EXEC` loads at `$0800`, and it runs in the VC83's simulator
+  because no board exists yet. Its video chip draws a tilemap with no colour
+  per cell, so colour stays the tile's, as on the AC6502. Each tile is 8 bpp,
+  with its 8-pattern group in bits 1–5 of every pixel, and the group's
+  background and foreground are palette entries `2g` and `2g + 1`, loaded from
+  `TileColorTMS`. `HalColorFlash` is then one palette write, as on the
+  AC6502. The layer is 40 × 25 at 2X, the C64's grid, so it uses the C64's
+  screen images and ignores their colour halves. The keyboard is read as held
+  keys, from a bitmap the controller keeps, so DAS works as on the
+  Commodores, and Esc goes back to BASIC from inside `HalReadInput`, without
+  the shared code knowing. Sound is one VCSS voice playing `sid.inc`'s notes
+  and envelopes, converted to VCSS rates. **Nothing in `src/` changed.** The
+  zero page is at `$80` here, because the VC83 OS keeps `$20`–`$7F`, so
+  `src/zeropage.inc`'s "placed at `$40` on every platform" is now true of
+  three. The simulator can't be driven headless or have its memory read, so
+  the DEBUG build carries its own test keys (F1–F3) in place of
+  `playtest.py`'s RAM writes.
 - **D9 — The whole static screen comes from the editors.** Panel frame, labels
   and margin are one name-table image per platform; code draws only the well,
   the digits, the preview and the message band over the top.
