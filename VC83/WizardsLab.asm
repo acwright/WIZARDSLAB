@@ -5,7 +5,7 @@
 ; =============================================================================
 ;   A program for the VC83, run from the SD card with EXEC "WIZLAB.PRG" at
 ;   the BASIC prompt. There is no VC83 hardware yet, so this targets Willis
-;   Blackburn's simulator, built from vc83computer at commit 8648902.
+;   Blackburn's simulator, built from vc83computer at commit 7b4eed2.
 ;
 ;   The VCGA runs one tilemap layer: 40 x 25 cells of 8 x 8 pixels, doubled to
 ;   fill the 640 x 400 frame. That is the C64's grid, so the C64's two screen
@@ -58,7 +58,7 @@ PLANE_BYTES         = $0800         ;   bitplane per half, two per window
 VCGA_LAYER_MODE     = $D00C         ; + 32 * layer: 0 = disabled
 VCGA_BG_PALETTE     = $D080         ; Colour outside every layer: palette...
 VCGA_BG_COLOR       = $D081         ;   ...and entry
-VCGA_FRAME          = $D087         ; Frame counter, low byte: +1 per vblank
+VCGA_FRAME          = $D082         ; Frame counter, low byte: +1 per vblank
 PALETTE             = $D800         ; Palette 0, $B0800: 256 entries of 2 bytes,
                                     ;   little-endian 0rrrrrgggggbbbbb
 

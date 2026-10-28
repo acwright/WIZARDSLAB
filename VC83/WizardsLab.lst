@@ -1,4 +1,4 @@
-ca65 V2.19 - Git 547d92358
+ca65 V2.19 - Git 0fca83500
 Main file   : WizardsLab.asm
 Current file: WizardsLab.asm
 
@@ -9,7 +9,7 @@ Current file: WizardsLab.asm
 000000r 1               ; =============================================================================
 000000r 1               ;   A program for the VC83, run from the SD card with EXEC "WIZLAB.PRG" at
 000000r 1               ;   the BASIC prompt. There is no VC83 hardware yet, so this targets Willis
-000000r 1               ;   Blackburn's simulator, built from vc83computer at commit 8648902.
+000000r 1               ;   Blackburn's simulator, built from vc83computer at commit 7b4eed2.
 000000r 1               ;
 000000r 1               ;   The VCGA runs one tilemap layer: 40 x 25 cells of 8 x 8 pixels, doubled to
 000000r 1               ;   fill the 640 x 400 frame. That is the C64's grid, so the C64's two screen
@@ -62,7 +62,7 @@ Current file: WizardsLab.asm
 000000r 1               VCGA_LAYER_MODE     = $D00C         ; + 32 * layer: 0 = disabled
 000000r 1               VCGA_BG_PALETTE     = $D080         ; Colour outside every layer: palette...
 000000r 1               VCGA_BG_COLOR       = $D081         ;   ...and entry
-000000r 1               VCGA_FRAME          = $D087         ; Frame counter, low byte: +1 per vblank
+000000r 1               VCGA_FRAME          = $D082         ; Frame counter, low byte: +1 per vblank
 000000r 1               PALETTE             = $D800         ; Palette 0, $B0800: 256 entries of 2 bytes,
 000000r 1                                                   ;   little-endian 0rrrrrgggggbbbbb
 000000r 1               
@@ -5589,9 +5589,9 @@ Current file: WizardsLab.asm
 0012F0r 1               ;   No interrupts here, as on the AC6502: the I flag EXEC left set stays set.
 0012F0r 1               ; -----------------------------------------------------------------------------
 0012F0r 1               HalWaitFrame:
-0012F0r 1  AD 87 D0       lda VCGA_FRAME
+0012F0r 1  AD 82 D0       lda VCGA_FRAME
 0012F3r 1               @Wait:
-0012F3r 1  CD 87 D0       cmp VCGA_FRAME
+0012F3r 1  CD 82 D0       cmp VCGA_FRAME
 0012F6r 1  F0 FB          beq @Wait
 0012F8r 1  60             rts
 0012F9r 1               
