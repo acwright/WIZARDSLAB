@@ -35,7 +35,7 @@ piece can unravel half the board.
 >
 > **The VC83 port runs in the VC83's simulator only**, because the VC83 itself
 > is still being designed and no board exists yet. It plays the whole game,
-> sound included, and was built against vc83computer `7b4eed2`. The machine is
+> sound included, and was built against vc83computer `3fc308b`. The machine is
 > moving fast, so a newer checkout may need the port changing to match.
 
 ---

@@ -5,7 +5,7 @@
 ; =============================================================================
 ;   A program for the VC83, run from the SD card with EXEC "WIZLAB.PRG" at
 ;   the BASIC prompt. There is no VC83 hardware yet, so this targets Willis
-;   Blackburn's simulator, built from vc83computer at commit 7b4eed2.
+;   Blackburn's simulator, built from vc83computer at commit 3fc308b.
 ;
 ;   The VCGA runs one tilemap layer: 40 x 25 cells of 8 x 8 pixels, doubled to
 ;   fill the 640 x 400 frame. That is the C64's grid, so the C64's two screen

@@ -3,7 +3,7 @@ CONFIG = VC83
 PRG    = WIZLAB.PRG
 IMAGE  = wizlab.img
 
-# Built and run against vc83computer at commit 7b4eed2. The VC83 is still
+# Built and run against vc83computer at commit 3fc308b. The VC83 is still
 # being designed and its OS, memory map and video formats move from month to
 # month, so a newer checkout may need this port changing to match.
 VC83_REPO ?= $(HOME)/Developer/Github/vc83computer
